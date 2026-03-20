@@ -1,0 +1,14 @@
+{
+  "name": "mark2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal life management hub",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "typecheck:shared": "pnpm --filter @mark2/shared typecheck"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}
