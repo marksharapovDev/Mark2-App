@@ -4,12 +4,19 @@ import path from 'path';
 // Load .env from monorepo root before anything else
 config({ path: path.resolve(__dirname, '../../../../.env') });
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import { registerIpcHandlers, cleanupSessions } from './ipc-handlers';
 
 let mainWindow: BrowserWindow | null = null;
+let chatWindow: BrowserWindow | null = null;
 
 const isDev = !app.isPackaged;
+const preloadPath = path.join(__dirname, 'preload.js');
+
+function getBaseUrl(): string {
+  if (isDev) return 'http://localhost:5173';
+  return `file://${path.join(__dirname, '../renderer/index.html')}`;
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -22,7 +29,7 @@ function createWindow(): void {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
-      preload: path.join(__dirname, 'preload.js'),
+      preload: preloadPath,
     },
   });
 
@@ -35,8 +42,75 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    // Close chat window if main closes
+    if (chatWindow && !chatWindow.isDestroyed()) {
+      chatWindow.close();
+    }
   });
 }
+
+function createChatWindow(agent: string): void {
+  if (chatWindow && !chatWindow.isDestroyed()) {
+    chatWindow.focus();
+    return;
+  }
+
+  // Position to the right of the main window
+  const mainBounds = mainWindow?.getBounds();
+  const x = mainBounds ? mainBounds.x + mainBounds.width + 8 : undefined;
+  const y = mainBounds?.y;
+
+  chatWindow = new BrowserWindow({
+    width: 400,
+    height: 600,
+    x,
+    y,
+    minWidth: 320,
+    minHeight: 400,
+    title: `Chat — ${agent}`,
+    alwaysOnTop: true,
+    frame: true,
+    resizable: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false,
+      preload: preloadPath,
+    },
+  });
+
+  const base = getBaseUrl();
+  const url = isDev
+    ? `${base}#/chat-popout/${agent}`
+    : `${base}#/chat-popout/${agent}`;
+
+  chatWindow.loadURL(url);
+
+  chatWindow.on('closed', () => {
+    chatWindow = null;
+    // Notify main window that chat was closed (popped back in)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('chat:popped-in');
+    }
+  });
+}
+
+// === Chat popout IPC ===
+
+ipcMain.handle('chat:popout', (_event, agent: string) => {
+  createChatWindow(agent);
+  return true;
+});
+
+ipcMain.handle('chat:popin', () => {
+  if (chatWindow && !chatWindow.isDestroyed()) {
+    chatWindow.close();
+    chatWindow = null;
+  }
+  return true;
+});
+
+// === App lifecycle ===
 
 app.on('ready', () => {
   registerIpcHandlers();

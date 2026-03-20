@@ -4,21 +4,39 @@ export interface ChatResponse {
   content: string;
   engine: 'api' | 'claude-code';
   notification?: string;
+  sessionTitle?: string;
 }
 
 export interface ChatHistoryItem {
   id: string;
   agent: string;
+  session_id: string | null;
   role: 'user' | 'assistant';
   content: string;
   engine: 'api' | 'claude-code';
-  createdAt: string;
+  created_at: string;
+}
+
+export interface ChatSessionItem {
+  id: string;
+  agent: string;
+  title: string;
+  summary: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ChatAPI {
-  send: (agent: string, message: string) => Promise<ChatResponse>;
-  history: (agent: string) => Promise<ChatHistoryItem[]>;
-  clear: (agent: string) => Promise<void>;
+  send: (agent: string, sessionId: string, message: string) => Promise<ChatResponse>;
+  createSession: (agent: string) => Promise<ChatSessionItem>;
+  getSessions: (agent: string) => Promise<ChatSessionItem[]>;
+  deleteSession: (sessionId: string) => Promise<void>;
+  switchSession: (fromSessionId: string | null, toSessionId: string) => Promise<ChatHistoryItem[]>;
+  getSessionMessages: (sessionId: string) => Promise<ChatHistoryItem[]>;
+  popout: (agent: string) => Promise<boolean>;
+  popin: () => Promise<boolean>;
+  onPoppedIn: (callback: () => void) => () => void;
 }
 
 export interface ClaudeAPI {
@@ -32,14 +50,35 @@ export interface ClaudeAPI {
 }
 
 const chatApi: ChatAPI = {
-  send: (agent, message) =>
-    ipcRenderer.invoke('chat:send', agent, message),
+  send: (agent, sessionId, message) =>
+    ipcRenderer.invoke('chat:send', agent, sessionId, message),
 
-  history: (agent) =>
-    ipcRenderer.invoke('chat:history', agent),
+  createSession: (agent) =>
+    ipcRenderer.invoke('chat:create-session', agent),
 
-  clear: (agent) =>
-    ipcRenderer.invoke('chat:clear', agent),
+  getSessions: (agent) =>
+    ipcRenderer.invoke('chat:get-sessions', agent),
+
+  deleteSession: (sessionId) =>
+    ipcRenderer.invoke('chat:delete-session', sessionId),
+
+  switchSession: (fromSessionId, toSessionId) =>
+    ipcRenderer.invoke('chat:switch-session', fromSessionId, toSessionId),
+
+  getSessionMessages: (sessionId) =>
+    ipcRenderer.invoke('chat:get-session-messages', sessionId),
+
+  popout: (agent) =>
+    ipcRenderer.invoke('chat:popout', agent),
+
+  popin: () =>
+    ipcRenderer.invoke('chat:popin'),
+
+  onPoppedIn: (callback) => {
+    const handler = () => { callback(); };
+    ipcRenderer.on('chat:popped-in', handler);
+    return () => { ipcRenderer.removeListener('chat:popped-in', handler); };
+  },
 };
 
 const claudeApi: ClaudeAPI = {

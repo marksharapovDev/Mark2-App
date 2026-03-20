@@ -2,11 +2,18 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { ChildProcess } from 'child_process';
 import crypto from 'crypto';
 import { claude, AgentName } from './claude-bridge';
-import { sendMessage, getHistory, clearChat } from './hybrid-engine';
+import {
+  sendMessage,
+  handleCreateSession,
+  handleGetSessions,
+  handleDeleteSession,
+  handleSwitchSession,
+  handleGetSessionMessages,
+} from './hybrid-engine';
 
 const VALID_AGENTS = new Set<string>(['dev', 'teaching', 'study', 'health', 'finance', 'general']);
 
-const sessions = new Map<string, ChildProcess>();
+const cliSessions = new Map<string, ChildProcess>();
 
 function isValidAgent(agent: string): agent is AgentName {
   return VALID_AGENTS.has(agent);
@@ -25,46 +32,50 @@ function sendToRenderer(channel: string, ...args: unknown[]): void {
 }
 
 export function registerIpcHandlers(): void {
-  // === Hybrid Chat ===
+  // === Chat sessions ===
 
-  ipcMain.handle('chat:send', async (_event, agent: string, message: string) => {
-    if (!isValidAgent(agent)) {
-      throw new Error(`Invalid agent: ${agent}`);
-    }
-    return sendMessage(agent, message);
+  ipcMain.handle('chat:create-session', async (_event, agent: string) => {
+    if (!isValidAgent(agent)) throw new Error(`Invalid agent: ${agent}`);
+    return handleCreateSession(agent);
   });
 
-  ipcMain.handle('chat:history', async (_event, agent: string) => {
-    if (!isValidAgent(agent)) {
-      throw new Error(`Invalid agent: ${agent}`);
-    }
-    return getHistory(agent);
+  ipcMain.handle('chat:get-sessions', async (_event, agent: string) => {
+    if (!isValidAgent(agent)) throw new Error(`Invalid agent: ${agent}`);
+    return handleGetSessions(agent);
   });
 
-  ipcMain.handle('chat:clear', async (_event, agent: string) => {
-    if (!isValidAgent(agent)) {
-      throw new Error(`Invalid agent: ${agent}`);
-    }
-    await clearChat(agent);
+  ipcMain.handle('chat:delete-session', async (_event, sessionId: string) => {
+    await handleDeleteSession(sessionId);
   });
 
-  // === Claude Code direct (legacy, kept for direct CLI access) ===
+  ipcMain.handle('chat:switch-session', async (_event, fromSessionId: string | null, toSessionId: string) => {
+    return handleSwitchSession(fromSessionId, toSessionId);
+  });
+
+  ipcMain.handle('chat:get-session-messages', async (_event, sessionId: string) => {
+    return handleGetSessionMessages(sessionId);
+  });
+
+  // === Hybrid chat (send message within a session) ===
+
+  ipcMain.handle('chat:send', async (_event, agent: string, sessionId: string, message: string) => {
+    if (!isValidAgent(agent)) throw new Error(`Invalid agent: ${agent}`);
+    return sendMessage(agent, sessionId, message);
+  });
+
+  // === Claude Code direct ===
 
   ipcMain.handle('claude:run', async (_event, agent: string, prompt: string) => {
-    if (!isValidAgent(agent)) {
-      throw new Error(`Invalid agent: ${agent}`);
-    }
+    if (!isValidAgent(agent)) throw new Error(`Invalid agent: ${agent}`);
     return claude.run({ agent, prompt });
   });
 
   ipcMain.handle('claude:start-session', (_event, agent: string) => {
-    if (!isValidAgent(agent)) {
-      throw new Error(`Invalid agent: ${agent}`);
-    }
+    if (!isValidAgent(agent)) throw new Error(`Invalid agent: ${agent}`);
 
     const sessionId = crypto.randomUUID();
     const proc = claude.startSession(agent);
-    sessions.set(sessionId, proc);
+    cliSessions.set(sessionId, proc);
 
     proc.stdout?.on('data', (data: Buffer) => {
       sendToRenderer('claude:stream', sessionId, data.toString());
@@ -75,7 +86,7 @@ export function registerIpcHandlers(): void {
     });
 
     proc.on('close', () => {
-      sessions.delete(sessionId);
+      cliSessions.delete(sessionId);
       sendToRenderer('claude:session-end', sessionId);
     });
 
@@ -83,28 +94,24 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('claude:send-message', (_event, sessionId: string, message: string) => {
-    const proc = sessions.get(sessionId);
-    if (!proc) {
-      throw new Error(`Session ${sessionId} not found`);
-    }
-    if (!proc.stdin || !proc.stdin.writable) {
-      throw new Error(`Session ${sessionId} stdin not writable`);
-    }
+    const proc = cliSessions.get(sessionId);
+    if (!proc) throw new Error(`Session ${sessionId} not found`);
+    if (!proc.stdin || !proc.stdin.writable) throw new Error(`Session ${sessionId} stdin not writable`);
     proc.stdin.write(message + '\n');
   });
 
   ipcMain.handle('claude:stop-session', (_event, sessionId: string) => {
-    const proc = sessions.get(sessionId);
+    const proc = cliSessions.get(sessionId);
     if (proc) {
       proc.kill();
-      sessions.delete(sessionId);
+      cliSessions.delete(sessionId);
     }
   });
 }
 
 export function cleanupSessions(): void {
-  for (const [id, proc] of sessions) {
+  for (const [id, proc] of cliSessions) {
     proc.kill();
-    sessions.delete(id);
+    cliSessions.delete(id);
   }
 }
