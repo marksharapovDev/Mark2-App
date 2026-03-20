@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
+import { registerIpcHandlers, cleanupSessions } from './ipc-handlers';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -15,6 +16,8 @@ function createWindow(): void {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: false,
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
 
@@ -30,7 +33,10 @@ function createWindow(): void {
   });
 }
 
-app.on('ready', createWindow);
+app.on('ready', () => {
+  registerIpcHandlers();
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -42,4 +48,8 @@ app.on('activate', () => {
   if (mainWindow === null) {
     createWindow();
   }
+});
+
+app.on('before-quit', () => {
+  cleanupSessions();
 });

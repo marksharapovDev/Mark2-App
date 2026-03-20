@@ -1,5 +1,6 @@
 import { HashRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { Dashboard } from './pages/Dashboard';
+import { Chat } from './pages/Chat';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard' },
@@ -54,7 +55,7 @@ export function App() {
             <Route path="/health" element={<Placeholder title="Health" />} />
             <Route path="/finance" element={<Placeholder title="Finance" />} />
             <Route path="/calendar" element={<Placeholder title="Calendar" />} />
-            <Route path="/chat" element={<Placeholder title="Chat" />} />
+            <Route path="/chat" element={<Chat />} />
             <Route path="/settings" element={<Placeholder title="Settings" />} />
           </Routes>
         </main>

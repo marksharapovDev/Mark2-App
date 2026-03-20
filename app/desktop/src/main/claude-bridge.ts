@@ -1,5 +1,6 @@
-import { spawn, ChildProcess } from 'child_process';
+import { exec, execSync, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
+import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
@@ -31,68 +32,75 @@ const HOME = os.homedir();
 const AGENTS_DIR = path.join(HOME, 'mark2', 'agents');
 
 function agentDir(agent: AgentName): string {
-  return path.join(AGENTS_DIR, agent);
+  const dir = path.join(AGENTS_DIR, agent);
+  // Ensure directory exists — missing cwd causes ENOENT
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+/** Escape a string for safe embedding in a shell command */
+function shellEscape(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
 export class ClaudeBridge extends EventEmitter {
   /**
    * Одиночный запрос к Claude Code.
-   * Запускает `claude -p "prompt"` в папке агента.
+   * execSync работает в Electron — используем его.
    */
   async run(options: RunOptions): Promise<string> {
     const cwd = options.cwd ?? agentDir(options.agent);
+    const cmd = `claude -p ${shellEscape(options.prompt)}`;
 
     return new Promise((resolve, reject) => {
-      const proc = spawn('claude', ['-p', options.prompt], {
-        cwd,
-        env: { ...process.env },
-      });
+      try {
+        const output = execSync(cmd, {
+          cwd,
+          env: process.env,
+          maxBuffer: 10 * 1024 * 1024,
+          encoding: 'utf-8',
+        });
 
-      let output = '';
-
-      proc.stdout.on('data', (data: Buffer) => {
-        const chunk = data.toString();
-        output += chunk;
-        this.emit('stream', {
-          agent: options.agent,
-          chunk,
-        } satisfies StreamEvent);
-      });
-
-      proc.stderr.on('data', (data: Buffer) => {
-        this.emit('error', {
-          agent: options.agent,
-          error: data.toString(),
-        } satisfies ErrorEvent);
-      });
-
-      proc.on('close', (code) => {
-        const exitCode = code ?? 1;
         this.emit('complete', {
           agent: options.agent,
           output,
-          exitCode,
+          exitCode: 0,
         } satisfies CompleteEvent);
 
-        if (exitCode === 0) {
-          resolve(output);
-        } else {
-          reject(new Error(`Claude Code exited with code ${exitCode}`));
+        resolve(output);
+      } catch (err: unknown) {
+        const error = err as { status?: number; stdout?: string; stderr?: string; message?: string };
+
+        if (error.stderr) {
+          this.emit('error', {
+            agent: options.agent,
+            error: error.stderr,
+          } satisfies ErrorEvent);
         }
-      });
+
+        this.emit('complete', {
+          agent: options.agent,
+          output: error.stdout ?? '',
+          exitCode: error.status ?? 1,
+        } satisfies CompleteEvent);
+
+        reject(new Error(error.message ?? `Claude Code exited with code ${error.status ?? 1}`));
+      }
     });
   }
 
   /**
    * Интерактивная сессия (для чата).
-   * UI пишет в stdin, читает из stdout.
+   * exec() — async, возвращает ChildProcess с stdin/stdout.
    */
   startSession(agent: AgentName): ChildProcess {
     const cwd = agentDir(agent);
 
-    return spawn('claude', [], {
+    return exec('claude', {
       cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      env: process.env,
     });
   }
 
