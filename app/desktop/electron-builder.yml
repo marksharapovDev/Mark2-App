@@ -1,0 +1,11 @@
+appId: com.mark2.desktop
+productName: Mark2
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+mac:
+  target: dmg
+  category: public.app-category.productivity
