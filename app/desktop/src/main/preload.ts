@@ -29,11 +29,13 @@ export interface ChatSessionItem {
 
 export interface ChatAPI {
   send: (agent: string, sessionId: string, message: string) => Promise<ChatResponse>;
-  createSession: (agent: string) => Promise<ChatSessionItem>;
+  createSession: (agent: string, fromSessionId?: string) => Promise<ChatSessionItem>;
   getSessions: (agent: string) => Promise<ChatSessionItem[]>;
   deleteSession: (sessionId: string) => Promise<void>;
   switchSession: (fromSessionId: string | null, toSessionId: string) => Promise<ChatHistoryItem[]>;
   getSessionMessages: (sessionId: string) => Promise<ChatHistoryItem[]>;
+  agentSwitch: (fromAgent: string) => Promise<void>;
+  backfillSummaries: () => Promise<number>;
   popout: (agent: string) => Promise<boolean>;
   popin: () => Promise<boolean>;
   onPoppedIn: (callback: () => void) => () => void;
@@ -53,8 +55,8 @@ const chatApi: ChatAPI = {
   send: (agent, sessionId, message) =>
     ipcRenderer.invoke('chat:send', agent, sessionId, message),
 
-  createSession: (agent) =>
-    ipcRenderer.invoke('chat:create-session', agent),
+  createSession: (agent, fromSessionId?) =>
+    ipcRenderer.invoke('chat:create-session', agent, fromSessionId),
 
   getSessions: (agent) =>
     ipcRenderer.invoke('chat:get-sessions', agent),
@@ -67,6 +69,12 @@ const chatApi: ChatAPI = {
 
   getSessionMessages: (sessionId) =>
     ipcRenderer.invoke('chat:get-session-messages', sessionId),
+
+  agentSwitch: (fromAgent) =>
+    ipcRenderer.invoke('chat:agent-switch', fromAgent),
+
+  backfillSummaries: () =>
+    ipcRenderer.invoke('chat:backfill-summaries'),
 
   popout: (agent) =>
     ipcRenderer.invoke('chat:popout', agent),

@@ -48,6 +48,9 @@ export function ChatPanel({ agent }: ChatPanelProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Track previous agent to generate summary on tab switch
+  const prevAgentRef = useRef<AgentName | null>(null);
+
   // Initialize: load sessions, open latest or create new
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +58,12 @@ export function ChatPanel({ agent }: ChatPanelProps) {
     setMessages([]);
     setActiveSessionId(null);
     setShowHistory(false);
+
+    // Generate summary for previous agent's active session (fire-and-forget)
+    if (prevAgentRef.current && prevAgentRef.current !== agent) {
+      window.chat.agentSwitch(prevAgentRef.current).catch(console.error);
+    }
+    prevAgentRef.current = agent;
 
     window.chat.getSessions(agent).then(async (list) => {
       if (cancelled) return;
@@ -148,15 +157,15 @@ export function ChatPanel({ agent }: ChatPanelProps) {
     }
   }, [input, isThinking, activeSessionId, agent]);
 
-  // New chat
+  // New chat — generate summary for the previous session
   const handleNewChat = useCallback(async () => {
-    const session = await window.chat.createSession(agent);
+    const session = await window.chat.createSession(agent, activeSessionId ?? undefined);
     setSessions((prev) => [session, ...prev]);
     setActiveSessionId(session.id);
     setActiveSessionTitle(session.title);
     setMessages([]);
     setShowHistory(false);
-  }, [agent]);
+  }, [agent, activeSessionId]);
 
   // Switch session
   const handleSelectSession = useCallback(async (sessionId: string) => {

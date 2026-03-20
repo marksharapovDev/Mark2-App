@@ -236,14 +236,165 @@ export async function generateSummary(messages: ChatMessageRow[]): Promise<strin
   return (response.choices[0]?.message?.content ?? '').trim();
 }
 
+// === Cross-context ===
+
+const ALL_AGENTS: AgentName[] = ['dev', 'teaching', 'study', 'health', 'finance', 'general'];
+
+function formatRelativeDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffDays === 0) return 'сегодня';
+  if (diffDays === 1) return 'вчера';
+  if (diffDays < 7) return `${diffDays} дн. назад`;
+  return d.toLocaleDateString('ru', { day: 'numeric', month: 'short' });
+}
+
+/**
+ * Build a fallback snippet from the last 3 messages of a session.
+ */
+async function buildMessageFallback(sessionId: string): Promise<string> {
+  const msgs = await getSessionMessages(sessionId, 3);
+  if (msgs.length === 0) return '';
+  return msgs
+    .map((m) => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content.slice(0, 150)}`)
+    .join(' | ');
+}
+
+export async function buildCrossContext(agent: AgentName): Promise<string> {
+  const supabase = getSupabase();
+  const parts: string[] = ['## Контекст из предыдущих чатов\n'];
+
+  // 1. Last 5 sessions of CURRENT agent (with fallback)
+  const { data: ownSessions } = await supabase
+    .from('chat_sessions')
+    .select('id, title, summary, updated_at')
+    .eq('agent', agent)
+    .order('updated_at', { ascending: false })
+    .limit(5);
+
+  if (ownSessions && ownSessions.length > 0) {
+    const ownLines: string[] = [];
+    for (const s of ownSessions) {
+      const date = formatRelativeDate(s.updated_at);
+      const text = s.summary ?? await buildMessageFallback(s.id);
+      if (text) {
+        ownLines.push(`- [${date}] ${text}`);
+      }
+    }
+    if (ownLines.length > 0) {
+      parts.push(`### Твой раздел (${agent}):`);
+      parts.push(...ownLines);
+      parts.push('');
+    }
+  }
+
+  // 2. Last 3 sessions from EACH other agent (with fallback)
+  const otherAgents = ALL_AGENTS.filter((a) => a !== agent);
+  const otherParts: string[] = [];
+
+  for (const other of otherAgents) {
+    const { data: otherSessions } = await supabase
+      .from('chat_sessions')
+      .select('id, title, summary, updated_at')
+      .eq('agent', other)
+      .order('updated_at', { ascending: false })
+      .limit(3);
+
+    if (otherSessions && otherSessions.length > 0) {
+      for (const s of otherSessions) {
+        const date = formatRelativeDate(s.updated_at);
+        const text = s.summary ?? await buildMessageFallback(s.id);
+        if (text) {
+          otherParts.push(`- [${other}] [${date}] ${text}`);
+        }
+      }
+    }
+  }
+
+  if (otherParts.length > 0) {
+    parts.push('### Другие разделы:');
+    parts.push(...otherParts);
+    parts.push('');
+  }
+
+  // Return empty string if no context available
+  if (parts.length <= 1) return '';
+
+  return parts.join('\n');
+}
+
+/**
+ * Generate summary for the active session of a given agent.
+ * Called when user switches tabs (agents).
+ */
+export async function generateSummaryForActiveSession(agent: AgentName): Promise<void> {
+  const supabase = getSupabase();
+
+  // Find the most recent session for this agent
+  const { data: sessions } = await supabase
+    .from('chat_sessions')
+    .select('id')
+    .eq('agent', agent)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  if (!sessions || sessions.length === 0) return;
+
+  const sessionId = sessions[0]!.id;
+  const msgs = await getSessionMessages(sessionId, 50);
+
+  if (msgs.length >= 4) {
+    const summary = await generateSummary(msgs);
+    await updateSessionSummary(sessionId, summary);
+  }
+}
+
+/**
+ * Backfill summaries for all sessions that have messages but no summary.
+ * Returns number of sessions updated.
+ */
+export async function backfillAllSummaries(): Promise<number> {
+  const supabase = getSupabase();
+
+  const { data: sessions } = await supabase
+    .from('chat_sessions')
+    .select('id')
+    .is('summary', null)
+    .order('updated_at', { ascending: false });
+
+  if (!sessions || sessions.length === 0) return 0;
+
+  let count = 0;
+  for (const session of sessions) {
+    const msgs = await getSessionMessages(session.id, 50);
+    if (msgs.length >= 2) {
+      const summary = await generateSummary(msgs);
+      await updateSessionSummary(session.id, summary);
+      count++;
+      console.log(`[ChatClient] backfill summary for ${session.id}: ${summary.slice(0, 60)}...`);
+    }
+  }
+
+  return count;
+}
+
 export async function sendToApi(
   agent: AgentName,
   sessionId: string,
   message: string,
+  crossContext?: string,
 ): Promise<string> {
   const model = process.env.CHAT_MODEL ?? 'anthropic/claude-haiku-4.5';
   const openai = getOpenAIClient();
   const systemPrompt = loadAgentSystemPrompt(agent);
+
+  // Build system prompt: agent CLAUDE.md + cross-context
+  const fullSystemPrompt = crossContext
+    ? `${systemPrompt}\n\n${crossContext}`
+    : systemPrompt;
 
   const history = await getSessionMessages(sessionId, 20);
   const historyMessages: OpenAI.ChatCompletionMessageParam[] = history.map((row) => ({
@@ -254,7 +405,7 @@ export async function sendToApi(
   const response = await openai.chat.completions.create({
     model,
     messages: [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: fullSystemPrompt },
       ...historyMessages,
       { role: 'user', content: message },
     ],

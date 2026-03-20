@@ -9,6 +9,8 @@ import {
   handleDeleteSession,
   handleSwitchSession,
   handleGetSessionMessages,
+  handleAgentSwitch,
+  handleBackfillSummaries,
 } from './hybrid-engine';
 
 const VALID_AGENTS = new Set<string>(['dev', 'teaching', 'study', 'health', 'finance', 'general']);
@@ -34,9 +36,9 @@ function sendToRenderer(channel: string, ...args: unknown[]): void {
 export function registerIpcHandlers(): void {
   // === Chat sessions ===
 
-  ipcMain.handle('chat:create-session', async (_event, agent: string) => {
+  ipcMain.handle('chat:create-session', async (_event, agent: string, fromSessionId?: string) => {
     if (!isValidAgent(agent)) throw new Error(`Invalid agent: ${agent}`);
-    return handleCreateSession(agent);
+    return handleCreateSession(agent, fromSessionId);
   });
 
   ipcMain.handle('chat:get-sessions', async (_event, agent: string) => {
@@ -54,6 +56,15 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('chat:get-session-messages', async (_event, sessionId: string) => {
     return handleGetSessionMessages(sessionId);
+  });
+
+  ipcMain.handle('chat:agent-switch', async (_event, fromAgent: string) => {
+    if (!isValidAgent(fromAgent)) throw new Error(`Invalid agent: ${fromAgent}`);
+    await handleAgentSwitch(fromAgent);
+  });
+
+  ipcMain.handle('chat:backfill-summaries', async () => {
+    return handleBackfillSummaries();
   });
 
   // === Hybrid chat (send message within a session) ===
