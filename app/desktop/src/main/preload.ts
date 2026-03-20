@@ -1,5 +1,26 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+export interface ChatResponse {
+  content: string;
+  engine: 'api' | 'claude-code';
+  notification?: string;
+}
+
+export interface ChatHistoryItem {
+  id: string;
+  agent: string;
+  role: 'user' | 'assistant';
+  content: string;
+  engine: 'api' | 'claude-code';
+  createdAt: string;
+}
+
+export interface ChatAPI {
+  send: (agent: string, message: string) => Promise<ChatResponse>;
+  history: (agent: string) => Promise<ChatHistoryItem[]>;
+  clear: (agent: string) => Promise<void>;
+}
+
 export interface ClaudeAPI {
   run: (agent: string, prompt: string) => Promise<string>;
   startSession: (agent: string) => Promise<string>;
@@ -9,6 +30,17 @@ export interface ClaudeAPI {
   onSessionError: (callback: (sessionId: string, error: string) => void) => () => void;
   onSessionEnd: (callback: (sessionId: string) => void) => () => void;
 }
+
+const chatApi: ChatAPI = {
+  send: (agent, message) =>
+    ipcRenderer.invoke('chat:send', agent, message),
+
+  history: (agent) =>
+    ipcRenderer.invoke('chat:history', agent),
+
+  clear: (agent) =>
+    ipcRenderer.invoke('chat:clear', agent),
+};
 
 const claudeApi: ClaudeAPI = {
   run: (agent, prompt) =>
@@ -48,4 +80,5 @@ const claudeApi: ClaudeAPI = {
   },
 };
 
+contextBridge.exposeInMainWorld('chat', chatApi);
 contextBridge.exposeInMainWorld('claude', claudeApi);

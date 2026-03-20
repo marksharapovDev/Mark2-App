@@ -194,3 +194,20 @@ export const createDailyNoteSchema = dailyNoteSchema.omit({
   sorted: true,
   source: true,
 });
+
+// --- Chat ---
+
+export const agentNameSchema = z.enum(['dev', 'teaching', 'study', 'health', 'finance', 'general']);
+
+export const chatEngineSchema = z.enum(['api', 'claude-code']);
+
+export const chatRoleSchema = z.enum(['user', 'assistant']);
+
+export const chatMessageSchema = z.object({
+  id: z.string().uuid(),
+  agent: agentNameSchema,
+  role: chatRoleSchema,
+  content: z.string().min(1),
+  engine: chatEngineSchema,
+  createdAt: z.coerce.date(),
+});

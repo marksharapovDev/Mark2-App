@@ -7,6 +7,7 @@ export type { TransactionType, TransactionSource, Transaction } from './types/tr
 export type { WorkoutType, Exercise, Workout } from './types/workout.js';
 export type { Recurrence, CalendarEvent } from './types/calendar.js';
 export type { NoteSource, DailyNote } from './types/note.js';
+export type { AgentName, ChatEngine, ChatRole, ChatMessage } from './types/chat.js';
 
 // Validation schemas
 export {
@@ -36,4 +37,8 @@ export {
   createCalendarEventSchema,
   dailyNoteSchema,
   createDailyNoteSchema,
+  agentNameSchema,
+  chatEngineSchema,
+  chatRoleSchema,
+  chatMessageSchema,
 } from './validation/schemas.js';

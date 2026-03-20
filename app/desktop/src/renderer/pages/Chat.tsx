@@ -6,6 +6,8 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  engine?: 'api' | 'claude-code';
+  isNotification?: boolean;
 }
 
 const AGENTS: { value: AgentName; label: string }[] = [
@@ -22,81 +24,85 @@ export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [streamBuffer, setStreamBuffer] = useState('');
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll to bottom
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamBuffer]);
+  }, [messages]);
 
-  // Subscribe to stream events
+  // Load history when agent changes
   useEffect(() => {
-    const unsubStream = window.claude.onStream((_sid, chunk) => {
-      setStreamBuffer((prev) => prev + chunk);
-    });
+    let cancelled = false;
+    setIsLoadingHistory(true);
 
-    const unsubError = window.claude.onSessionError((_sid, error) => {
-      setMessages((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${error}` },
-      ]);
-      setIsThinking(false);
-    });
+    window.chat.history(agent)
+      .then((history) => {
+        if (cancelled) return;
+        setMessages(
+          history.map((h) => ({
+            id: h.id,
+            role: h.role,
+            content: h.content,
+            engine: h.engine,
+          })),
+        );
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('Failed to load history:', err);
+        setMessages([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingHistory(false);
+      });
 
-    const unsubEnd = window.claude.onSessionEnd(() => {
-      setSessionId(null);
-      setIsThinking(false);
-    });
-
-    return () => {
-      unsubStream();
-      unsubError();
-      unsubEnd();
-    };
-  }, []);
-
-  // When stream finishes (thinking stops), commit buffer to messages
-  useEffect(() => {
-    if (!isThinking && streamBuffer.length > 0) {
-      setMessages((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), role: 'assistant', content: streamBuffer.trim() },
-      ]);
-      setStreamBuffer('');
-    }
-  }, [isThinking, streamBuffer]);
+    return () => { cancelled = true; };
+  }, [agent]);
 
   const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || isThinking) return;
 
-    const userMessage: Message = {
+    const userMsg: Message = {
       id: crypto.randomUUID(),
       role: 'user',
       content: trimmed,
     };
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setIsThinking(true);
-    setStreamBuffer('');
 
     try {
-      if (sessionId) {
-        // Interactive session — send to stdin
-        await window.claude.sendMessage(sessionId, trimmed);
-      } else {
-        // One-shot — claude -p "prompt"
-        const result = await window.claude.run(agent, trimmed);
+      const response = await window.chat.send(agent, trimmed);
+
+      // Show notification if engine switched to Claude Code
+      if (response.notification) {
         setMessages((prev) => [
           ...prev,
-          { id: crypto.randomUUID(), role: 'assistant', content: result.trim() },
+          {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: response.notification ?? '',
+            engine: 'claude-code',
+            isNotification: true,
+          },
         ]);
       }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: response.content,
+          engine: response.engine,
+        },
+      ]);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
       setMessages((prev) => [
@@ -107,32 +113,12 @@ export function Chat() {
       setIsThinking(false);
       inputRef.current?.focus();
     }
-  }, [input, isThinking, sessionId, agent]);
+  }, [input, isThinking, agent]);
 
-  const handleStartSession = useCallback(async () => {
-    try {
-      const sid = await window.claude.startSession(agent);
-      setSessionId(sid);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to start session';
-      setMessages((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${errorMsg}` },
-      ]);
-    }
-  }, [agent]);
-
-  const handleStopSession = useCallback(async () => {
-    if (sessionId) {
-      await window.claude.stopSession(sessionId);
-      setSessionId(null);
-    }
-  }, [sessionId]);
-
-  const handleClear = useCallback(() => {
+  const handleClear = useCallback(async () => {
+    await window.chat.clear(agent);
     setMessages([]);
-    setStreamBuffer('');
-  }, []);
+  }, [agent]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -150,7 +136,7 @@ export function Chat() {
         <select
           value={agent}
           onChange={(e) => setAgent(e.target.value as AgentName)}
-          disabled={sessionId !== null}
+          disabled={isThinking}
           className="bg-neutral-800 text-neutral-200 rounded px-3 py-1.5 text-sm border border-neutral-700 focus:outline-none focus:border-neutral-500"
         >
           {AGENTS.map(({ value, label }) => (
@@ -158,41 +144,24 @@ export function Chat() {
           ))}
         </select>
 
-        <div className="flex gap-2 ml-auto">
-          {sessionId ? (
-            <button
-              onClick={handleStopSession}
-              className="px-3 py-1.5 rounded text-sm bg-red-900/50 text-red-300 hover:bg-red-900/70 transition-colors"
-            >
-              Stop Session
-            </button>
-          ) : (
-            <button
-              onClick={handleStartSession}
-              className="px-3 py-1.5 rounded text-sm bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors"
-            >
-              Start Session
-            </button>
-          )}
-          <button
-            onClick={handleClear}
-            className="px-3 py-1.5 rounded text-sm bg-neutral-800 text-neutral-400 hover:bg-neutral-700 transition-colors"
-          >
-            Clear
-          </button>
-        </div>
-      </div>
-
-      {/* Mode indicator */}
-      <div className="py-2 text-xs text-neutral-500">
-        {sessionId
-          ? `Interactive session with ${agent} agent`
-          : `One-shot mode — ${agent} agent`}
+        <button
+          onClick={handleClear}
+          disabled={isThinking}
+          className="ml-auto px-3 py-1.5 rounded text-sm bg-neutral-800 text-neutral-400 hover:bg-neutral-700 transition-colors disabled:opacity-50"
+        >
+          Clear
+        </button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-4 pb-4">
-        {messages.length === 0 && !streamBuffer && (
+      <div className="flex-1 overflow-y-auto space-y-4 py-4">
+        {isLoadingHistory && (
+          <div className="text-center text-neutral-500 text-sm py-4">
+            Loading history...
+          </div>
+        )}
+
+        {!isLoadingHistory && messages.length === 0 && (
           <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
             Send a message to start chatting with the {agent} agent
           </div>
@@ -202,15 +171,7 @@ export function Chat() {
           <MessageBubble key={msg.id} message={msg} />
         ))}
 
-        {/* Streaming buffer */}
-        {streamBuffer && (
-          <MessageBubble
-            message={{ id: 'stream', role: 'assistant', content: streamBuffer }}
-          />
-        )}
-
-        {/* Thinking indicator */}
-        {isThinking && !streamBuffer && (
+        {isThinking && (
           <div className="flex items-center gap-2 text-neutral-400 text-sm py-2">
             <span className="flex gap-1">
               <span className="animate-bounce [animation-delay:0ms]">.</span>
@@ -253,6 +214,16 @@ export function Chat() {
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
 
+  if (message.isNotification) {
+    return (
+      <div className="flex justify-center py-1">
+        <span className="text-xs text-orange-400 bg-orange-900/20 px-3 py-1 rounded-full">
+          {message.content}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
@@ -263,7 +234,18 @@ function MessageBubble({ message }: { message: Message }) {
         }`}
       >
         {!isUser && (
-          <div className="text-xs text-neutral-500 mb-1 font-medium">Agent</div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs text-neutral-500 font-medium">Agent</span>
+            {message.engine && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                message.engine === 'claude-code'
+                  ? 'bg-orange-900/40 text-orange-400'
+                  : 'bg-neutral-700 text-neutral-400'
+              }`}>
+                {message.engine === 'claude-code' ? 'Claude Code' : 'API'}
+              </span>
+            )}
+          </div>
         )}
         {message.content}
       </div>
