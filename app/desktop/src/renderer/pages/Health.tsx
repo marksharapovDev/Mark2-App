@@ -1160,9 +1160,9 @@ function StatsDashboard() {
             -{(WEIGHT_PROGRESS[0].weight - WEIGHT_PROGRESS[WEIGHT_PROGRESS.length - 1].weight).toFixed(1)} кг за период
           </span>
         </div>
-        <div className="relative h-24 flex items-end">
+        <div className="relative h-24 flex items-end overflow-hidden">
           {/* Connecting lines + dots */}
-          <div className="absolute inset-0 flex items-stretch">
+          <div className="absolute inset-0 flex items-stretch overflow-hidden">
             {WEIGHT_PROGRESS.map((point, i) => {
               const yPct = ((weightMax - point.weight) / weightRange) * 70 + 10; // 10-80% range
               const nextPoint = WEIGHT_PROGRESS[i + 1];

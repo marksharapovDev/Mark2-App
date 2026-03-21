@@ -5,6 +5,12 @@ import { useCalendar } from '../context/calendar-context';
 
 type Sphere = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'personal';
 type ViewMode = 'month' | 'week' | 'day' | 'list';
+type EventType = 'event' | 'task' | 'reminder';
+
+interface Subtask {
+  title: string;
+  done: boolean;
+}
 
 interface CalendarEvent {
   id: string;
@@ -17,7 +23,9 @@ interface CalendarEvent {
   endMin: number;
   allDay?: boolean;
   description?: string;
-  isReminder?: boolean;
+  type: EventType;
+  done: boolean;
+  subtasks: Subtask[];
 }
 
 interface CreateModalData {
@@ -27,6 +35,7 @@ interface CreateModalData {
   endHour: number;
   endMin: number;
   editEvent?: CalendarEvent;
+  defaultType?: EventType;
 }
 
 interface ContextMenuState {
@@ -150,22 +159,24 @@ function generateMockEvents(): CalendarEvent[] {
     new Date(2026, 2, 23),
   ];
 
-  const recurring: Array<{
+  interface RecurringDef {
     title: string; sphere: Sphere; dayOfWeek: number;
     startHour: number; startMin: number; endHour: number; endMin: number;
-    description?: string;
-  }> = [
-    { title: 'Матанализ (лекция)', sphere: 'study', dayOfWeek: 0, startHour: 10, startMin: 0, endHour: 11, endMin: 30, description: 'Интегралы' },
-    { title: 'Зал (грудь + трицепс)', sphere: 'health', dayOfWeek: 0, startHour: 18, startMin: 0, endHour: 19, endMin: 0 },
-    { title: 'Физика (лекция)', sphere: 'study', dayOfWeek: 1, startHour: 14, startMin: 0, endHour: 15, endMin: 30, description: 'Термодинамика' },
-    { title: 'Урок Миша (ЕГЭ Информатика)', sphere: 'teaching', dayOfWeek: 1, startHour: 17, startMin: 0, endHour: 18, endMin: 0, description: 'Подготовка к ЕГЭ' },
-    { title: 'Матанализ (семинар)', sphere: 'study', dayOfWeek: 2, startHour: 12, startMin: 0, endHour: 13, endMin: 30, description: 'Задачи' },
-    { title: 'Урок Аня (Python)', sphere: 'teaching', dayOfWeek: 2, startHour: 15, startMin: 0, endHour: 16, endMin: 0, description: 'Основы Python' },
-    { title: 'Физика (лаб.)', sphere: 'study', dayOfWeek: 3, startHour: 16, startMin: 0, endHour: 17, endMin: 30, description: 'Лабораторная работа' },
-    { title: 'Зал (спина + бицепс)', sphere: 'health', dayOfWeek: 3, startHour: 18, startMin: 0, endHour: 19, endMin: 0 },
-    { title: 'Информатика (лекция)', sphere: 'study', dayOfWeek: 4, startHour: 10, startMin: 0, endHour: 11, endMin: 30, description: 'Графы и деревья' },
-    { title: 'Бег 5км', sphere: 'health', dayOfWeek: 5, startHour: 9, startMin: 0, endHour: 9, endMin: 45 },
-    { title: 'Урок Миша (ЕГЭ Информатика)', sphere: 'teaching', dayOfWeek: 5, startHour: 11, startMin: 0, endHour: 12, endMin: 0, description: 'Рекурсия' },
+    description?: string; type: EventType; subtasks?: Subtask[];
+  }
+
+  const recurring: RecurringDef[] = [
+    { title: 'Матанализ (лекция)', sphere: 'study', dayOfWeek: 0, startHour: 10, startMin: 0, endHour: 11, endMin: 30, description: 'Интегралы', type: 'event', subtasks: [{ title: 'Подготовить задание', done: false }] },
+    { title: 'Зал (грудь + трицепс)', sphere: 'health', dayOfWeek: 0, startHour: 18, startMin: 0, endHour: 19, endMin: 0, type: 'task' },
+    { title: 'Физика (лекция)', sphere: 'study', dayOfWeek: 1, startHour: 14, startMin: 0, endHour: 15, endMin: 30, description: 'Термодинамика', type: 'event' },
+    { title: 'Урок Миша (ЕГЭ Информатика)', sphere: 'teaching', dayOfWeek: 1, startHour: 17, startMin: 0, endHour: 18, endMin: 0, description: 'Подготовка к ЕГЭ', type: 'event', subtasks: [{ title: 'Подготовить урок', done: true }, { title: 'Оплата получена', done: false }, { title: 'Отправить ДЗ', done: false }] },
+    { title: 'Матанализ (семинар)', sphere: 'study', dayOfWeek: 2, startHour: 12, startMin: 0, endHour: 13, endMin: 30, description: 'Задачи', type: 'event' },
+    { title: 'Урок Аня (Python)', sphere: 'teaching', dayOfWeek: 2, startHour: 15, startMin: 0, endHour: 16, endMin: 0, description: 'Основы Python', type: 'event', subtasks: [{ title: 'Подготовить урок', done: true }, { title: 'Оплата получена', done: true }, { title: 'Отправить ДЗ', done: false }] },
+    { title: 'Физика (лаб.)', sphere: 'study', dayOfWeek: 3, startHour: 16, startMin: 0, endHour: 17, endMin: 30, description: 'Лабораторная работа', type: 'event', subtasks: [{ title: 'Написать отчёт', done: false }, { title: 'Подготовить данные', done: false }] },
+    { title: 'Зал (спина + бицепс)', sphere: 'health', dayOfWeek: 3, startHour: 18, startMin: 0, endHour: 19, endMin: 0, type: 'task' },
+    { title: 'Информатика (лекция)', sphere: 'study', dayOfWeek: 4, startHour: 10, startMin: 0, endHour: 11, endMin: 30, description: 'Графы и деревья', type: 'event' },
+    { title: 'Бег 5км', sphere: 'health', dayOfWeek: 5, startHour: 9, startMin: 0, endHour: 9, endMin: 45, type: 'task' },
+    { title: 'Урок Миша (ЕГЭ Информатика)', sphere: 'teaching', dayOfWeek: 5, startHour: 11, startMin: 0, endHour: 12, endMin: 0, description: 'Рекурсия', type: 'event', subtasks: [{ title: 'Подготовить урок', done: true }, { title: 'Оплата получена', done: false }, { title: 'Отправить ДЗ', done: false }] },
   ];
 
   for (const ws of weekStarts) {
@@ -181,21 +192,28 @@ function generateMockEvents(): CalendarEvent[] {
         endHour: r.endHour,
         endMin: r.endMin,
         description: r.description,
+        type: r.type,
+        done: false,
+        subtasks: r.subtasks ? r.subtasks.map((s) => ({ ...s })) : [],
       });
     }
   }
 
-  const oneOffs: Array<Omit<CalendarEvent, 'id'>> = [
-    { title: 'Работа над LI Group', sphere: 'dev', date: '2026-03-18', startHour: 20, startMin: 0, endHour: 22, endMin: 0, description: 'Интеграция CRM API' },
-    { title: 'Оплата VPS', sphere: 'finance', date: '2026-03-20', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true },
-    { title: 'Mark2 разработка', sphere: 'dev', date: '2026-03-20', startHour: 19, startMin: 0, endHour: 21, endMin: 0, description: 'Calendar view' },
-    { title: 'Встреча с друзьями', sphere: 'personal', date: '2026-03-21', startHour: 16, startMin: 0, endHour: 18, endMin: 0 },
-    { title: 'Стрижка', sphere: 'personal', date: '2026-03-22', startHour: 12, startMin: 0, endHour: 13, endMin: 0 },
-    { title: 'Дедлайн курсовая', sphere: 'study', date: '2026-03-23', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true },
-    { title: 'Созвон с заказчиком', sphere: 'dev', date: '2026-03-25', startHour: 10, startMin: 0, endHour: 10, endMin: 30, description: 'Обсуждение ТЗ' },
-    { title: 'Mark2 разработка', sphere: 'dev', date: '2026-03-27', startHour: 19, startMin: 0, endHour: 21, endMin: 0, description: 'Agent system' },
-    { title: 'Оплата за обучение', sphere: 'finance', date: '2026-03-10', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true },
-    { title: 'Работа над LI Group', sphere: 'dev', date: '2026-03-11', startHour: 20, startMin: 0, endHour: 22, endMin: 0, description: 'Frontend рефакторинг' },
+  const ev = (o: Omit<CalendarEvent, 'id' | 'type' | 'done' | 'subtasks'> & { type?: EventType; done?: boolean; subtasks?: Subtask[] }): Omit<CalendarEvent, 'id'> => ({
+    ...o, type: o.type ?? 'event', done: o.done ?? false, subtasks: o.subtasks ?? [],
+  });
+
+  const oneOffs = [
+    ev({ title: 'Работа над LI Group', sphere: 'dev', date: '2026-03-18', startHour: 20, startMin: 0, endHour: 22, endMin: 0, description: 'Интеграция CRM API', subtasks: [{ title: 'Доделать header', done: false }, { title: 'Responsive главная', done: false }, { title: 'Тестирование', done: false }] }),
+    ev({ title: 'Оплата VPS', sphere: 'finance', date: '2026-03-20', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true, type: 'task' }),
+    ev({ title: 'Mark2 разработка', sphere: 'dev', date: '2026-03-20', startHour: 19, startMin: 0, endHour: 21, endMin: 0, description: 'Calendar view' }),
+    ev({ title: 'Встреча с друзьями', sphere: 'personal', date: '2026-03-21', startHour: 16, startMin: 0, endHour: 18, endMin: 0 }),
+    ev({ title: 'Стрижка', sphere: 'personal', date: '2026-03-22', startHour: 12, startMin: 0, endHour: 13, endMin: 0 }),
+    ev({ title: 'Дедлайн курсовая', sphere: 'study', date: '2026-03-23', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true, type: 'task' }),
+    ev({ title: 'Созвон с заказчиком', sphere: 'dev', date: '2026-03-25', startHour: 10, startMin: 0, endHour: 10, endMin: 30, description: 'Обсуждение ТЗ', type: 'reminder' }),
+    ev({ title: 'Mark2 разработка', sphere: 'dev', date: '2026-03-27', startHour: 19, startMin: 0, endHour: 21, endMin: 0, description: 'Agent system' }),
+    ev({ title: 'Оплата за обучение', sphere: 'finance', date: '2026-03-10', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true, type: 'task', done: true }),
+    ev({ title: 'Работа над LI Group', sphere: 'dev', date: '2026-03-11', startHour: 20, startMin: 0, endHour: 22, endMin: 0, description: 'Frontend рефакторинг', subtasks: [{ title: 'Доделать header', done: true }, { title: 'Responsive главная', done: true }, { title: 'Тестирование', done: false }] }),
   ];
 
   for (const o of oneOffs) {
@@ -289,6 +307,54 @@ export function Calendar() {
   const bodyRef = useRef<HTMLDivElement>(null);
   const hourHeightRef = useRef(hourHeight);
   hourHeightRef.current = hourHeight;
+
+  // --- Undo / Redo ---
+  const UNDO_LIMIT = 20;
+  const undoStackRef = useRef<CalendarEvent[][]>([]);
+  const redoStackRef = useRef<CalendarEvent[][]>([]);
+
+  const commitEvents = useCallback((updater: (prev: CalendarEvent[]) => CalendarEvent[]) => {
+    setEvents((prev) => {
+      undoStackRef.current = [...undoStackRef.current.slice(-(UNDO_LIMIT - 1)), prev];
+      redoStackRef.current = [];
+      return updater(prev);
+    });
+  }, []);
+
+  const undo = useCallback(() => {
+    const stack = undoStackRef.current;
+    if (stack.length === 0) return;
+    const prev = stack[stack.length - 1]!;
+    undoStackRef.current = stack.slice(0, -1);
+    setEvents((current) => {
+      redoStackRef.current = [...redoStackRef.current, current];
+      return prev;
+    });
+  }, []);
+
+  const redo = useCallback(() => {
+    const stack = redoStackRef.current;
+    if (stack.length === 0) return;
+    const next = stack[stack.length - 1]!;
+    redoStackRef.current = stack.slice(0, -1);
+    setEvents((current) => {
+      undoStackRef.current = [...undoStackRef.current, current];
+      return next;
+    });
+  }, []);
+
+  // Cmd+Z / Cmd+Shift+Z global listener
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [undo, redo]);
 
   // Persist zoom
   useEffect(() => {
@@ -413,23 +479,35 @@ export function Calendar() {
   }, [contextMenu]);
 
   const addEvent = useCallback((event: CalendarEvent) => {
-    setEvents((prev) => [...prev, event]);
+    commitEvents((prev) => [...prev, event]);
     setCreateModal(null);
-  }, []);
+  }, [commitEvents]);
 
   const updateEvent = useCallback((updated: CalendarEvent) => {
-    setEvents((prev) => prev.map((e) => e.id === updated.id ? updated : e));
+    commitEvents((prev) => prev.map((e) => e.id === updated.id ? updated : e));
     setCreateModal(null);
-  }, []);
+  }, [commitEvents]);
 
   const deleteEvent = useCallback((id: string) => {
-    setEvents((prev) => prev.filter((e) => e.id !== id));
+    commitEvents((prev) => prev.filter((e) => e.id !== id));
     setSelectedEvent(null);
-  }, []);
+  }, [commitEvents]);
 
   const moveEvent = useCallback((id: string, updates: { date: string; startHour: number; startMin: number; endHour: number; endMin: number }) => {
-    setEvents((prev) => prev.map((e) => e.id === id ? { ...e, ...updates } : e));
-  }, []);
+    commitEvents((prev) => prev.map((e) => e.id === id ? { ...e, ...updates } : e));
+  }, [commitEvents]);
+
+  const toggleEventDone = useCallback((id: string) => {
+    commitEvents((prev) => prev.map((e) => e.id === id ? { ...e, done: !e.done } : e));
+  }, [commitEvents]);
+
+  const toggleSubtask = useCallback((eventId: string, subtaskIdx: number) => {
+    commitEvents((prev) => prev.map((e) => {
+      if (e.id !== eventId) return e;
+      const subtasks = e.subtasks.map((s, i) => i === subtaskIdx ? { ...s, done: !s.done } : s);
+      return { ...e, subtasks };
+    }));
+  }, [commitEvents]);
 
   const openCreateFromHeader = useCallback(() => {
     setCreateModal({
@@ -539,6 +617,7 @@ export function Calendar() {
               onContextMenu={setContextMenu}
               onMoveEvent={moveEvent}
               onZoom={handleZoom}
+              onToggleDone={toggleEventDone}
             />
           )}
           {view === 'month' && (
@@ -560,6 +639,7 @@ export function Calendar() {
               onContextMenu={setContextMenu}
               onMoveEvent={moveEvent}
               onZoom={handleZoom}
+              onToggleDone={toggleEventDone}
             />
           )}
           {view === 'list' && (
@@ -597,6 +677,28 @@ export function Calendar() {
               editEvent: ev,
             });
           }}
+          onToggleDone={() => {
+            toggleEventDone(selectedEvent.id);
+            setSelectedEvent((prev) => prev ? { ...prev, done: !prev.done } : null);
+          }}
+          onToggleSubtask={(idx) => {
+            toggleSubtask(selectedEvent.id, idx);
+            setSelectedEvent((prev) => {
+              if (!prev) return null;
+              const subtasks = prev.subtasks.map((s, i) => i === idx ? { ...s, done: !s.done } : s);
+              return { ...prev, subtasks };
+            });
+          }}
+          onAddSubtask={(title) => {
+            const newSubtasks = [...selectedEvent.subtasks, { title, done: false }];
+            commitEvents((prev) => prev.map((e) => e.id === selectedEvent.id ? { ...e, subtasks: newSubtasks } : e));
+            setSelectedEvent((prev) => prev ? { ...prev, subtasks: newSubtasks } : null);
+          }}
+          onDeleteSubtask={(idx) => {
+            const newSubtasks = selectedEvent.subtasks.filter((_, i) => i !== idx);
+            commitEvents((prev) => prev.map((e) => e.id === selectedEvent.id ? { ...e, subtasks: newSubtasks } : e));
+            setSelectedEvent((prev) => prev ? { ...prev, subtasks: newSubtasks } : null);
+          }}
         />
       )}
 
@@ -623,6 +725,18 @@ export function Calendar() {
             });
             setContextMenu(null);
           }}
+
+          onNewTask={() => {
+            setCreateModal({
+              date: contextMenu.date,
+              startHour: contextMenu.hour,
+              startMin: contextMenu.min,
+              endHour: contextMenu.hour + 1,
+              endMin: contextMenu.min,
+              defaultType: 'task',
+            });
+            setContextMenu(null);
+          }}
           onNewReminder={() => {
             setCreateModal({
               date: contextMenu.date,
@@ -630,6 +744,7 @@ export function Calendar() {
               startMin: contextMenu.min,
               endHour: contextMenu.hour,
               endMin: contextMenu.min + 30,
+              defaultType: 'reminder',
             });
             setContextMenu(null);
           }}
@@ -655,6 +770,7 @@ function WeekView({
   onContextMenu,
   onMoveEvent,
   onZoom,
+  onToggleDone,
 }: {
   weekDates: string[];
   selectedDate: string;
@@ -667,6 +783,7 @@ function WeekView({
   onContextMenu: (data: ContextMenuState) => void;
   onMoveEvent: (id: string, updates: { date: string; startHour: number; startMin: number; endHour: number; endMin: number }) => void;
   onZoom: (delta: number) => void;
+  onToggleDone: (id: string) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -904,16 +1021,32 @@ function WeekView({
               <div className="text-[10px] text-neutral-600 py-1 text-right pr-2">весь день</div>
               {allDayEvents.map((evs, i) => (
                 <div key={i} className="border-l border-neutral-800/50 px-0.5 py-0.5">
-                  {evs.map((ev) => (
-                    <div
-                      key={ev.id}
-                      onClick={() => onEventClick(ev)}
-                      className={`text-[10px] px-1.5 py-0.5 rounded border-l-2 cursor-pointer hover:brightness-125 transition-all
-                        ${SPHERE_META[ev.sphere].bg} ${SPHERE_META[ev.sphere].border} ${SPHERE_META[ev.sphere].color} truncate`}
-                    >
-                      {ev.title}
-                    </div>
-                  ))}
+                  {evs.map((ev) => {
+                    const isTask = ev.type === 'task';
+                    const isRem = ev.type === 'reminder';
+                    return (
+                      <div
+                        key={ev.id}
+                        className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer hover:brightness-125 transition-all truncate flex items-center gap-1
+                          ${isTask ? 'bg-neutral-950/60 border border-neutral-700/30' : isRem ? '' : SPHERE_META[ev.sphere].bg}
+                          ${isTask ? '' : 'border-l-2'} ${SPHERE_META[ev.sphere].border}
+                          ${ev.done ? 'opacity-50' : ''}`}
+                        style={isTask ? { borderLeftWidth: '2px', borderLeftStyle: 'dashed' } : undefined}
+                        onClick={() => {
+                          if (isTask || isRem) { onToggleDone(ev.id); }
+                          else { onEventClick(ev); }
+                        }}
+                      >
+                        {(isTask || isRem) && (
+                          ev.done
+                            ? <svg className="w-2.5 h-2.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                            : <svg className={`w-2.5 h-2.5 shrink-0 ${SPHERE_META[ev.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                        )}
+                        {isRem && <span className="text-[9px]">{'\uD83D\uDD14'}</span>}
+                        <span className={`${SPHERE_META[ev.sphere].color} ${ev.done ? 'line-through' : ''}`}>{ev.title}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
             </div>
@@ -964,12 +1097,105 @@ function WeekView({
               >
                 {positioned.map((pe) => {
                   const isDragging = eventDrag?.event.id === pe.event.id;
+                  const ev = pe.event;
+                  const isTask = ev.type === 'task';
+                  const isReminder = ev.type === 'reminder';
+                  const doneCount = ev.subtasks.filter((s) => s.done).length;
+                  const totalCount = ev.subtasks.length;
+
+                  // --- Reminder: compact thin bar ---
+                  if (isReminder) {
+                    return (
+                      <div
+                        key={ev.id}
+                        className={`absolute rounded-sm px-1.5 flex items-center gap-1 cursor-grab select-none
+                          border-l-2 ${SPHERE_META[ev.sphere].border} hover:bg-neutral-800/50 transition-all`}
+                        style={{
+                          top: pe.top,
+                          height: Math.min(Math.max(pe.height, 18), 22),
+                          left: `${pe.left}%`,
+                          width: `${pe.width}%`,
+                          zIndex: 2,
+                          opacity: isDragging ? 0.3 : ev.done ? 0.4 : 1,
+                        }}
+                        onMouseDown={(e) => handleEventMouseDown(e, ev)}
+                      >
+                        <button
+                          className="shrink-0"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => { e.stopPropagation(); onToggleDone(ev.id); }}
+                        >
+                          {ev.done ? (
+                            <svg className="w-2.5 h-2.5 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                          ) : (
+                            <svg className={`w-2.5 h-2.5 ${SPHERE_META[ev.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                          )}
+                        </button>
+                        <span className="text-[9px]">{'\uD83D\uDD14'}</span>
+                        <span className={`text-[9px] truncate ${ev.done ? 'text-neutral-600 line-through' : SPHERE_META[ev.sphere].color}`}>{ev.title}</span>
+                      </div>
+                    );
+                  }
+
+                  // --- Task: outline/dashed style + checkbox ---
+                  if (isTask) {
+                    return (
+                      <div
+                        key={ev.id}
+                        className={`absolute rounded px-1.5 py-0.5 overflow-hidden cursor-grab
+                          select-none transition-opacity hover:brightness-125
+                          ${ev.done ? 'bg-neutral-900/30' : 'bg-neutral-950/60'}`}
+                        style={{
+                          top: pe.top,
+                          height: Math.max(pe.height, 20),
+                          left: `${pe.left}%`,
+                          width: `${pe.width}%`,
+                          zIndex: 2,
+                          opacity: isDragging ? 0.3 : ev.done ? 0.45 : 1,
+                          borderLeft: `2px dashed`,
+                          borderLeftColor: `var(--task-accent)`,
+                          border: ev.done ? undefined : `1px solid rgba(255,255,255,0.08)`,
+                          borderLeftWidth: '2px',
+                          borderLeftStyle: 'dashed',
+                        }}
+                        onMouseDown={(e) => handleEventMouseDown(e, ev)}
+                      >
+                        <div className={`text-[10px] font-medium truncate flex items-center gap-1 ${ev.done ? 'text-neutral-600 line-through' : SPHERE_META[ev.sphere].color}`}>
+                          <button
+                            className="shrink-0 flex items-center justify-center"
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => { e.stopPropagation(); onToggleDone(ev.id); }}
+                          >
+                            {ev.done ? (
+                              <svg className="w-3 h-3 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                            ) : (
+                              <svg className={`w-3 h-3 ${SPHERE_META[ev.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                            )}
+                          </button>
+                          <span className="truncate">{ev.title}</span>
+                        </div>
+                        {pe.height > 30 && (
+                          <div className="text-[9px] text-neutral-600 flex items-center justify-between">
+                            <span>{fmtTime(ev.startHour, ev.startMin)} &ndash; {fmtTime(ev.endHour, ev.endMin)}</span>
+                            {totalCount > 0 && (
+                              <span className={`text-[8px] px-1 ${doneCount === totalCount ? 'text-green-400' : 'text-neutral-500'}`}>
+                                {doneCount}/{totalCount}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <div className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize" />
+                      </div>
+                    );
+                  }
+
+                  // --- Event (default): filled block ---
                   return (
                     <div
-                      key={pe.event.id}
+                      key={ev.id}
                       className={`absolute rounded border-l-2 px-1.5 py-0.5 overflow-hidden cursor-grab
                         hover:brightness-125 transition-opacity select-none
-                        ${SPHERE_META[pe.event.sphere].bg} ${SPHERE_META[pe.event.sphere].border}`}
+                        ${SPHERE_META[ev.sphere].bg} ${SPHERE_META[ev.sphere].border}`}
                       style={{
                         top: pe.top,
                         height: Math.max(pe.height, 20),
@@ -978,17 +1204,21 @@ function WeekView({
                         zIndex: 2,
                         opacity: isDragging ? 0.3 : 1,
                       }}
-                      onMouseDown={(e) => handleEventMouseDown(e, pe.event)}
+                      onMouseDown={(e) => handleEventMouseDown(e, ev)}
                     >
-                      <div className={`text-[10px] font-medium truncate ${SPHERE_META[pe.event.sphere].color}`}>
-                        {pe.event.isReminder && '\uD83D\uDD14 '}{pe.event.title}
+                      <div className={`text-[10px] font-medium truncate ${SPHERE_META[ev.sphere].color}`}>
+                        {ev.title}
                       </div>
                       {pe.height > 30 && (
-                        <div className="text-[9px] text-neutral-500">
-                          {fmtTime(pe.event.startHour, pe.event.startMin)} &ndash; {fmtTime(pe.event.endHour, pe.event.endMin)}
+                        <div className="text-[9px] text-neutral-500 flex items-center justify-between">
+                          <span>{fmtTime(ev.startHour, ev.startMin)} &ndash; {fmtTime(ev.endHour, ev.endMin)}</span>
+                          {totalCount > 0 && (
+                            <span className={`text-[8px] px-1 ${doneCount === totalCount ? 'text-green-400' : 'text-neutral-500'}`}>
+                              {doneCount}/{totalCount}
+                            </span>
+                          )}
                         </div>
                       )}
-                      {/* Resize handle */}
                       <div className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize" />
                     </div>
                   );
@@ -1196,6 +1426,7 @@ function DayView({
   onContextMenu,
   onMoveEvent,
   onZoom,
+  onToggleDone,
 }: {
   date: string;
   eventsForDate: (date: string) => CalendarEvent[];
@@ -1206,6 +1437,7 @@ function DayView({
   onContextMenu: (data: ContextMenuState) => void;
   onMoveEvent: (id: string, updates: { date: string; startHour: number; startMin: number; endHour: number; endMin: number }) => void;
   onZoom: (delta: number) => void;
+  onToggleDone: (id: string) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -1438,12 +1670,105 @@ function DayView({
           <div className="absolute left-14 right-4">
             {positioned.map((pe) => {
               const isDragging = eventDrag?.event.id === pe.event.id;
+              const evnt = pe.event;
+              const isTask = evnt.type === 'task';
+              const isRem = evnt.type === 'reminder';
+              const doneCount = evnt.subtasks.filter((s) => s.done).length;
+              const totalCount = evnt.subtasks.length;
+
+              // --- Reminder: compact thin bar ---
+              if (isRem) {
+                return (
+                  <div
+                    key={evnt.id}
+                    className={`absolute rounded-sm px-2 flex items-center gap-1.5 cursor-grab select-none
+                      border-l-2 ${SPHERE_META[evnt.sphere].border} hover:bg-neutral-800/50 transition-all`}
+                    style={{
+                      top: pe.top,
+                      height: Math.min(Math.max(pe.height, 22), 26),
+                      left: `${pe.left}%`,
+                      width: `${pe.width}%`,
+                      zIndex: 2,
+                      opacity: isDragging ? 0.3 : evnt.done ? 0.4 : 1,
+                    }}
+                    onMouseDown={(e) => handleEventMouseDown(e, evnt)}
+                  >
+                    <button
+                      className="shrink-0"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); onToggleDone(evnt.id); }}
+                    >
+                      {evnt.done ? (
+                        <svg className="w-3 h-3 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                      ) : (
+                        <svg className={`w-3 h-3 ${SPHERE_META[evnt.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                      )}
+                    </button>
+                    <span className="text-[10px]">{'\uD83D\uDD14'}</span>
+                    <span className={`text-[10px] truncate ${evnt.done ? 'text-neutral-600 line-through' : SPHERE_META[evnt.sphere].color}`}>{evnt.title}</span>
+                  </div>
+                );
+              }
+
+              // --- Task: outline/dashed style + checkbox ---
+              if (isTask) {
+                return (
+                  <div
+                    key={evnt.id}
+                    className={`absolute rounded px-3 py-1.5 overflow-hidden cursor-grab
+                      select-none transition-opacity hover:brightness-125
+                      ${evnt.done ? 'bg-neutral-900/30' : 'bg-neutral-950/60'}`}
+                    style={{
+                      top: pe.top,
+                      height: Math.max(pe.height, 28),
+                      left: `${pe.left}%`,
+                      width: `${pe.width}%`,
+                      zIndex: 2,
+                      opacity: isDragging ? 0.3 : evnt.done ? 0.45 : 1,
+                      border: evnt.done ? undefined : '1px solid rgba(255,255,255,0.08)',
+                      borderLeftWidth: '2px',
+                      borderLeftStyle: 'dashed',
+                      borderLeftColor: 'currentColor',
+                    }}
+                    onMouseDown={(e) => handleEventMouseDown(e, evnt)}
+                  >
+                    <div className={`text-xs font-medium flex items-center gap-1.5 ${evnt.done ? 'text-neutral-600 line-through' : SPHERE_META[evnt.sphere].color}`}>
+                      <button
+                        className="shrink-0"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); onToggleDone(evnt.id); }}
+                      >
+                        {evnt.done ? (
+                          <svg className="w-3.5 h-3.5 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                        ) : (
+                          <svg className={`w-3.5 h-3.5 ${SPHERE_META[evnt.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                        )}
+                      </button>
+                      <span className="truncate">{evnt.title}</span>
+                    </div>
+                    <div className="text-[10px] text-neutral-600 flex items-center justify-between">
+                      <span>{fmtTime(evnt.startHour, evnt.startMin)} &ndash; {fmtTime(evnt.endHour, evnt.endMin)}</span>
+                      {totalCount > 0 && (
+                        <span className={`text-[8px] px-1 ${doneCount === totalCount ? 'text-green-400' : 'text-neutral-500'}`}>
+                          {doneCount}/{totalCount}
+                        </span>
+                      )}
+                    </div>
+                    {evnt.description && pe.height > 50 && (
+                      <div className="text-[10px] text-neutral-600 mt-0.5 truncate">{evnt.description}</div>
+                    )}
+                    <div className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize" />
+                  </div>
+                );
+              }
+
+              // --- Event (default): filled block ---
               return (
                 <div
-                  key={pe.event.id}
+                  key={evnt.id}
                   className={`absolute rounded border-l-2 px-3 py-1.5 overflow-hidden cursor-grab
                     hover:brightness-125 transition-opacity select-none
-                    ${SPHERE_META[pe.event.sphere].bg} ${SPHERE_META[pe.event.sphere].border}`}
+                    ${SPHERE_META[evnt.sphere].bg} ${SPHERE_META[evnt.sphere].border}`}
                   style={{
                     top: pe.top,
                     height: Math.max(pe.height, 28),
@@ -1452,18 +1777,22 @@ function DayView({
                     zIndex: 2,
                     opacity: isDragging ? 0.3 : 1,
                   }}
-                  onMouseDown={(e) => handleEventMouseDown(e, pe.event)}
+                  onMouseDown={(e) => handleEventMouseDown(e, evnt)}
                 >
-                  <div className={`text-xs font-medium ${SPHERE_META[pe.event.sphere].color}`}>
-                    {pe.event.isReminder && '\uD83D\uDD14 '}{pe.event.title}
+                  <div className={`text-xs font-medium truncate ${SPHERE_META[evnt.sphere].color}`}>
+                    {evnt.title}
                   </div>
-                  <div className="text-[10px] text-neutral-500">
-                    {fmtTime(pe.event.startHour, pe.event.startMin)} &ndash; {fmtTime(pe.event.endHour, pe.event.endMin)}
+                  <div className="text-[10px] text-neutral-500 flex items-center justify-between">
+                    <span>{fmtTime(evnt.startHour, evnt.startMin)} &ndash; {fmtTime(evnt.endHour, evnt.endMin)}</span>
+                    {totalCount > 0 && (
+                      <span className={`text-[8px] px-1 ${doneCount === totalCount ? 'text-green-400' : 'text-neutral-500'}`}>
+                        {doneCount}/{totalCount}
+                      </span>
+                    )}
                   </div>
-                  {pe.event.description && pe.height > 50 && (
-                    <div className="text-[10px] text-neutral-600 mt-0.5 truncate">{pe.event.description}</div>
+                  {evnt.description && pe.height > 50 && (
+                    <div className="text-[10px] text-neutral-600 mt-0.5 truncate">{evnt.description}</div>
                   )}
-                  {/* Resize handle */}
                   <div className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize" />
                 </div>
               );
@@ -1585,8 +1914,8 @@ function ListView({
                         {ev.allDay ? 'Весь день' : `${fmtTime(ev.startHour, ev.startMin)} – ${fmtTime(ev.endHour, ev.endMin)}`}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className={`text-sm ${SPHERE_META[ev.sphere].color}`}>
-                          {ev.isReminder && '\uD83D\uDD14 '}{ev.title}
+                        <div className={`text-sm ${SPHERE_META[ev.sphere].color} ${ev.done ? 'line-through opacity-50' : ''}`}>
+                          {ev.type === 'reminder' && '\uD83D\uDD14 '}{ev.title}
                         </div>
                         {ev.description && (
                           <div className="text-[11px] text-neutral-600 truncate">{ev.description}</div>
@@ -1696,8 +2025,8 @@ function CalendarSidebar({
             {dayEvents.map((ev) => (
               <div key={ev.id} className={`flex gap-2 py-1 border-l-2 pl-2 rounded-r ${SPHERE_META[ev.sphere].border}`}>
                 <div className="flex-1 min-w-0">
-                  <div className={`text-[11px] truncate ${SPHERE_META[ev.sphere].color}`}>
-                    {ev.isReminder && '\uD83D\uDD14 '}{ev.title}
+                  <div className={`text-[11px] truncate ${SPHERE_META[ev.sphere].color} ${ev.done ? 'line-through opacity-50' : ''}`}>
+                    {ev.type === 'reminder' && '\uD83D\uDD14 '}{ev.title}
                   </div>
                   <div className="text-[10px] text-neutral-600">
                     {ev.allDay ? 'Весь день' : `${fmtTime(ev.startHour, ev.startMin)} – ${fmtTime(ev.endHour, ev.endMin)}`}
@@ -1759,28 +2088,57 @@ function EventDetailModal({
   onClose,
   onDelete,
   onEdit,
+  onToggleDone,
+  onToggleSubtask,
+  onAddSubtask,
+  onDeleteSubtask,
 }: {
   event: CalendarEvent;
   onClose: () => void;
   onDelete: (id: string) => void;
   onEdit: (ev: CalendarEvent) => void;
+  onToggleDone: () => void;
+  onToggleSubtask: (idx: number) => void;
+  onAddSubtask: (title: string) => void;
+  onDeleteSubtask: (idx: number) => void;
 }) {
+  const [newSubtask, setNewSubtask] = useState('');
+  const isTask = event.type === 'task';
+  const isReminder = event.type === 'reminder';
+  const typeLabel = isTask ? 'Задача' : isReminder ? 'Напоминание' : 'Событие';
+  const doneCount = event.subtasks.filter((s) => s.done).length;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
-        className="relative bg-neutral-900 border border-neutral-700 rounded-xl p-5 w-96 max-w-[90vw] shadow-2xl"
+        className="relative bg-neutral-900 border border-neutral-700 rounded-xl p-5 w-[420px] max-w-[90vw] shadow-2xl max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Type badge + sphere */}
         <div className="flex items-center gap-2 mb-3">
           <span className={`w-2.5 h-2.5 rounded-full ${SPHERE_META[event.sphere].dot}`} />
           <span className={`text-xs ${SPHERE_META[event.sphere].color}`}>{SPHERE_META[event.sphere].label}</span>
+          <span className="text-[10px] text-neutral-600 px-1.5 py-0.5 rounded bg-neutral-800">{typeLabel}</span>
         </div>
 
-        <h3 className="text-lg font-bold text-neutral-100 mb-2">
-          {event.isReminder && '\uD83D\uDD14 '}{event.title}
-        </h3>
+        {/* Title with optional checkbox */}
+        <div className="flex items-start gap-2 mb-2">
+          {(isTask || isReminder) && (
+            <button onClick={onToggleDone} className={`mt-1 shrink-0 ${event.done ? 'text-green-400' : 'text-neutral-500 hover:text-neutral-300'}`}>
+              {event.done ? (
+                <svg className="w-5 h-5" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+              ) : (
+                <svg className="w-5 h-5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+              )}
+            </button>
+          )}
+          <h3 className={`text-lg font-bold text-neutral-100 ${event.done ? 'line-through opacity-50' : ''}`}>
+            {isReminder && '\uD83D\uDD14 '}{event.title}
+          </h3>
+        </div>
 
+        {/* Time */}
         <div className="flex items-center gap-2 text-sm text-neutral-400 mb-2">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -1791,10 +2149,74 @@ function EventDetailModal({
           </span>
         </div>
 
+        {/* Description */}
         {event.description && (
-          <p className="text-sm text-neutral-400 mb-4 leading-relaxed">{event.description}</p>
+          <p className="text-sm text-neutral-400 mb-3 leading-relaxed">{event.description}</p>
         )}
 
+        {/* Subtasks */}
+        {(event.subtasks.length > 0 || isTask) && (
+          <div className="mb-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold">Подзадачи</span>
+              {event.subtasks.length > 0 && (
+                <span className={`text-[10px] ${doneCount === event.subtasks.length ? 'text-green-400' : 'text-neutral-500'}`}>
+                  {doneCount}/{event.subtasks.length}
+                </span>
+              )}
+            </div>
+            <div className="space-y-1">
+              {event.subtasks.map((st, idx) => (
+                <div key={idx} className="flex items-center gap-2 group py-0.5">
+                  <button
+                    onClick={() => onToggleSubtask(idx)}
+                    className={`shrink-0 ${st.done ? 'text-green-400' : 'text-neutral-500 hover:text-neutral-300'}`}
+                  >
+                    {st.done ? (
+                      <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                    ) : (
+                      <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                    )}
+                  </button>
+                  <span className={`text-sm flex-1 ${st.done ? 'text-neutral-600 line-through' : 'text-neutral-300'}`}>{st.title}</span>
+                  <button
+                    onClick={() => onDeleteSubtask(idx)}
+                    className="opacity-0 group-hover:opacity-100 text-neutral-600 hover:text-red-400 transition-all shrink-0"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+            {/* Add subtask */}
+            <div className="flex gap-2 mt-2">
+              <input
+                value={newSubtask}
+                onChange={(e) => setNewSubtask(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newSubtask.trim()) {
+                    onAddSubtask(newSubtask.trim());
+                    setNewSubtask('');
+                  }
+                }}
+                placeholder="+ Добавить подзадачу"
+                className="flex-1 px-2 py-1 bg-neutral-800/50 border border-neutral-700/50 rounded text-xs text-neutral-300 placeholder-neutral-600 outline-none focus:border-neutral-600"
+              />
+              {newSubtask.trim() && (
+                <button
+                  onClick={() => { onAddSubtask(newSubtask.trim()); setNewSubtask(''); }}
+                  className="px-2 py-1 bg-neutral-800 rounded text-xs text-neutral-400 hover:text-neutral-200"
+                >
+                  Добавить
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
         <div className="flex gap-2 mt-4">
           <button
             onClick={() => onEdit(event)}
@@ -1845,7 +2267,9 @@ function CreateEventModal({
   const [endHour, setEndHour] = useState(data.endHour);
   const [endMin, setEndMin] = useState(data.endMin);
   const [allDay, setAllDay] = useState(data.editEvent?.allDay ?? false);
-  const [isReminder, setIsReminder] = useState(data.editEvent?.isReminder ?? false);
+  const [eventType, setEventType] = useState<EventType>(data.editEvent?.type ?? data.defaultType ?? 'event');
+  const [subtasks, setSubtasks] = useState<Subtask[]>(data.editEvent?.subtasks ?? []);
+  const [newSubtask, setNewSubtask] = useState('');
 
   const handleSubmit = () => {
     if (!title.trim()) return;
@@ -1860,7 +2284,9 @@ function CreateEventModal({
       endHour: allDay ? 0 : endHour,
       endMin: allDay ? 0 : endMin,
       allDay,
-      isReminder,
+      type: eventType,
+      done: data.editEvent?.done ?? false,
+      subtasks,
     };
     if (isEdit) {
       onUpdate(event);
@@ -1926,6 +2352,26 @@ function CreateEventModal({
           />
         </div>
 
+        {/* Event type */}
+        <div className="mb-3">
+          <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Тип</div>
+          <div className="flex gap-1.5">
+            {([['event', 'Событие'], ['task', 'Задача'], ['reminder', 'Напоминание']] as const).map(([t, label]) => (
+              <button
+                key={t}
+                onClick={() => setEventType(t)}
+                className={`px-2.5 py-1 rounded-lg text-xs transition-colors border ${
+                  eventType === t
+                    ? 'bg-neutral-700 text-white border-neutral-600'
+                    : 'border-neutral-700 text-neutral-500 hover:text-neutral-300'
+                }`}
+              >
+                {t === 'reminder' && '\uD83D\uDD14 '}{label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex gap-4 mb-3">
           <label className="flex items-center gap-2 text-sm text-neutral-400 cursor-pointer">
             <input
@@ -1935,15 +2381,6 @@ function CreateEventModal({
               className="rounded border-neutral-600 bg-neutral-800"
             />
             Весь день
-          </label>
-          <label className="flex items-center gap-2 text-sm text-neutral-400 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isReminder}
-              onChange={(e) => setIsReminder(e.target.checked)}
-              className="rounded border-neutral-600 bg-neutral-800"
-            />
-            Напоминание
           </label>
         </div>
 
@@ -1990,6 +2427,52 @@ function CreateEventModal({
           </div>
         )}
 
+        {/* Subtasks */}
+        <div className="mb-4">
+          <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Подзадачи</div>
+          {subtasks.length > 0 && (
+            <div className="space-y-1 mb-2">
+              {subtasks.map((st, idx) => (
+                <div key={idx} className="flex items-center gap-2 group">
+                  <button
+                    onClick={() => setSubtasks((prev) => prev.map((s, i) => i === idx ? { ...s, done: !s.done } : s))}
+                    className={`shrink-0 ${st.done ? 'text-green-400' : 'text-neutral-500'}`}
+                  >
+                    {st.done ? (
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                    )}
+                  </button>
+                  <span className={`text-xs flex-1 ${st.done ? 'text-neutral-600 line-through' : 'text-neutral-300'}`}>{st.title}</span>
+                  <button
+                    onClick={() => setSubtasks((prev) => prev.filter((_, i) => i !== idx))}
+                    className="opacity-0 group-hover:opacity-100 text-neutral-600 hover:text-red-400 transition-all"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              value={newSubtask}
+              onChange={(e) => setNewSubtask(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newSubtask.trim()) {
+                  setSubtasks((prev) => [...prev, { title: newSubtask.trim(), done: false }]);
+                  setNewSubtask('');
+                }
+              }}
+              placeholder="+ Добавить подзадачу"
+              className="flex-1 px-2 py-1 bg-neutral-800/50 border border-neutral-700/50 rounded text-xs text-neutral-300 placeholder-neutral-600 outline-none focus:border-neutral-600"
+            />
+          </div>
+        </div>
+
         <div className="flex gap-2">
           <button
             onClick={handleSubmit}
@@ -2018,11 +2501,13 @@ function ContextMenuComponent({
   x,
   y,
   onNewEvent,
+  onNewTask,
   onNewReminder,
 }: {
   x: number;
   y: number;
   onNewEvent: () => void;
+  onNewTask: () => void;
   onNewReminder: () => void;
 }) {
   return (
@@ -2039,6 +2524,13 @@ function ContextMenuComponent({
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
         </svg>
         Новое событие
+      </button>
+      <button
+        onClick={onNewTask}
+        className="w-full text-left px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-700 transition-colors flex items-center gap-2"
+      >
+        <svg className="w-4 h-4 text-green-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+        Новая задача
       </button>
       <button
         onClick={onNewReminder}
