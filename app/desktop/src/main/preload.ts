@@ -127,5 +127,32 @@ const claudeApi: ClaudeAPI = {
   },
 };
 
+export interface CalendarAPI {
+  popout: () => Promise<boolean>;
+  popin: () => Promise<boolean>;
+  onPoppedIn: (callback: () => void) => () => void;
+}
+
+const calendarApi: CalendarAPI = {
+  popout: () =>
+    ipcRenderer.invoke('calendar:popout'),
+
+  popin: () =>
+    ipcRenderer.invoke('calendar:popin'),
+
+  onPoppedIn: (callback) => {
+    const handler = () => { callback(); };
+    ipcRenderer.on('calendar:popped-in', handler);
+    return () => { ipcRenderer.removeListener('calendar:popped-in', handler); };
+  },
+};
+
+const electronAPI = {
+  openFile: (filePath: string) =>
+    ipcRenderer.invoke('file:open', filePath),
+};
+
 contextBridge.exposeInMainWorld('chat', chatApi);
 contextBridge.exposeInMainWorld('claude', claudeApi);
+contextBridge.exposeInMainWorld('calendar', calendarApi);
+contextBridge.exposeInMainWorld('electronAPI', electronAPI);

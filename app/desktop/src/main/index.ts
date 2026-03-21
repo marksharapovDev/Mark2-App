@@ -7,8 +7,12 @@ config({ path: path.resolve(__dirname, '../../../../.env') });
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { registerIpcHandlers, cleanupSessions } from './ipc-handlers';
 
+// Disable GPU acceleration to prevent SIGSEGV crashes on some systems
+app.disableHardwareAcceleration();
+
 let mainWindow: BrowserWindow | null = null;
 let chatWindow: BrowserWindow | null = null;
+let calendarWindow: BrowserWindow | null = null;
 
 const isDev = !app.isPackaged;
 const preloadPath = path.join(__dirname, 'preload.js');
@@ -42,9 +46,11 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
-    // Close chat window if main closes
     if (chatWindow && !chatWindow.isDestroyed()) {
       chatWindow.close();
+    }
+    if (calendarWindow && !calendarWindow.isDestroyed()) {
+      calendarWindow.close();
     }
   });
 }
@@ -94,6 +100,61 @@ function createChatWindow(agent: string): void {
     }
   });
 }
+
+// === Calendar popout ===
+
+function createCalendarWindow(): void {
+  if (calendarWindow && !calendarWindow.isDestroyed()) {
+    calendarWindow.focus();
+    return;
+  }
+
+  const mainBounds = mainWindow?.getBounds();
+  const x = mainBounds ? mainBounds.x + mainBounds.width + 8 : undefined;
+  const y = mainBounds?.y;
+
+  calendarWindow = new BrowserWindow({
+    width: 500,
+    height: 600,
+    x,
+    y,
+    minWidth: 400,
+    minHeight: 400,
+    title: 'Calendar',
+    alwaysOnTop: true,
+    frame: true,
+    resizable: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false,
+      preload: preloadPath,
+    },
+  });
+
+  const base = getBaseUrl();
+  calendarWindow.loadURL(`${base}#/calendar-popout`);
+
+  calendarWindow.on('closed', () => {
+    calendarWindow = null;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('calendar:popped-in');
+    }
+  });
+}
+
+ipcMain.handle('calendar:popout', () => {
+  createCalendarWindow();
+  return true;
+});
+
+ipcMain.handle('calendar:popin', () => {
+  if (calendarWindow && !calendarWindow.isDestroyed()) {
+    calendarWindow.close();
+    calendarWindow = null;
+  }
+  return true;
+});
 
 // === Chat popout IPC ===
 

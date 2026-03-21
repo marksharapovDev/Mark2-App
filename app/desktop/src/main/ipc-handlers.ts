@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, shell } from 'electron';
 import { ChildProcess } from 'child_process';
 import crypto from 'crypto';
 import { claude, AgentName } from './claude-bridge';
@@ -109,6 +109,12 @@ export function registerIpcHandlers(): void {
     if (!proc) throw new Error(`Session ${sessionId} not found`);
     if (!proc.stdin || !proc.stdin.writable) throw new Error(`Session ${sessionId} stdin not writable`);
     proc.stdin.write(message + '\n');
+  });
+
+  // === File operations ===
+
+  ipcMain.handle('file:open', async (_event, filePath: string) => {
+    return shell.openPath(filePath);
   });
 
   ipcMain.handle('claude:stop-session', (_event, sessionId: string) => {

@@ -12,18 +12,29 @@ interface Message {
 
 interface ChatPanelProps {
   agent: AgentName;
+  defaultWidthPct?: number; // default width as % of window (e.g. 30 or 35)
+  embedded?: boolean; // when true, no width management — fills parent container
 }
 
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 600;
-const DEFAULT_WIDTH = 360;
+const LS_KEY = 'mark2-chat-width';
 
-export function ChatPanel({ agent }: ChatPanelProps) {
+function getInitialChatWidth(defaultPct: number): number {
+  const saved = localStorage.getItem(LS_KEY);
+  if (saved) {
+    const n = parseInt(saved, 10);
+    if (n >= MIN_WIDTH && n <= MAX_WIDTH) return n;
+  }
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(window.innerWidth * defaultPct / 100)));
+}
+
+export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false }: ChatPanelProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [isPoppedOut, setIsPoppedOut] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const [width, setWidth] = useState(() => getInitialChatWidth(defaultWidthPct));
 
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -101,7 +112,9 @@ export function ChatPanel({ agent }: ChatPanelProps) {
 
     const onMove = (e: MouseEvent) => {
       if (!isDragging.current) return;
-      setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - e.clientX)));
+      const w = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - e.clientX));
+      setWidth(w);
+      localStorage.setItem(LS_KEY, String(w));
     };
     const onUp = () => {
       isDragging.current = false;
@@ -229,6 +242,16 @@ export function ChatPanel({ agent }: ChatPanelProps) {
   // --- Render states ---
 
   if (isPoppedOut) {
+    if (embedded) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 min-h-0">
+          <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+          </svg>
+          <span className="text-[9px] text-blue-400">Chat in popout</span>
+        </div>
+      );
+    }
     return (
       <div className="w-10 shrink-0 border-l border-neutral-800 flex flex-col items-center justify-center gap-1 bg-neutral-950/50">
         <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -240,6 +263,20 @@ export function ChatPanel({ agent }: ChatPanelProps) {
   }
 
   if (!isOpen) {
+    if (embedded) {
+      return (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="flex-1 flex flex-col items-center justify-center gap-1 min-h-0 hover:bg-neutral-900 transition-colors"
+          title="Open chat"
+        >
+          <svg className="w-4 h-4 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
+          </svg>
+          <span className="text-[10px] text-neutral-600">Chat</span>
+        </button>
+      );
+    }
     return (
       <button
         onClick={() => setIsOpen(true)}
@@ -254,13 +291,10 @@ export function ChatPanel({ agent }: ChatPanelProps) {
     );
   }
 
-  const isWide = width > 500;
+  const isWide = !embedded && width > 500;
 
-  return (
-    <div className="shrink-0 border-l border-neutral-800 flex bg-neutral-950/50" style={{ width }}>
-      {/* Drag handle */}
-      <div onMouseDown={handleMouseDown} className="w-1 cursor-col-resize hover:bg-blue-500/30 transition-colors" />
-
+  const chatContent = (
+    <>
       {/* Session list — inline if wide, replaces chat if narrow */}
       {showHistory && isWide && (
         <SessionList
@@ -272,7 +306,7 @@ export function ChatPanel({ agent }: ChatPanelProps) {
       )}
 
       {showHistory && !isWide ? (
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-800">
             <span className="text-xs font-semibold text-neutral-400">History</span>
             <button
@@ -291,7 +325,7 @@ export function ChatPanel({ agent }: ChatPanelProps) {
           />
         </div>
       ) : (
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Header */}
           <div className="flex items-center gap-1.5 px-3 py-2 border-b border-neutral-800">
             <button onClick={handleNewChat} className="text-neutral-600 hover:text-neutral-400 transition-colors" title="New chat">
@@ -381,6 +415,24 @@ export function ChatPanel({ agent }: ChatPanelProps) {
           </div>
         </div>
       )}
+    </>
+  );
+
+  // Embedded mode: no width management, fills parent height
+  if (embedded) {
+    return (
+      <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
+        {chatContent}
+      </div>
+    );
+  }
+
+  // Standalone mode: manages own width with horizontal drag
+  return (
+    <div className="shrink-0 border-l border-neutral-800 flex bg-neutral-950/50" style={{ width }}>
+      {/* Drag handle */}
+      <div onMouseDown={handleMouseDown} className="w-1 cursor-col-resize hover:bg-blue-500/30 transition-colors" />
+      {chatContent}
     </div>
   );
 }

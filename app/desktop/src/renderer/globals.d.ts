@@ -49,7 +49,14 @@ interface ClaudeAPI {
   onSessionEnd: (callback: (sessionId: string) => void) => () => void;
 }
 
+interface CalendarAPI {
+  popout: () => Promise<boolean>;
+  popin: () => Promise<boolean>;
+  onPoppedIn: (callback: () => void) => () => void;
+}
+
 interface Window {
   chat: ChatAPI;
   claude: ClaudeAPI;
+  calendar: CalendarAPI;
 }
