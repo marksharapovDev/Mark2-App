@@ -1,12 +1,15 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
+import type { TaskStatus } from '@mark2/shared';
 
-// --- Mock Types ---
+// --- Types ---
 
 type StudentLevel = 'beginner' | 'intermediate' | 'advanced';
 type HomeworkStatus = 'done' | 'upcoming' | 'overdue';
 type LessonStatus = 'planned' | 'completed';
 type TopicStatus = 'done' | 'current' | 'upcoming';
+type Priority = 'low' | 'medium' | 'high';
+type SidebarTab = 'students' | 'general';
 
 interface ScheduleSlot {
   day: string;
@@ -31,6 +34,7 @@ interface MockLesson {
   status: LessonStatus;
   notes: string;
   homeworkGiven?: string;
+  files?: MockFile[];
 }
 
 interface MockHomework {
@@ -43,6 +47,7 @@ interface MockHomework {
   status: HomeworkStatus;
   grade?: string;
   comment?: string;
+  file?: MockFile;
 }
 
 interface MockTopic {
@@ -50,6 +55,22 @@ interface MockTopic {
   studentId: string;
   title: string;
   status: TopicStatus;
+}
+
+interface MockFile {
+  id: string;
+  name: string;
+  type: 'docx' | 'pdf' | 'py' | 'txt';
+}
+
+interface TeachingTask {
+  id: string;
+  studentId: string;
+  title: string;
+  status: TaskStatus;
+  priority: Priority;
+  context: string;
+  deadline: string | null;
 }
 
 // --- Mock Data ---
@@ -78,8 +99,14 @@ const MOCK_STUDENTS: MockStudent[] = [
   },
 ];
 
+const MOCK_FILES: MockFile[] = [
+  { id: 'f1', name: 'ege5_tasks.docx', type: 'docx' },
+  { id: 'f2', name: 'python_loops_homework.docx', type: 'docx' },
+  { id: 'f3', name: 'plan_lesson_15mar.pdf', type: 'pdf' },
+  { id: 'f4', name: 'logic_tables_examples.pdf', type: 'pdf' },
+];
+
 const MOCK_LESSONS: MockLesson[] = [
-  // Misha
   {
     id: 'l1',
     studentId: 'misha',
@@ -88,6 +115,7 @@ const MOCK_LESSONS: MockLesson[] = [
     status: 'completed',
     notes: 'Разобрали алгоритм перевода. Миша быстро понял двоичную систему, восьмеричная далась сложнее.',
     homeworkGiven: 'Перевести 10 чисел между системами счисления',
+    files: [MOCK_FILES[2]],
   },
   {
     id: 'l2',
@@ -97,6 +125,7 @@ const MOCK_LESSONS: MockLesson[] = [
     status: 'completed',
     notes: 'Таблицы истинности для AND, OR, NOT, XOR. Начали составлять выражения по таблицам.',
     homeworkGiven: 'Составить таблицы истинности для 5 выражений',
+    files: [MOCK_FILES[3]],
   },
   {
     id: 'l3',
@@ -106,6 +135,7 @@ const MOCK_LESSONS: MockLesson[] = [
     status: 'completed',
     notes: 'Разбирали типичные задачи на анализ алгоритмов из ЕГЭ. Трассировка циклов.',
     homeworkGiven: 'Решить 8 задач из сборника',
+    files: [MOCK_FILES[0]],
   },
   {
     id: 'l4',
@@ -123,7 +153,6 @@ const MOCK_LESSONS: MockLesson[] = [
     status: 'planned',
     notes: '',
   },
-  // Anya
   {
     id: 'l6',
     studentId: 'anya',
@@ -153,7 +182,6 @@ const MOCK_LESSONS: MockLesson[] = [
 ];
 
 const MOCK_HOMEWORKS: MockHomework[] = [
-  // Misha
   {
     id: 'h1',
     studentId: 'misha',
@@ -186,6 +214,7 @@ const MOCK_HOMEWORKS: MockHomework[] = [
     status: 'done',
     grade: '4',
     comment: 'Решено 7 из 8, в последней задаче ошибка в трассировке цикла.',
+    file: MOCK_FILES[0],
   },
   {
     id: 'h4',
@@ -205,7 +234,6 @@ const MOCK_HOMEWORKS: MockHomework[] = [
     dueDate: '2026-03-20',
     status: 'overdue',
   },
-  // Anya
   {
     id: 'h6',
     studentId: 'anya',
@@ -236,18 +264,17 @@ const MOCK_HOMEWORKS: MockHomework[] = [
     description: 'Решить 5 задач на циклы while и for из учебника.',
     dueDate: '2026-04-02',
     status: 'upcoming',
+    file: MOCK_FILES[1],
   },
 ];
 
 const MOCK_TOPICS: MockTopic[] = [
-  // Misha
   { id: 'tp1', studentId: 'misha', title: 'Системы счисления', status: 'done' },
   { id: 'tp2', studentId: 'misha', title: 'Логика', status: 'done' },
   { id: 'tp3', studentId: 'misha', title: 'Алгоритмы', status: 'current' },
   { id: 'tp4', studentId: 'misha', title: 'Программирование', status: 'upcoming' },
   { id: 'tp5', studentId: 'misha', title: 'Базы данных', status: 'upcoming' },
   { id: 'tp6', studentId: 'misha', title: 'Сети и интернет', status: 'upcoming' },
-  // Anya
   { id: 'tp7', studentId: 'anya', title: 'Переменные', status: 'done' },
   { id: 'tp8', studentId: 'anya', title: 'Условия', status: 'done' },
   { id: 'tp9', studentId: 'anya', title: 'Циклы', status: 'current' },
@@ -256,7 +283,66 @@ const MOCK_TOPICS: MockTopic[] = [
   { id: 'tp12', studentId: 'anya', title: 'Словари', status: 'upcoming' },
 ];
 
+const MOCK_TEACHING_TASKS: TeachingTask[] = [
+  {
+    id: 'tt1',
+    studentId: 'misha',
+    title: 'Подготовить ДЗ для Миши — задание 6 ЕГЭ',
+    status: 'todo',
+    priority: 'high',
+    context: 'Рекурсия, 7 заданий с решениями',
+    deadline: '2026-03-24',
+  },
+  {
+    id: 'tt2',
+    studentId: 'anya',
+    title: 'Проверить ДЗ Ани — циклы while',
+    status: 'todo',
+    priority: 'medium',
+    context: 'Проверить 5 задач, написать комментарии',
+    deadline: '2026-03-27',
+  },
+  {
+    id: 'tt3',
+    studentId: 'misha',
+    title: 'Составить план урока — Миша, массивы',
+    status: 'in_progress',
+    priority: 'medium',
+    context: 'Теория + 4 практические задачи + ДЗ',
+    deadline: '2026-03-28',
+  },
+  {
+    id: 'tt4',
+    studentId: 'anya',
+    title: 'Подготовить тест для Ани — условия',
+    status: 'done',
+    priority: 'low',
+    context: 'Тест на 10 вопросов по if/elif/else',
+    deadline: null,
+  },
+];
+
 // --- Helpers ---
+
+const PRIORITY_COLORS: Record<Priority, { border: string; badge: string; label: string }> = {
+  high: { border: 'border-l-red-500', badge: 'bg-red-500/20 text-red-400', label: 'High' },
+  medium: { border: 'border-l-yellow-500', badge: 'bg-yellow-500/20 text-yellow-400', label: 'Medium' },
+  low: { border: 'border-l-neutral-600', badge: 'bg-neutral-700/50 text-neutral-400', label: 'Low' },
+};
+
+const STATUS_LABEL: Record<TaskStatus, string> = {
+  done: 'Done',
+  in_progress: 'In Progress',
+  todo: 'Todo',
+  cancelled: 'Cancelled',
+};
+
+const STATUS_COLORS: Record<TaskStatus, string> = {
+  done: 'text-emerald-400',
+  in_progress: 'text-blue-400',
+  todo: 'text-yellow-400',
+  cancelled: 'text-red-400',
+};
 
 const HW_STATUS_ICON: Record<HomeworkStatus, string> = {
   done: '\u2705',
@@ -288,6 +374,20 @@ const LEVEL_COLOR: Record<StudentLevel, string> = {
   advanced: 'bg-purple-900/40 text-purple-300',
 };
 
+const TASK_TYPE_ICON: Record<string, string> = {
+  hw: '\uD83D\uDCDD',
+  check: '\u2705',
+  plan: '\uD83D\uDCCB',
+  test: '\uD83D\uDCCA',
+};
+
+const FILE_ICON: Record<string, string> = {
+  docx: '\uD83D\uDCC4',
+  pdf: '\uD83D\uDCD5',
+  py: '\uD83D\uDC0D',
+  txt: '\uD83D\uDCC3',
+};
+
 function getStudentLessons(studentId: string): MockLesson[] {
   return MOCK_LESSONS.filter((l) => l.studentId === studentId);
 }
@@ -300,10 +400,31 @@ function getStudentTopics(studentId: string): MockTopic[] {
   return MOCK_TOPICS.filter((t) => t.studentId === studentId);
 }
 
+function getStudentTasks(studentId: string): TeachingTask[] {
+  return MOCK_TEACHING_TASKS.filter((t) => t.studentId === studentId);
+}
+
+function getStudentName(studentId: string): string {
+  return MOCK_STUDENTS.find((s) => s.id === studentId)?.name ?? studentId;
+}
+
+function getTaskTypeIcon(title: string): string {
+  if (title.includes('Проверить')) return TASK_TYPE_ICON.check;
+  if (title.includes('план')) return TASK_TYPE_ICON.plan;
+  if (title.includes('тест') || title.includes('Тест')) return TASK_TYPE_ICON.test;
+  return TASK_TYPE_ICON.hw;
+}
+
 function hwStats(homeworks: MockHomework[]) {
   const counts: Record<string, number> = { done: 0, upcoming: 0, overdue: 0 };
   for (const h of homeworks) counts[h.status]++;
   return counts;
+}
+
+function formatDate(dateStr: string): string {
+  const [, month, day] = dateStr.split('-');
+  const months = ['', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+  return `${parseInt(day, 10)} ${months[parseInt(month, 10)]}`;
 }
 
 // --- Views ---
@@ -312,21 +433,23 @@ type MainView =
   | { kind: 'overview' }
   | { kind: 'all-homeworks'; filter: HomeworkStatus | 'all' }
   | { kind: 'lesson-detail'; lessonId: string }
-  | { kind: 'homework-detail'; homeworkId: string };
+  | { kind: 'homework-detail'; homeworkId: string }
+  | { kind: 'task-detail'; taskId: string }
+  | { kind: 'add-student' };
 
 // --- Component ---
 
 export function Teaching() {
-  const [activeStudentId, setActiveStudentId] = useState<string>(
-    MOCK_STUDENTS[MOCK_STUDENTS.length - 1].id,
-  );
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('students');
+  const [activeStudentId, setActiveStudentId] = useState<string>(MOCK_STUDENTS[0].id);
   const [mainView, setMainView] = useState<MainView>({ kind: 'overview' });
-  const [visibleLessons, setVisibleLessons] = useState(10);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = localStorage.getItem('mark2-sidebar-width');
+    const saved = localStorage.getItem('mark2-teaching-sidebar-width');
     if (saved) { const n = parseInt(saved, 10); if (n >= 200 && n <= 400) return n; }
     return Math.min(400, Math.max(200, Math.round(window.innerWidth * 0.2)));
   });
+  const [taskChecked, setTaskChecked] = useState<Record<string, boolean>>({});
+  const [newStudent, setNewStudent] = useState({ name: '', subject: '', level: 'beginner' as StudentLevel, days: '', time: '' });
   const isDraggingSidebar = useRef(false);
 
   const SIDEBAR_MIN = 200;
@@ -336,24 +459,27 @@ export function Teaching() {
   const lessons = student ? getStudentLessons(student.id) : [];
   const homeworks = student ? getStudentHomeworks(student.id) : [];
   const topics = student ? getStudentTopics(student.id) : [];
+  const studentTasks = student ? getStudentTasks(student.id) : [];
+
+  // All-students data for General tab
+  const allUpcomingLessons = MOCK_LESSONS
+    .filter((l) => l.status === 'planned')
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const allRecentLessons = MOCK_LESSONS
+    .filter((l) => l.status === 'completed')
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const allOverdueHw = MOCK_HOMEWORKS.filter((h) => h.status === 'overdue').length;
+  const lessonsThisWeek = MOCK_LESSONS.filter((l) => {
+    const d = l.date;
+    return d >= '2026-03-17' && d <= '2026-03-23';
+  }).length;
 
   const selectStudent = useCallback((id: string) => {
     setActiveStudentId(id);
+    setSidebarTab('students');
     setMainView({ kind: 'overview' });
-    setVisibleLessons(10);
   }, []);
 
-  const handleLessonsScroll = useCallback(
-    (e: React.UIEvent<HTMLDivElement>) => {
-      const el = e.currentTarget;
-      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 20) {
-        setVisibleLessons((v) => Math.min(v + 10, lessons.length));
-      }
-    },
-    [lessons.length],
-  );
-
-  // Sidebar drag resize
   const handleSidebarDragStart = useCallback(() => {
     isDraggingSidebar.current = true;
     document.body.style.cursor = 'col-resize';
@@ -363,7 +489,7 @@ export function Teaching() {
       if (!isDraggingSidebar.current) return;
       const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, e.clientX));
       setSidebarWidth(w);
-      localStorage.setItem('mark2-sidebar-width', String(w));
+      localStorage.setItem('mark2-teaching-sidebar-width', String(w));
     };
     const onUp = () => {
       isDraggingSidebar.current = false;
@@ -376,17 +502,25 @@ export function Teaching() {
     document.addEventListener('mouseup', onUp);
   }, []);
 
-  useEffect(() => {
-    setVisibleLessons(10);
-  }, [activeStudentId]);
+  const toggleTaskChecked = useCallback((taskId: string) => {
+    setTaskChecked((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
+  }, []);
 
-  // Upcoming lessons (next 2-3)
-  const upcomingLessons = lessons
-    .filter((l) => l.status === 'planned')
-    .slice(0, 3);
+  const getEffectiveStatus = useCallback((task: TeachingTask): TaskStatus => {
+    if (taskChecked[task.id]) return 'done';
+    return task.status;
+  }, [taskChecked]);
 
-  // Recent homeworks (last 4)
-  const recentHomeworks = homeworks.slice(0, 4);
+  const sendTaskToChat = useCallback((task: TeachingTask) => {
+    const text = `Выполни задачу: ${task.title}\n${task.context}`;
+    const inputEl = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Message..."]');
+    if (inputEl) {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+      nativeInputValueSetter?.call(inputEl, text);
+      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      inputEl.focus();
+    }
+  }, []);
 
   return (
     <MainLayout agent="teaching" noPadding defaultChatWidthPct={30}>
@@ -396,175 +530,355 @@ export function Teaching() {
           className="shrink-0 border-r border-neutral-800 flex flex-col bg-neutral-950/50 overflow-hidden"
           style={{ width: sidebarWidth }}
         >
-          {/* Level 1: Students */}
-          <div className="px-3 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-            Students
+          {/* Tabs */}
+          <div className="flex border-b border-neutral-800">
+            <button
+              onClick={() => setSidebarTab('students')}
+              className={`flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                sidebarTab === 'students'
+                  ? 'text-neutral-200 border-b-2 border-blue-500'
+                  : 'text-neutral-500 hover:text-neutral-300'
+              }`}
+            >
+              Ученики
+            </button>
+            <button
+              onClick={() => setSidebarTab('general')}
+              className={`flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                sidebarTab === 'general'
+                  ? 'text-neutral-200 border-b-2 border-blue-500'
+                  : 'text-neutral-500 hover:text-neutral-300'
+              }`}
+            >
+              Общее
+            </button>
           </div>
-          <nav className="px-2 space-y-0.5">
-            {MOCK_STUDENTS.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => selectStudent(s.id)}
-                className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors ${
-                  activeStudentId === s.id
-                    ? 'bg-neutral-800 text-white'
-                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
-                }`}
-              >
-                <span className="mr-2 inline-block w-1.5 h-1.5 rounded-full bg-blue-500 align-middle" />
-                {s.name}
-              </button>
-            ))}
-          </nav>
 
-          {/* Level 2: Student details */}
-          {student && (
-            <div className="flex-1 overflow-hidden flex flex-col mt-2">
-              <div className="mx-3 border-t border-neutral-800" />
+          {sidebarTab === 'students' && (
+            <>
+              {/* Students header + add button */}
+              <div className="px-3 py-3 flex items-center justify-between">
+                <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Students</span>
+                <button
+                  onClick={() => setMainView({ kind: 'add-student' })}
+                  className="w-5 h-5 flex items-center justify-center rounded bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors text-sm"
+                  title="Добавить ученика"
+                >
+                  +
+                </button>
+              </div>
+              <nav className="px-2 space-y-0.5">
+                {MOCK_STUDENTS.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => selectStudent(s.id)}
+                    className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors ${
+                      activeStudentId === s.id
+                        ? 'bg-neutral-800 text-white'
+                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
+                    }`}
+                  >
+                    <span className="mr-2 inline-block w-1.5 h-1.5 rounded-full bg-blue-500 align-middle" />
+                    {s.name}
+                  </button>
+                ))}
+              </nav>
 
-              {/* Scrollable content */}
-              <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
-                {/* Info */}
-                <div className="px-3 pt-3 pb-2">
-                  <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                    Информация
-                  </div>
-                  <div className="space-y-1 text-xs">
-                    <div className="text-neutral-300 font-medium">{student.name}</div>
-                    <div className="text-neutral-400">{student.subject}</div>
-                    <div>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${LEVEL_COLOR[student.level]}`}
-                      >
-                        {LEVEL_LABEL[student.level]}
-                      </span>
-                    </div>
-                    <div className="text-neutral-500 text-[11px] mt-1">
-                      {student.schedule.map((s) => `${s.day} ${s.time}`).join(', ')}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mx-3 border-t border-neutral-800" />
-
-                {/* Upcoming lessons */}
-                {upcomingLessons.length > 0 && (
-                  <>
+              {/* Student detail sections */}
+              {student && (
+                <div className="flex-1 overflow-hidden flex flex-col mt-2">
+                  <div className="mx-3 border-t border-neutral-800" />
+                  <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
+                    {/* Info */}
                     <div className="px-3 pt-3 pb-2">
                       <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                        Ближайшие уроки
+                        Информация
                       </div>
-                      <div className="space-y-1.5">
-                        {upcomingLessons.map((lesson) => (
+                      <div className="space-y-1 text-xs">
+                        <div className="text-neutral-300 font-medium">{student.name}</div>
+                        <div className="text-neutral-400">{student.subject}</div>
+                        <div>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${LEVEL_COLOR[student.level]}`}>
+                            {LEVEL_LABEL[student.level]}
+                          </span>
+                        </div>
+                        <div className="text-neutral-500 text-[11px] mt-1">
+                          {student.schedule.map((s) => `${s.day} ${s.time}`).join(', ')}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mx-3 border-t border-neutral-800" />
+
+                    {/* Tasks for this student */}
+                    {studentTasks.length > 0 && (
+                      <>
+                        <div className="px-3 pt-3 pb-2">
+                          <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                            Задачи
+                          </div>
+                          <div className="space-y-1">
+                            {studentTasks.map((task) => {
+                              const effectiveStatus = getEffectiveStatus(task);
+                              const pColor = PRIORITY_COLORS[task.priority];
+                              return (
+                                <button
+                                  key={task.id}
+                                  onClick={() => setMainView({ kind: 'task-detail', taskId: task.id })}
+                                  className={`w-full text-left flex items-center gap-1.5 text-xs py-1 px-2 rounded border-l-2 ${pColor.border} hover:bg-neutral-800/50 transition-colors ${
+                                    mainView.kind === 'task-detail' && 'taskId' in mainView && mainView.taskId === task.id
+                                      ? 'bg-neutral-800/50' : ''
+                                  }`}
+                                >
+                                  <span className={`shrink-0 ${STATUS_COLORS[effectiveStatus]}`}>
+                                    {effectiveStatus === 'done' ? '\u2705' : effectiveStatus === 'in_progress' ? '\uD83D\uDD04' : '\u23F3'}
+                                  </span>
+                                  <span className={`truncate ${effectiveStatus === 'done' ? 'text-neutral-500 line-through' : 'text-neutral-400'}`}>
+                                    {task.title}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="mx-3 border-t border-neutral-800" />
+                      </>
+                    )}
+
+                    {/* Upcoming lessons */}
+                    {lessons.filter((l) => l.status === 'planned').length > 0 && (
+                      <>
+                        <div className="px-3 pt-3 pb-2">
+                          <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                            Ближайшие уроки
+                          </div>
+                          <div className="space-y-1.5">
+                            {lessons.filter((l) => l.status === 'planned').slice(0, 3).map((lesson) => (
+                              <button
+                                key={lesson.id}
+                                onClick={() => setMainView({ kind: 'lesson-detail', lessonId: lesson.id })}
+                                className="w-full text-left text-xs py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-neutral-600 text-[10px] shrink-0">{lesson.date.slice(5)}</span>
+                                  <span className="text-[10px] text-blue-400/70">запланирован</span>
+                                </div>
+                                <div className="text-neutral-400 group-hover:text-neutral-200 transition-colors truncate mt-0.5">
+                                  {lesson.topic}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="mx-3 border-t border-neutral-800" />
+                      </>
+                    )}
+
+                    {/* Homeworks */}
+                    <div className="px-3 pt-3 pb-2">
+                      <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                        Домашки
+                      </div>
+                      <div className="space-y-1">
+                        {homeworks.slice(0, 4).map((hw) => (
+                          <button
+                            key={hw.id}
+                            onClick={() => setMainView({ kind: 'homework-detail', homeworkId: hw.id })}
+                            className="w-full text-left flex items-center gap-1.5 text-xs text-neutral-400 py-0.5 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
+                          >
+                            <span className="text-[11px] shrink-0">{HW_STATUS_ICON[hw.status]}</span>
+                            <span className="truncate group-hover:text-neutral-200 transition-colors">{hw.title}</span>
+                            <span className="text-neutral-600 text-[10px] shrink-0 ml-auto">{hw.dueDate.slice(5)}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {homeworks.length > 4 && (
+                        <button
+                          onClick={() => setMainView({ kind: 'all-homeworks', filter: 'all' })}
+                          className="mt-2 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
+                        >
+                          ... Все домашки ({homeworks.length})
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mx-3 border-t border-neutral-800" />
+
+                    {/* Learning path */}
+                    <div className="px-3 pt-3 pb-2">
+                      <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                        Путь обучения
+                      </div>
+                      <div className="space-y-1">
+                        {topics.map((topic) => (
+                          <div
+                            key={topic.id}
+                            className={`flex items-center gap-1.5 text-xs ${
+                              topic.status === 'current' ? 'text-neutral-200' : 'text-neutral-400'
+                            }`}
+                          >
+                            <span className="text-[11px] shrink-0">{TOPIC_ICON[topic.status]}</span>
+                            <span className="truncate">{topic.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mx-3 border-t border-neutral-800" />
+
+                    {/* Lesson history */}
+                    <div className="px-3 pt-3 pb-2">
+                      <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                        История уроков
+                      </div>
+                      <div className="space-y-0.5">
+                        {lessons.map((lesson) => (
                           <button
                             key={lesson.id}
                             onClick={() => setMainView({ kind: 'lesson-detail', lessonId: lesson.id })}
                             className="w-full text-left text-xs py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
                           >
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-neutral-600 text-[10px] shrink-0">
-                                {lesson.date.slice(5)}
-                              </span>
-                              <span className="text-[10px] text-blue-400/70">запланирован</span>
-                            </div>
-                            <div className="text-neutral-400 group-hover:text-neutral-200 transition-colors truncate mt-0.5">
+                            <span className="text-neutral-600 mr-1.5 text-[10px]">{lesson.date.slice(5)}</span>
+                            <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors">
                               {lesson.topic}
-                            </div>
+                            </span>
                           </button>
                         ))}
                       </div>
                     </div>
-                    <div className="mx-3 border-t border-neutral-800" />
-                  </>
-                )}
-
-                {/* Homeworks */}
-                <div className="px-3 pt-3 pb-2">
-                  <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                    Домашки
                   </div>
-                  <div className="space-y-1">
-                    {recentHomeworks.map((hw) => (
-                      <button
-                        key={hw.id}
-                        onClick={() => setMainView({ kind: 'homework-detail', homeworkId: hw.id })}
-                        className="w-full text-left flex items-center gap-1.5 text-xs text-neutral-400 py-0.5 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
-                      >
-                        <span className="text-[11px] shrink-0">{HW_STATUS_ICON[hw.status]}</span>
-                        <span className="truncate group-hover:text-neutral-200 transition-colors">
-                          {hw.title}
-                        </span>
-                        <span className="text-neutral-600 text-[10px] shrink-0 ml-auto">
-                          {hw.dueDate.slice(5)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  {homeworks.length > 4 && (
-                    <button
-                      onClick={() => setMainView({ kind: 'all-homeworks', filter: 'all' })}
-                      className="mt-2 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
-                    >
-                      ... Все домашки ({homeworks.length})
-                    </button>
-                  )}
                 </div>
+              )}
+            </>
+          )}
 
-                <div className="mx-3 border-t border-neutral-800" />
-
-                {/* Learning path */}
-                <div className="px-3 pt-3 pb-2">
-                  <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                    Путь обучения
+          {sidebarTab === 'general' && (
+            <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
+              {/* Stats */}
+              <div className="px-3 pt-3 pb-2">
+                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                  Статистика
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="bg-blue-400/10 rounded px-2 py-1.5">
+                    <div className="text-sm font-bold text-blue-400">{MOCK_STUDENTS.length}</div>
+                    <div className="text-[10px] text-blue-400/70 uppercase">Учеников</div>
                   </div>
-                  <div className="space-y-1">
-                    {topics.map((topic) => (
+                  <div className="bg-emerald-400/10 rounded px-2 py-1.5">
+                    <div className="text-sm font-bold text-emerald-400">{lessonsThisWeek}</div>
+                    <div className="text-[10px] text-emerald-400/70 uppercase">Уроков/нед</div>
+                  </div>
+                  <div className="bg-red-400/10 rounded px-2 py-1.5 col-span-2">
+                    <div className="text-sm font-bold text-red-400">{allOverdueHw}</div>
+                    <div className="text-[10px] text-red-400/70 uppercase">Невыполненных ДЗ</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mx-3 border-t border-neutral-800" />
+
+              {/* My tasks (all students) */}
+              <div className="px-3 pt-3 pb-2">
+                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                  Мои задачи
+                </div>
+                <div className="space-y-1">
+                  {MOCK_TEACHING_TASKS.map((task) => {
+                    const effectiveStatus = getEffectiveStatus(task);
+                    const pColor = PRIORITY_COLORS[task.priority];
+                    const isDone = effectiveStatus === 'done';
+                    return (
                       <div
-                        key={topic.id}
-                        className={`flex items-center gap-1.5 text-xs ${
-                          topic.status === 'current'
-                            ? 'text-neutral-200'
-                            : 'text-neutral-400'
-                        }`}
+                        key={task.id}
+                        className={`flex items-center gap-1.5 text-xs py-1 px-2 rounded border-l-2 ${pColor.border} hover:bg-neutral-800/50 transition-colors`}
                       >
-                        <span className="text-[11px] shrink-0">{TOPIC_ICON[topic.status]}</span>
-                        <span className="truncate">{topic.title}</span>
+                        <button
+                          onClick={() => toggleTaskChecked(task.id)}
+                          className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center transition-colors ${
+                            isDone ? 'bg-emerald-600 border-emerald-600' : 'border-neutral-600 hover:border-neutral-400'
+                          }`}
+                        >
+                          {isDone && (
+                            <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+                        <span className="shrink-0">{getTaskTypeIcon(task.title)}</span>
+                        <button
+                          onClick={() => setMainView({ kind: 'task-detail', taskId: task.id })}
+                          className={`truncate text-left flex-1 ${isDone ? 'text-neutral-500 line-through' : 'text-neutral-400 hover:text-neutral-200'}`}
+                        >
+                          {task.title}
+                        </button>
+                        <button
+                          onClick={() => sendTaskToChat(task)}
+                          className="text-neutral-600 hover:text-blue-400 transition-colors shrink-0"
+                          title="Отправить боту"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+                          </svg>
+                        </button>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
+              </div>
 
-                <div className="mx-3 border-t border-neutral-800" />
+              <div className="mx-3 border-t border-neutral-800" />
 
-                {/* Lesson history */}
-                <div className="px-3 pt-3 pb-2">
-                  <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                    История уроков
-                  </div>
-                  <div
-                    className="space-y-0.5"
-                    onScroll={handleLessonsScroll}
-                  >
-                    {lessons.slice(0, visibleLessons).map((lesson) => (
-                      <button
-                        key={lesson.id}
-                        onClick={() => setMainView({ kind: 'lesson-detail', lessonId: lesson.id })}
-                        className="w-full text-left text-xs py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
-                      >
-                        <span className="text-neutral-600 mr-1.5 text-[10px]">
-                          {lesson.date.slice(5)}
-                        </span>
-                        <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors">
-                          {lesson.topic}
-                        </span>
-                        {lesson.notes && (
-                          <div className="text-neutral-600 text-[10px] truncate mt-0.5">
-                            {lesson.notes}
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
+              {/* Upcoming lessons (all students) */}
+              <div className="px-3 pt-3 pb-2">
+                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                  Ближайшие уроки
+                </div>
+                <div className="space-y-1.5">
+                  {allUpcomingLessons.map((lesson) => (
+                    <button
+                      key={lesson.id}
+                      onClick={() => {
+                        setActiveStudentId(lesson.studentId);
+                        setMainView({ kind: 'lesson-detail', lessonId: lesson.id });
+                      }}
+                      className="w-full text-left text-xs py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-neutral-600 text-[10px] shrink-0">{formatDate(lesson.date)}</span>
+                        <span className="text-blue-400/70 text-[10px]">{getStudentName(lesson.studentId)}</span>
+                      </div>
+                      <div className="text-neutral-400 group-hover:text-neutral-200 transition-colors truncate mt-0.5">
+                        {lesson.topic}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mx-3 border-t border-neutral-800" />
+
+              {/* Recent lessons (all students) */}
+              <div className="px-3 pt-3 pb-2">
+                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                  Последние уроки
+                </div>
+                <div className="space-y-0.5 max-h-40 overflow-y-auto scrollbar-thin">
+                  {allRecentLessons.map((lesson) => (
+                    <button
+                      key={lesson.id}
+                      onClick={() => {
+                        setActiveStudentId(lesson.studentId);
+                        setMainView({ kind: 'lesson-detail', lessonId: lesson.id });
+                      }}
+                      className="w-full text-left text-xs py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
+                    >
+                      <span className="text-neutral-600 text-[10px] mr-1">{lesson.date.slice(5)}</span>
+                      <span className="text-neutral-500 text-[10px] mr-1">{getStudentName(lesson.studentId).split(' ')[0]}</span>
+                      <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors">
+                        {lesson.topic}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -585,8 +899,11 @@ export function Teaching() {
               lessons={lessons}
               homeworks={homeworks}
               topics={topics}
+              tasks={studentTasks}
               onLessonClick={(id) => setMainView({ kind: 'lesson-detail', lessonId: id })}
               onHomeworkClick={(id) => setMainView({ kind: 'homework-detail', homeworkId: id })}
+              onTaskClick={(id) => setMainView({ kind: 'task-detail', taskId: id })}
+              getEffectiveStatus={getEffectiveStatus}
             />
           )}
           {student && mainView.kind === 'all-homeworks' && (
@@ -599,17 +916,33 @@ export function Teaching() {
               onBack={() => setMainView({ kind: 'overview' })}
             />
           )}
-          {student && mainView.kind === 'lesson-detail' && (
+          {mainView.kind === 'lesson-detail' && (
             <LessonDetailView
-              lesson={lessons.find((l) => l.id === mainView.lessonId)}
-              homeworks={homeworks.filter((h) => h.lessonId === mainView.lessonId)}
+              lesson={MOCK_LESSONS.find((l) => l.id === mainView.lessonId)}
+              homeworks={MOCK_HOMEWORKS.filter((h) => h.lessonId === mainView.lessonId)}
               onBack={() => setMainView({ kind: 'overview' })}
               onHomeworkClick={(id) => setMainView({ kind: 'homework-detail', homeworkId: id })}
             />
           )}
-          {student && mainView.kind === 'homework-detail' && (
+          {mainView.kind === 'homework-detail' && (
             <HomeworkDetailView
-              homework={homeworks.find((h) => h.id === mainView.homeworkId)}
+              homework={MOCK_HOMEWORKS.find((h) => h.id === mainView.homeworkId)}
+              onBack={() => setMainView({ kind: 'overview' })}
+            />
+          )}
+          {mainView.kind === 'task-detail' && (
+            <TaskDetailView
+              task={MOCK_TEACHING_TASKS.find((t) => t.id === mainView.taskId)}
+              onBack={() => setMainView({ kind: 'overview' })}
+              toggleTaskChecked={toggleTaskChecked}
+              getEffectiveStatus={getEffectiveStatus}
+              sendTaskToChat={sendTaskToChat}
+            />
+          )}
+          {mainView.kind === 'add-student' && (
+            <AddStudentView
+              form={newStudent}
+              onChange={setNewStudent}
               onBack={() => setMainView({ kind: 'overview' })}
             />
           )}
@@ -626,19 +959,40 @@ function StudentOverview({
   lessons,
   homeworks,
   topics,
+  tasks,
   onLessonClick,
   onHomeworkClick,
+  onTaskClick,
+  getEffectiveStatus,
 }: {
   student: MockStudent;
   lessons: MockLesson[];
   homeworks: MockHomework[];
   topics: MockTopic[];
+  tasks: TeachingTask[];
   onLessonClick: (id: string) => void;
   onHomeworkClick: (id: string) => void;
+  onTaskClick: (id: string) => void;
+  getEffectiveStatus: (task: TeachingTask) => TaskStatus;
 }) {
   const stats = hwStats(homeworks);
   const upcomingLessons = lessons.filter((l) => l.status === 'planned').slice(0, 3);
   const lastDoneHomework = homeworks.filter((h) => h.status === 'done').at(-1);
+
+  // Collect all files from lessons and homeworks
+  const attachedFiles: Array<{ file: MockFile; source: string }> = [];
+  for (const l of lessons) {
+    if (l.files) {
+      for (const f of l.files) {
+        attachedFiles.push({ file: f, source: `Урок: ${l.topic}` });
+      }
+    }
+  }
+  for (const h of homeworks) {
+    if (h.file) {
+      attachedFiles.push({ file: h.file, source: `ДЗ: ${h.title}` });
+    }
+  }
 
   return (
     <div className="max-w-2xl">
@@ -649,9 +1003,7 @@ function StudentOverview({
             <h1 className="text-2xl font-bold mb-1">{student.name}</h1>
             <p className="text-neutral-400 text-sm">{student.subject}</p>
           </div>
-          <span
-            className={`text-xs px-2.5 py-1 rounded font-medium ${LEVEL_COLOR[student.level]}`}
-          >
+          <span className={`text-xs px-2.5 py-1 rounded font-medium ${LEVEL_COLOR[student.level]}`}>
             {LEVEL_LABEL[student.level]}
           </span>
         </div>
@@ -671,6 +1023,58 @@ function StudentOverview({
           <StatBadge label="Просрочено" count={stats.overdue} color="text-red-400 bg-red-400/10" />
         )}
       </div>
+
+      {/* Tasks for this student */}
+      {tasks.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold text-neutral-300 mb-3">Задачи</h2>
+          <div className="space-y-1.5">
+            {tasks.map((task) => {
+              const pColor = PRIORITY_COLORS[task.priority];
+              const effectiveStatus = getEffectiveStatus(task);
+              return (
+                <button
+                  key={task.id}
+                  onClick={() => onTaskClick(task.id)}
+                  className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg border-l-2 ${pColor.border} bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors`}
+                >
+                  <span className={`text-sm shrink-0 ${STATUS_COLORS[effectiveStatus]}`}>
+                    {effectiveStatus === 'done' ? '\u2705' : effectiveStatus === 'in_progress' ? '\uD83D\uDD04' : '\u23F3'}
+                  </span>
+                  <span className={`text-sm flex-1 ${effectiveStatus === 'done' ? 'text-neutral-500 line-through' : 'text-neutral-300'}`}>
+                    {task.title}
+                  </span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${pColor.badge}`}>{pColor.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Attached files */}
+      {attachedFiles.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold text-neutral-300 mb-3">Материалы</h2>
+          <div className="space-y-1.5">
+            {attachedFiles.map(({ file, source }) => (
+              <div
+                key={file.id}
+                className="flex items-center gap-3 bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-2.5"
+              >
+                <span className="text-sm shrink-0">{FILE_ICON[file.type]}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-neutral-300 truncate">{file.name}</div>
+                  <div className="text-[10px] text-neutral-600 truncate">{source}</div>
+                </div>
+                <button className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors shrink-0">
+                  Открыть
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Upcoming lessons */}
       {upcomingLessons.length > 0 && (
@@ -719,7 +1123,7 @@ function StudentOverview({
         </div>
       )}
 
-      {/* Learning path overview */}
+      {/* Learning path */}
       <div>
         <h2 className="text-sm font-semibold text-neutral-300 mb-3">Путь обучения</h2>
         <div className="flex flex-wrap gap-2">
@@ -777,16 +1181,12 @@ function AllHomeworksView({
 
   return (
     <div className="max-w-2xl">
-      <button
-        onClick={onBack}
-        className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4"
-      >
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
         &larr; Назад к обзору
       </button>
       <h1 className="text-2xl font-bold mb-1">{student.name}</h1>
       <h2 className="text-neutral-500 text-sm mb-6">Все домашние задания</h2>
 
-      {/* Filters */}
       <div className="flex gap-1 mb-6">
         {filters.map((f) => (
           <button
@@ -803,7 +1203,6 @@ function AllHomeworksView({
         ))}
       </div>
 
-      {/* Homework list */}
       <div className="space-y-2">
         {filtered.map((hw) => (
           <button
@@ -820,9 +1219,7 @@ function AllHomeworksView({
                   {hw.grade && <span className="ml-2">Оценка: {hw.grade}</span>}
                 </div>
               </div>
-              <span className="text-[10px] text-neutral-600 uppercase shrink-0">
-                {HW_STATUS_LABEL[hw.status]}
-              </span>
+              <span className="text-[10px] text-neutral-600 uppercase shrink-0">{HW_STATUS_LABEL[hw.status]}</span>
             </div>
           </button>
         ))}
@@ -848,9 +1245,7 @@ function LessonDetailView({
   if (!lesson) {
     return (
       <div className="text-neutral-500">
-        <button onClick={onBack} className="text-sm hover:text-neutral-300 transition-colors mb-4">
-          &larr; Назад
-        </button>
+        <button onClick={onBack} className="text-sm hover:text-neutral-300 transition-colors mb-4">&larr; Назад</button>
         <p>Урок не найден</p>
       </div>
     );
@@ -858,54 +1253,60 @@ function LessonDetailView({
 
   return (
     <div className="max-w-2xl">
-      <button
-        onClick={onBack}
-        className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4"
-      >
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
         &larr; Назад к обзору
       </button>
 
       <div className="flex items-center gap-3 mb-2">
         <span
           className={`text-[10px] px-2 py-0.5 rounded font-medium ${
-            lesson.status === 'completed'
-              ? 'bg-emerald-900/40 text-emerald-300'
-              : 'bg-blue-900/40 text-blue-300'
+            lesson.status === 'completed' ? 'bg-emerald-900/40 text-emerald-300' : 'bg-blue-900/40 text-blue-300'
           }`}
         >
           {lesson.status === 'completed' ? 'Проведён' : 'Запланирован'}
         </span>
         <span className="text-neutral-500 text-sm">{formatDate(lesson.date)}</span>
+        <span className="text-neutral-600 text-xs">{getStudentName(lesson.studentId)}</span>
       </div>
 
       <h1 className="text-xl font-bold mb-6">{lesson.topic}</h1>
 
-      {/* Notes */}
       {lesson.notes && (
         <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 mb-6 shadow-sm shadow-black/10">
-          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-            Заметки
-          </h2>
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Заметки</h2>
           <p className="text-neutral-300 text-sm leading-relaxed">{lesson.notes}</p>
         </div>
       )}
 
-      {/* Homework given */}
       {lesson.homeworkGiven && (
         <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 mb-6 shadow-sm shadow-black/10">
-          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-            Заданное ДЗ
-          </h2>
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Заданное ДЗ</h2>
           <p className="text-neutral-300 text-sm">{lesson.homeworkGiven}</p>
         </div>
       )}
 
-      {/* Related homeworks */}
+      {/* Files from lesson */}
+      {lesson.files && lesson.files.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Файлы урока</h2>
+          <div className="space-y-1.5">
+            {lesson.files.map((file) => (
+              <div
+                key={file.id}
+                className="flex items-center gap-3 bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-2.5"
+              >
+                <span className="text-sm shrink-0">{FILE_ICON[file.type]}</span>
+                <span className="text-sm text-neutral-300 flex-1">{file.name}</span>
+                <button className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors">Открыть</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {homeworks.length > 0 && (
         <div>
-          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-            Домашние задания
-          </h2>
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Домашние задания</h2>
           <div className="space-y-2">
             {homeworks.map((hw) => (
               <button
@@ -916,9 +1317,7 @@ function LessonDetailView({
                 <div className="flex items-center gap-2">
                   <span className="text-sm">{HW_STATUS_ICON[hw.status]}</span>
                   <span className="text-sm text-neutral-300">{hw.title}</span>
-                  <span className="text-[10px] text-neutral-600 uppercase ml-auto">
-                    {HW_STATUS_LABEL[hw.status]}
-                  </span>
+                  <span className="text-[10px] text-neutral-600 uppercase ml-auto">{HW_STATUS_LABEL[hw.status]}</span>
                 </div>
               </button>
             ))}
@@ -939,9 +1338,7 @@ function HomeworkDetailView({
   if (!homework) {
     return (
       <div className="text-neutral-500">
-        <button onClick={onBack} className="text-sm hover:text-neutral-300 transition-colors mb-4">
-          &larr; Назад
-        </button>
+        <button onClick={onBack} className="text-sm hover:text-neutral-300 transition-colors mb-4">&larr; Назад</button>
         <p>Домашнее задание не найдено</p>
       </div>
     );
@@ -949,10 +1346,7 @@ function HomeworkDetailView({
 
   return (
     <div className="max-w-2xl">
-      <button
-        onClick={onBack}
-        className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4"
-      >
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
         &larr; Назад к обзору
       </button>
 
@@ -969,25 +1363,32 @@ function HomeworkDetailView({
         >
           {HW_STATUS_LABEL[homework.status]}
         </span>
+        <span className="text-neutral-600 text-xs">{getStudentName(homework.studentId)}</span>
       </div>
 
       <h1 className="text-xl font-bold mb-1">{homework.title}</h1>
       <div className="text-neutral-500 text-sm mb-6">Срок: {formatDate(homework.dueDate)}</div>
 
-      {/* Description */}
       <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 mb-6 shadow-sm shadow-black/10">
-        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-          Задание
-        </h2>
+        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Задание</h2>
         <p className="text-neutral-300 text-sm leading-relaxed">{homework.description}</p>
       </div>
 
-      {/* Grade & comment */}
+      {/* File */}
+      {homework.file && (
+        <div className="mb-6">
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Файл</h2>
+          <div className="flex items-center gap-3 bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-2.5">
+            <span className="text-sm shrink-0">{FILE_ICON[homework.file.type]}</span>
+            <span className="text-sm text-neutral-300 flex-1">{homework.file.name}</span>
+            <button className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors">Открыть</button>
+          </div>
+        </div>
+      )}
+
       {homework.grade && (
         <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 shadow-sm shadow-black/10">
-          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-            Оценка
-          </h2>
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Оценка</h2>
           <div className="flex items-baseline gap-3">
             <span className="text-2xl font-bold text-neutral-200">{homework.grade}</span>
             {homework.comment && (
@@ -1000,10 +1401,169 @@ function HomeworkDetailView({
   );
 }
 
-// --- Utils ---
+function TaskDetailView({
+  task,
+  onBack,
+  toggleTaskChecked,
+  getEffectiveStatus,
+  sendTaskToChat,
+}: {
+  task: TeachingTask | undefined;
+  onBack: () => void;
+  toggleTaskChecked: (id: string) => void;
+  getEffectiveStatus: (task: TeachingTask) => TaskStatus;
+  sendTaskToChat: (task: TeachingTask) => void;
+}) {
+  if (!task) {
+    return (
+      <div className="text-neutral-500">
+        <button onClick={onBack} className="text-sm hover:text-neutral-300 transition-colors mb-4">&larr; Назад</button>
+        <p>Задача не найдена</p>
+      </div>
+    );
+  }
 
-function formatDate(dateStr: string): string {
-  const [, month, day] = dateStr.split('-');
-  const months = ['', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-  return `${parseInt(day, 10)} ${months[parseInt(month, 10)]}`;
+  const pColor = PRIORITY_COLORS[task.priority];
+  const effectiveStatus = getEffectiveStatus(task);
+  const isDone = effectiveStatus === 'done';
+
+  return (
+    <div className="max-w-2xl">
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
+        &larr; Назад
+      </button>
+
+      {/* Header */}
+      <div className="flex items-start gap-3 mb-6">
+        <button
+          onClick={() => toggleTaskChecked(task.id)}
+          className={`w-5 h-5 mt-1 rounded border shrink-0 flex items-center justify-center transition-colors ${
+            isDone ? 'bg-emerald-600 border-emerald-600' : 'border-neutral-600 hover:border-neutral-400'
+          }`}
+        >
+          {isDone && (
+            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </button>
+        <div className="flex-1">
+          <h1 className={`text-xl font-bold ${isDone ? 'text-neutral-500 line-through' : ''}`}>{task.title}</h1>
+          <div className="flex items-center gap-3 mt-1">
+            <span className={`text-xs px-2 py-0.5 rounded ${pColor.badge}`}>{pColor.label}</span>
+            <span className={`text-xs ${STATUS_COLORS[effectiveStatus]}`}>{STATUS_LABEL[effectiveStatus]}</span>
+            <span className="text-xs text-neutral-600">{getStudentName(task.studentId)}</span>
+            {task.deadline && (
+              <span className="text-xs text-neutral-600">Дедлайн: {formatDate(task.deadline)}</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Context */}
+      <div className="mb-6">
+        <h2 className="text-sm font-semibold text-neutral-300 mb-2">Контекст</h2>
+        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3">
+          <p className="text-sm text-neutral-400 leading-relaxed">{task.context}</p>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-3">
+        <button
+          onClick={() => sendTaskToChat(task)}
+          className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+        >
+          Отправить боту
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AddStudentView({
+  form,
+  onChange,
+  onBack,
+}: {
+  form: { name: string; subject: string; level: StudentLevel; days: string; time: string };
+  onChange: (f: { name: string; subject: string; level: StudentLevel; days: string; time: string }) => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="max-w-md">
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
+        &larr; Назад
+      </button>
+
+      <h1 className="text-2xl font-bold mb-6">Новый ученик</h1>
+
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Имя</label>
+          <input
+            type="text"
+            value={form.name}
+            onChange={(e) => onChange({ ...form, name: e.target.value })}
+            placeholder="Имя Фамилия"
+            className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Предмет</label>
+          <input
+            type="text"
+            value={form.subject}
+            onChange={(e) => onChange({ ...form, subject: e.target.value })}
+            placeholder="Python, Информатика (ЕГЭ)..."
+            className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Уровень</label>
+          <select
+            value={form.level}
+            onChange={(e) => onChange({ ...form, level: e.target.value as StudentLevel })}
+            className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+          >
+            <option value="beginner">Начальный</option>
+            <option value="intermediate">Средний</option>
+            <option value="advanced">Продвинутый</option>
+          </select>
+        </div>
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Дни</label>
+            <input
+              type="text"
+              value={form.days}
+              onChange={(e) => onChange({ ...form, days: e.target.value })}
+              placeholder="Вт, Сб"
+              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Время</label>
+            <input
+              type="text"
+              value={form.time}
+              onChange={(e) => onChange({ ...form, time: e.target.value })}
+              placeholder="17:00"
+              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+            />
+          </div>
+        </div>
+
+        <button className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors">
+          Сохранить
+        </button>
+
+        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-3 mt-4">
+          <p className="text-xs text-neutral-500">
+            Или скажите боту: <span className="text-neutral-400">"Добавь ученика Петю, физика, beginner"</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
+import type { TaskStatus } from '@mark2/shared';
 
 // --- Types ---
 
@@ -8,6 +9,7 @@ type WorkoutStatus = 'done' | 'planned';
 type SectionId = 'workouts' | 'nutrition' | 'stats' | 'sleep';
 type MealSlot = 'breakfast' | 'lunch' | 'snack' | 'dinner';
 type Feeling = 1 | 2 | 3 | 4 | 5;
+type Priority = 'low' | 'medium' | 'high';
 
 interface Exercise {
   name: string;
@@ -49,6 +51,15 @@ interface DayNutrition {
   targetCarbs: number;
 }
 
+interface HealthTask {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  priority: Priority;
+  context: string;
+  deadline: string | null;
+}
+
 // --- Constants ---
 
 const SECTIONS: Array<{ id: SectionId; icon: string; label: string }> = [
@@ -72,6 +83,12 @@ const MEAL_SLOT_LABEL: Record<MealSlot, string> = {
 };
 
 const FEELING_LABELS = ['', 'Ужасно', 'Плохо', 'Нормально', 'Хорошо', 'Отлично'];
+
+const PRIORITY_COLORS: Record<Priority, { border: string; badge: string; label: string }> = {
+  high: { border: 'border-l-red-500', badge: 'bg-red-500/20 text-red-400', label: 'High' },
+  medium: { border: 'border-l-yellow-500', badge: 'bg-yellow-500/20 text-yellow-400', label: 'Medium' },
+  low: { border: 'border-l-neutral-600', badge: 'bg-neutral-700/50 text-neutral-400', label: 'Low' },
+};
 
 // --- Mock Data ---
 
@@ -236,6 +253,43 @@ const PAST_DAYS_NUTRITION: Array<{ date: string; calories: number; status: strin
   { date: '2026-03-15', calories: 2100, status: 'Дефицит' },
 ];
 
+const MOCK_HEALTH_TASKS: HealthTask[] = [
+  {
+    id: 'ht1',
+    title: 'Сходить в зал — грудь+трицепс',
+    status: 'todo',
+    priority: 'high',
+    context: 'Тренировка на грудь и трицепс, увеличить вес в жиме',
+    deadline: '2026-03-22',
+  },
+  {
+    id: 'ht2',
+    title: 'Пробежать 7км',
+    status: 'todo',
+    priority: 'medium',
+    context: 'Длинный бег в парке, целевой темп 5:30',
+    deadline: '2026-03-24',
+  },
+  {
+    id: 'ht3',
+    title: 'Купить протеин',
+    status: 'todo',
+    priority: 'low',
+    context: 'Заказать сывороточный протеин, шоколадный вкус',
+    deadline: null,
+  },
+];
+
+const WEEKLY_WORKOUTS = [3, 4, 3, 2]; // workouts per week
+const WEEKLY_WORKOUT_LABELS = ['1-7 мар', '8-14 мар', '15-21 мар', '22-28 мар'];
+const WEIGHT_PROGRESS = [
+  { week: '24 фев', weight: 78.0 },
+  { week: '3 мар', weight: 77.5 },
+  { week: '10 мар', weight: 77.2 },
+  { week: '17 мар', weight: 76.8 },
+  { week: '21 мар', weight: 76.5 },
+];
+
 // --- Helpers ---
 
 function formatDate(dateStr: string): string {
@@ -272,6 +326,7 @@ export function Health() {
     return Math.min(400, Math.max(200, Math.round(window.innerWidth * 0.2)));
   });
   const isDraggingSidebar = useRef(false);
+  const [taskChecked, setTaskChecked] = useState<Record<string, boolean>>({});
 
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
@@ -283,6 +338,26 @@ export function Health() {
       case 'nutrition': setMainView({ kind: 'nutrition-overview' }); break;
       case 'stats': setMainView({ kind: 'stats-dashboard' }); break;
       case 'sleep': setMainView({ kind: 'sleep-overview' }); break;
+    }
+  }, []);
+
+  const toggleTaskChecked = useCallback((taskId: string) => {
+    setTaskChecked((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
+  }, []);
+
+  const getEffectiveStatus = useCallback((task: HealthTask): TaskStatus => {
+    if (taskChecked[task.id]) return 'done';
+    return task.status;
+  }, [taskChecked]);
+
+  const sendTaskToChat = useCallback((task: HealthTask) => {
+    const text = `Выполни задачу: ${task.title}\n${task.context}`;
+    const inputEl = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Message..."]');
+    if (inputEl) {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+      nativeInputValueSetter?.call(inputEl, text);
+      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      inputEl.focus();
     }
   }, []);
 
@@ -340,8 +415,55 @@ export function Health() {
             ))}
           </nav>
 
+          <div className="mx-3 border-t border-neutral-800 mt-2" />
+
+          {/* Tasks */}
+          <div className="px-3 pt-3 pb-2">
+            <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+              Задачи
+            </div>
+            <div className="space-y-1">
+              {MOCK_HEALTH_TASKS.map((task) => {
+                const effectiveStatus = getEffectiveStatus(task);
+                const pColor = PRIORITY_COLORS[task.priority];
+                const isDone = effectiveStatus === 'done';
+                return (
+                  <div
+                    key={task.id}
+                    className={`flex items-center gap-1.5 text-xs py-1 px-2 rounded border-l-2 ${pColor.border} hover:bg-neutral-800/50 transition-colors`}
+                  >
+                    <button
+                      onClick={() => toggleTaskChecked(task.id)}
+                      className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center transition-colors ${
+                        isDone ? 'bg-emerald-600 border-emerald-600' : 'border-neutral-600 hover:border-neutral-400'
+                      }`}
+                    >
+                      {isDone && (
+                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                    <span className={`truncate flex-1 ${isDone ? 'text-neutral-500 line-through' : 'text-neutral-400'}`}>
+                      {task.title}
+                    </span>
+                    <button
+                      onClick={() => sendTaskToChat(task)}
+                      className="text-neutral-600 hover:text-blue-400 transition-colors shrink-0"
+                      title="Отправить боту"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+                      </svg>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Section-specific sidebar content */}
-          <div className="flex-1 overflow-hidden flex flex-col mt-2">
+          <div className="flex-1 overflow-hidden flex flex-col">
             <div className="mx-3 border-t border-neutral-800" />
 
             <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
@@ -474,6 +596,7 @@ function WorkoutsSidebar({
 
 function NutritionSidebar() {
   const cals = totalCalories(TODAY_NUTRITION.meals);
+  const maxCal = Math.max(...WEEKLY_CALORIES);
 
   return (
     <>
@@ -538,6 +661,35 @@ function NutritionSidebar() {
               </span>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="mx-3 border-t border-neutral-800" />
+
+      {/* Mini calories chart */}
+      <div className="px-3 pt-3 pb-2">
+        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+          Калории за неделю
+        </div>
+        <div className="flex items-end gap-1 h-16">
+          {WEEKLY_CALORIES.map((cal, i) => {
+            const height = (cal / maxCal) * 100;
+            return (
+              <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                <div
+                  className={`w-full rounded-t transition-all ${
+                    cal > TODAY_NUTRITION.targetCalories
+                      ? 'bg-red-500/60'
+                      : cal < 2000
+                        ? 'bg-yellow-500/60'
+                        : 'bg-emerald-500/60'
+                  }`}
+                  style={{ height: `${height}%` }}
+                />
+                <span className="text-[9px] text-neutral-600">{WEEKLY_DAYS[i]}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </>
@@ -888,18 +1040,34 @@ function StatsDashboard() {
   const gymCount = monthWorkouts.filter((w) => w.type === 'gym').length;
   const runCount = monthWorkouts.filter((w) => w.type === 'run').length;
   const totalTime = monthWorkouts.reduce((s, w) => s + w.duration, 0);
+  const maxWeeklyWorkout = Math.max(...WEEKLY_WORKOUTS);
+  const maxWeeklyCal = Math.max(...WEEKLY_CALORIES);
+  const weightMin = Math.min(...WEIGHT_PROGRESS.map((p) => p.weight));
+  const weightMax = Math.max(...WEIGHT_PROGRESS.map((p) => p.weight));
+  const weightRange = weightMax - weightMin || 1;
 
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold mb-6">Статистика</h1>
 
-      {/* Monthly stats */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      {/* Top stat cards */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
         <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 shadow-sm shadow-black/10">
-          <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">Тренировок в марте</div>
+          <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">Тренировок за месяц</div>
           <div className="text-3xl font-bold text-neutral-200">{monthWorkouts.length}</div>
-          <div className="text-[11px] text-emerald-400 mt-1">+2 vs прошлый месяц</div>
         </div>
+        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 shadow-sm shadow-black/10">
+          <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">Средний калораж</div>
+          <div className="text-3xl font-bold text-neutral-200">{avgCalories}</div>
+        </div>
+        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 shadow-sm shadow-black/10">
+          <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">Дней без пропуска</div>
+          <div className="text-3xl font-bold text-emerald-400">5</div>
+        </div>
+      </div>
+
+      {/* Monthly detail cards */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
         <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 shadow-sm shadow-black/10">
           <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">Общее время</div>
           <div className="text-3xl font-bold text-neutral-200">{totalTime}</div>
@@ -912,14 +1080,126 @@ function StatsDashboard() {
           </div>
           <div className="text-[11px] text-neutral-500 mt-1">тренировок</div>
         </div>
-        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 shadow-sm shadow-black/10">
-          <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">Ср. калории/день</div>
-          <div className="text-3xl font-bold text-neutral-200">{avgCalories}</div>
-          <div className={`text-[11px] mt-1 ${
-            avgCalories < TODAY_NUTRITION.targetCalories ? 'text-yellow-400' : 'text-emerald-400'
-          }`}>
-            Цель: {TODAY_NUTRITION.targetCalories}
+      </div>
+
+      {/* Workouts by week bar chart */}
+      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
+        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-4">
+          Тренировки по неделям
+        </h2>
+        <div className="flex items-end gap-3 h-32">
+          {WEEKLY_WORKOUTS.map((count, i) => {
+            const height = (count / maxWeeklyWorkout) * 100;
+            const isLast = i === WEEKLY_WORKOUTS.length - 1;
+            return (
+              <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                <span className="text-xs font-bold text-neutral-300">{count}</span>
+                <div
+                  className={`w-full rounded-t transition-all ${
+                    isLast ? 'bg-blue-500/40 border border-dashed border-blue-500/60' : 'bg-blue-500/60'
+                  }`}
+                  style={{ height: `${height}%` }}
+                />
+                <span className="text-[10px] text-neutral-600 text-center">{WEEKLY_WORKOUT_LABELS[i]}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-4 mt-3 text-[10px] text-neutral-600">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-2 bg-blue-500/60 rounded-sm" />
+            <span>Выполнено</span>
           </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-2 bg-blue-500/40 border border-dashed border-blue-500/60 rounded-sm" />
+            <span>Запланировано</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Calories by day bar chart */}
+      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
+        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-4">
+          Калории за неделю (по дням)
+        </h2>
+        <div className="flex items-end gap-2 h-32">
+          {WEEKLY_CALORIES.map((cal, i) => {
+            const height = (cal / maxWeeklyCal) * 100;
+            return (
+              <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                <span className="text-[10px] text-neutral-500">{cal}</span>
+                <div
+                  className={`w-full rounded-t transition-all ${
+                    cal > TODAY_NUTRITION.targetCalories
+                      ? 'bg-red-500/60'
+                      : cal < 2000
+                        ? 'bg-yellow-500/60'
+                        : 'bg-emerald-500/60'
+                  }`}
+                  style={{ height: `${height}%` }}
+                />
+                <span className="text-[10px] text-neutral-600">{WEEKLY_DAYS[i]}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2 mt-2 text-[10px] text-neutral-600">
+          <div className="w-3 h-0.5 bg-neutral-600" />
+          <span>Цель: {TODAY_NUTRITION.targetCalories} ккал</span>
+        </div>
+      </div>
+
+      {/* Weight progress chart */}
+      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
+        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+          Прогресс по весу
+        </h2>
+        <div className="flex items-baseline gap-3 mb-4">
+          <span className="text-2xl font-bold text-neutral-200">{WEIGHT_PROGRESS[WEIGHT_PROGRESS.length - 1].weight} кг</span>
+          <span className="text-xs text-emerald-400">
+            -{(WEIGHT_PROGRESS[0].weight - WEIGHT_PROGRESS[WEIGHT_PROGRESS.length - 1].weight).toFixed(1)} кг за период
+          </span>
+        </div>
+        <div className="relative h-24 flex items-end">
+          {/* Connecting lines + dots */}
+          <div className="absolute inset-0 flex items-stretch">
+            {WEIGHT_PROGRESS.map((point, i) => {
+              const yPct = ((weightMax - point.weight) / weightRange) * 70 + 10; // 10-80% range
+              const nextPoint = WEIGHT_PROGRESS[i + 1];
+              const nextYPct = nextPoint ? ((weightMax - nextPoint.weight) / weightRange) * 70 + 10 : 0;
+              const leftPct = (i / (WEIGHT_PROGRESS.length - 1)) * 100;
+
+              return (
+                <div key={i} className="absolute" style={{ left: `${leftPct}%`, top: `${yPct}%`, transform: 'translate(-50%, -50%)' }}>
+                  {/* Dot */}
+                  <div className="w-3 h-3 rounded-full bg-emerald-500 border-2 border-neutral-900 relative z-10" />
+                  {/* Weight label */}
+                  <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] text-neutral-400 whitespace-nowrap">
+                    {point.weight}
+                  </div>
+                  {/* Connecting line to next point */}
+                  {nextPoint && (
+                    <div
+                      className="absolute top-1/2 left-1/2 h-0.5 bg-emerald-500/40 origin-left z-0"
+                      style={{
+                        width: `${100 / (WEIGHT_PROGRESS.length - 1)}cqi`,
+                        transform: `rotate(${Math.atan2(
+                          (nextYPct - yPct) * 0.96,
+                          100 / (WEIGHT_PROGRESS.length - 1)
+                        ) * (180 / Math.PI)}deg)`,
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {/* Week labels */}
+        <div className="flex justify-between mt-2">
+          {WEIGHT_PROGRESS.map((point, i) => (
+            <span key={i} className="text-[10px] text-neutral-600">{point.week}</span>
+          ))}
         </div>
       </div>
 
@@ -950,18 +1230,6 @@ function StatsDashboard() {
             );
           })}
         </div>
-      </div>
-
-      {/* Weight progress placeholder */}
-      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
-        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
-          Прогресс по весу
-        </h2>
-        <div className="flex items-baseline gap-3">
-          <span className="text-2xl font-bold text-neutral-200">75.2 кг</span>
-          <span className="text-xs text-emerald-400">-1.3 кг за месяц</span>
-        </div>
-        <div className="text-xs text-neutral-500 mt-1">Цель: 73 кг</div>
       </div>
 
       <button className="px-4 py-2 bg-blue-600/20 border border-blue-500/30 rounded-lg text-sm text-blue-300 hover:bg-blue-600/30 transition-colors">
