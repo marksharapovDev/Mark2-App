@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import type { TaskStatus } from '@mark2/shared';
-import { ArrowDownCircle, ArrowUpCircle, PieChart, TrendingUp, Utensils, Bus, Clapperboard, Smartphone, Home, Package, BookOpen, Code, Building2, Banknote, Laptop, Shield } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, PieChart, TrendingUp, Utensils, Bus, Clapperboard, Smartphone, Home, Package, BookOpen, Code, Building2, Banknote, Laptop, Shield, Loader2 } from 'lucide-react';
 
 // --- Types ---
 
@@ -152,6 +152,32 @@ const SAVINGS_TREND = [
   { month: 'Мар', amount: 85000 },
 ];
 
+// --- DB Mappers ---
+
+const PRIORITY_FROM_INT: Record<number, Priority> = { 0: 'low', 1: 'medium', 2: 'high' };
+
+function mapDbTransactionToLocal(t: Record<string, unknown>): Transaction {
+  return {
+    id: String(t.id),
+    date: t.date ? String(t.date) : new Date().toISOString().slice(0, 10),
+    amount: Number(t.amount) ?? 0,
+    description: String(t.description ?? ''),
+    category: (String((t as Record<string, unknown>).category ?? 'other')) as ExpenseCategory,
+  };
+}
+
+function mapDbTaskToFinance(t: Record<string, unknown>): FinanceTask {
+  const dueDate = t.dueDate ? new Date(t.dueDate as string).toISOString().slice(0, 10) : null;
+  return {
+    id: String(t.id),
+    title: String(t.title),
+    status: (t.status as TaskStatus) ?? 'todo',
+    priority: PRIORITY_FROM_INT[t.priority as number] ?? 'low',
+    context: String(t.description ?? ''),
+    deadline: dueDate,
+  };
+}
+
 // --- Helpers ---
 
 function formatDate(dateStr: string): string {
@@ -166,14 +192,14 @@ function formatMoney(amount: number): string {
   return amount.toLocaleString('ru-RU') + ' \u20BD';
 }
 
-function spentByCategory(category: ExpenseCategory): number {
-  return MOCK_TRANSACTIONS
+function spentByCategory(category: ExpenseCategory, txns: Transaction[]): number {
+  return txns
     .filter((t) => t.category === category)
     .reduce((s, t) => s + t.amount, 0);
 }
 
-function totalExpenses(): number {
-  return MOCK_TRANSACTIONS.reduce((s, t) => s + t.amount, 0);
+function totalExpenses(txns: Transaction[]): number {
+  return txns.reduce((s, t) => s + t.amount, 0);
 }
 
 function totalIncome(): number {
@@ -201,6 +227,13 @@ export function Finance() {
   const [taskChecked, setTaskChecked] = useState<Record<string, boolean>>({});
   const isDraggingSidebar = useRef(false);
 
+  // DB state
+  const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
+  const [financeTasks, setFinanceTasks] = useState<FinanceTask[]>(MOCK_FINANCE_TASKS);
+  const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
+
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
 
@@ -212,6 +245,38 @@ export function Finance() {
       case 'budget': setMainView({ kind: 'budget' }); break;
       case 'analytics': setMainView({ kind: 'analytics' }); break;
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadData() {
+      try {
+        const [dbTransactions, dbTasks] = await Promise.all([
+          window.db.transactions.list('2026-03'),
+          window.db.tasks.list('finance'),
+        ]);
+        if (cancelled) return;
+        if (dbTransactions.length > 0 || dbTasks.length > 0) {
+          if (dbTransactions.length > 0) {
+            setTransactions(dbTransactions.map((t) => mapDbTransactionToLocal(t as unknown as Record<string, unknown>)));
+          }
+          if (dbTasks.length > 0) {
+            setFinanceTasks(dbTasks.map((t) => mapDbTaskToFinance(t as unknown as Record<string, unknown>)));
+          }
+          setIsDemo(false);
+        } else {
+          setIsDemo(true);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+        setIsDemo(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    loadData();
+    return () => { cancelled = true; };
   }, []);
 
   const handleSidebarDragStart = useCallback(() => {
@@ -237,8 +302,16 @@ export function Finance() {
   }, []);
 
   const toggleTaskChecked = useCallback((taskId: string) => {
-    setTaskChecked((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
-  }, []);
+    setTaskChecked((prev) => {
+      const newChecked = !prev[taskId];
+      // Persist to DB (fire-and-forget)
+      if (!isDemo) {
+        const newStatus = newChecked ? 'done' : 'todo';
+        window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
+      }
+      return { ...prev, [taskId]: newChecked };
+    });
+  }, [isDemo]);
 
   const getEffectiveStatus = useCallback((task: FinanceTask): TaskStatus => {
     if (taskChecked[task.id]) return 'done';
@@ -329,7 +402,7 @@ export function Finance() {
               Задачи
             </div>
             <div className="space-y-1">
-              {MOCK_FINANCE_TASKS.map((task) => {
+              {financeTasks.map((task) => {
                 const effectiveStatus = getEffectiveStatus(task);
                 const pColor = PRIORITY_COLORS[task.priority];
                 const isDone = effectiveStatus === 'done';
@@ -379,10 +452,11 @@ export function Finance() {
               {activeSection === 'expenses' && (
                 <ExpensesSidebar
                   onTransactionClick={(cat) => setMainView({ kind: 'expenses', filter: cat })}
+                  transactions={transactions}
                 />
               )}
               {activeSection === 'income' && <IncomeSidebar />}
-              {activeSection === 'budget' && <BudgetSidebar />}
+              {activeSection === 'budget' && <BudgetSidebar transactions={transactions} />}
               {activeSection === 'analytics' && (
                 <div className="px-3 pt-3 pb-2 text-xs text-neutral-500">
                   Аналитика отображается в основной области
@@ -400,15 +474,31 @@ export function Finance() {
 
         {/* === MAIN CONTENT === */}
         <main className="flex-1 overflow-auto p-6">
-          {mainView.kind === 'expenses' && (
+          {loading && (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 size={24} className="animate-spin text-neutral-500" />
+            </div>
+          )}
+          {dbError && (
+            <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+              {dbError}
+            </div>
+          )}
+          {isDemo && !loading && (
+            <div className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
+              Demo data — БД недоступна или пуста
+            </div>
+          )}
+          {!loading && mainView.kind === 'expenses' && (
             <ExpensesMain
               filter={mainView.filter}
               onFilterChange={(f) => setMainView({ kind: 'expenses', filter: f })}
+              transactions={transactions}
             />
           )}
-          {mainView.kind === 'income' && <IncomeMain />}
-          {mainView.kind === 'budget' && <BudgetMain />}
-          {mainView.kind === 'analytics' && <AnalyticsMain />}
+          {!loading && mainView.kind === 'income' && <IncomeMain />}
+          {!loading && mainView.kind === 'budget' && <BudgetMain transactions={transactions} />}
+          {!loading && mainView.kind === 'analytics' && <AnalyticsMain transactions={transactions} />}
         </main>
       </div>
     </MainLayout>
@@ -429,7 +519,7 @@ function ProgressBar({ value, max, color, warn }: { value: number; max: number; 
 
 // --- Sidebar sub-components ---
 
-function ExpensesSidebar({ onTransactionClick }: { onTransactionClick: (cat: ExpenseCategory | 'all') => void }) {
+function ExpensesSidebar({ onTransactionClick, transactions }: { onTransactionClick: (cat: ExpenseCategory | 'all') => void; transactions: Transaction[] }) {
   return (
     <>
       {/* Summary */}
@@ -437,7 +527,7 @@ function ExpensesSidebar({ onTransactionClick }: { onTransactionClick: (cat: Exp
         <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
           Март — итого
         </div>
-        <div className="text-lg font-bold text-red-400">{formatMoney(totalExpenses())}</div>
+        <div className="text-lg font-bold text-red-400">{formatMoney(totalExpenses(transactions))}</div>
       </div>
 
       <div className="mx-3 border-t border-neutral-800" />
@@ -448,7 +538,7 @@ function ExpensesSidebar({ onTransactionClick }: { onTransactionClick: (cat: Exp
           Последние траты
         </div>
         <div className="space-y-0.5">
-          {MOCK_TRANSACTIONS.slice(0, 10).map((t) => (
+          {transactions.slice(0, 10).map((t) => (
             <button
               key={t.id}
               onClick={() => onTransactionClick(t.category)}
@@ -510,7 +600,7 @@ function IncomeSidebar() {
   );
 }
 
-function BudgetSidebar() {
+function BudgetSidebar({ transactions }: { transactions: Transaction[] }) {
   return (
     <div className="px-3 pt-3 pb-2">
       <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
@@ -518,7 +608,7 @@ function BudgetSidebar() {
       </div>
       <div className="space-y-3">
         {MOCK_BUDGET.map((b) => {
-          const spent = spentByCategory(b.category);
+          const spent = spentByCategory(b.category, transactions);
           const meta = EXPENSE_CATEGORY_META[b.category];
           return (
             <div key={b.category}>
@@ -544,13 +634,15 @@ function BudgetSidebar() {
 function ExpensesMain({
   filter,
   onFilterChange,
+  transactions,
 }: {
   filter: ExpenseCategory | 'all';
   onFilterChange: (f: ExpenseCategory | 'all') => void;
+  transactions: Transaction[];
 }) {
   const filtered = filter === 'all'
-    ? MOCK_TRANSACTIONS
-    : MOCK_TRANSACTIONS.filter((t) => t.category === filter);
+    ? transactions
+    : transactions.filter((t) => t.category === filter);
   const filteredTotal = filtered.reduce((s, t) => s + t.amount, 0);
 
   const filters: Array<{ value: ExpenseCategory | 'all'; label: string }> = [
@@ -572,7 +664,7 @@ function ExpensesMain({
           <span className="text-3xl font-bold text-red-400">{formatMoney(filteredTotal)}</span>
           {filter !== 'all' && (
             <span className="text-sm text-neutral-500">
-              из {formatMoney(totalExpenses())} общих
+              из {formatMoney(totalExpenses(transactions))} общих
             </span>
           )}
         </div>
@@ -682,9 +774,9 @@ function IncomeMain() {
   );
 }
 
-function BudgetMain() {
+function BudgetMain({ transactions }: { transactions: Transaction[] }) {
   const totalBudget = MOCK_BUDGET.reduce((s, b) => s + b.limit, 0);
-  const totalSpent = MOCK_BUDGET.reduce((s, b) => s + spentByCategory(b.category), 0);
+  const totalSpent = MOCK_BUDGET.reduce((s, b) => s + spentByCategory(b.category, transactions), 0);
 
   return (
     <div className="max-w-2xl">
@@ -711,7 +803,7 @@ function BudgetMain() {
       {/* Category budgets */}
       <div className="space-y-3">
         {MOCK_BUDGET.map((b) => {
-          const spent = spentByCategory(b.category);
+          const spent = spentByCategory(b.category, transactions);
           const meta = EXPENSE_CATEGORY_META[b.category];
           const pct = Math.round((spent / b.limit) * 100);
           const over = spent > b.limit;
@@ -753,8 +845,8 @@ function BudgetMain() {
   );
 }
 
-function AnalyticsMain() {
-  const expenses = totalExpenses();
+function AnalyticsMain({ transactions }: { transactions: Transaction[] }) {
+  const expenses = totalExpenses(transactions);
   const income = totalIncome();
   const balance = income - expenses;
   const saved = 85000;
@@ -762,7 +854,7 @@ function AnalyticsMain() {
   // Spending by category
   const categoryData = (Object.keys(EXPENSE_CATEGORY_META) as ExpenseCategory[]).map((cat) => ({
     category: cat,
-    amount: spentByCategory(cat),
+    amount: spentByCategory(cat, transactions),
   })).filter((d) => d.amount > 0).sort((a, b) => b.amount - a.amount);
 
   const maxCategoryAmount = Math.max(...categoryData.map((d) => d.amount));

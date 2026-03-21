@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import type { TaskStatus } from '@mark2/shared';
-import { Dumbbell, UtensilsCrossed, BarChart3, Moon, PersonStanding, Waves, CheckCircle2, Clock, Star } from 'lucide-react';
+import { Dumbbell, UtensilsCrossed, BarChart3, Moon, PersonStanding, Waves, CheckCircle2, Clock, Star, Loader2 } from 'lucide-react';
 
 // --- Types ---
 
@@ -291,6 +291,35 @@ const WEIGHT_PROGRESS = [
   { week: '21 мар', weight: 76.5 },
 ];
 
+// --- DB Mappers ---
+
+const PRIORITY_FROM_INT: Record<number, Priority> = { 0: 'low', 1: 'medium', 2: 'high' };
+
+function mapDbWorkoutToLocal(w: Record<string, unknown>): Workout {
+  return {
+    id: String(w.id),
+    date: w.date ? String(w.date) : new Date().toISOString().slice(0, 10),
+    type: (w.type as WorkoutType) ?? 'gym',
+    label: String((w.notes as string) ?? (w.type as string) ?? 'Тренировка'),
+    duration: (w.duration as number) ?? 0,
+    status: 'done',
+    exercises: Array.isArray(w.exercises) ? (w.exercises as Exercise[]) : undefined,
+    notes: w.notes ? String(w.notes) : undefined,
+  };
+}
+
+function mapDbTaskToHealth(t: Record<string, unknown>): HealthTask {
+  const dueDate = t.dueDate ? new Date(t.dueDate as string).toISOString().slice(0, 10) : null;
+  return {
+    id: String(t.id),
+    title: String(t.title),
+    status: (t.status as TaskStatus) ?? 'todo',
+    priority: PRIORITY_FROM_INT[t.priority as number] ?? 'low',
+    context: String(t.description ?? ''),
+    deadline: dueDate,
+  };
+}
+
 // --- Helpers ---
 
 function formatDate(dateStr: string): string {
@@ -331,8 +360,47 @@ export function Health() {
   const isDraggingSidebar = useRef(false);
   const [taskChecked, setTaskChecked] = useState<Record<string, boolean>>({});
 
+  // DB state
+  const [workouts, setWorkouts] = useState<Workout[]>(MOCK_WORKOUTS);
+  const [healthTasks, setHealthTasks] = useState<HealthTask[]>(MOCK_HEALTH_TASKS);
+  const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
+
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadData() {
+      try {
+        const [dbWorkouts, dbTasks] = await Promise.all([
+          window.db.workouts.list(),
+          window.db.tasks.list('health'),
+        ]);
+        if (cancelled) return;
+        if (dbWorkouts.length > 0 || dbTasks.length > 0) {
+          if (dbWorkouts.length > 0) {
+            setWorkouts(dbWorkouts.map((w) => mapDbWorkoutToLocal(w as unknown as Record<string, unknown>)));
+          }
+          if (dbTasks.length > 0) {
+            setHealthTasks(dbTasks.map((t) => mapDbTaskToHealth(t as unknown as Record<string, unknown>)));
+          }
+          setIsDemo(false);
+        } else {
+          setIsDemo(true);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+        setIsDemo(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    loadData();
+    return () => { cancelled = true; };
+  }, []);
 
   const selectSection = useCallback((id: SectionId) => {
     setActiveSection(id);
@@ -345,8 +413,15 @@ export function Health() {
   }, []);
 
   const toggleTaskChecked = useCallback((taskId: string) => {
-    setTaskChecked((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
-  }, []);
+    setTaskChecked((prev) => {
+      const newChecked = !prev[taskId];
+      if (!isDemo) {
+        const newStatus = newChecked ? 'done' : 'todo';
+        window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
+      }
+      return { ...prev, [taskId]: newChecked };
+    });
+  }, [isDemo]);
 
   const getEffectiveStatus = useCallback((task: HealthTask): TaskStatus => {
     if (taskChecked[task.id]) return 'done';
@@ -386,8 +461,8 @@ export function Health() {
     document.addEventListener('mouseup', onUp);
   }, []);
 
-  const doneWorkouts = MOCK_WORKOUTS.filter((w) => w.status === 'done');
-  const plannedWorkouts = MOCK_WORKOUTS.filter((w) => w.status === 'planned');
+  const doneWorkouts = workouts.filter((w) => w.status === 'done');
+  const plannedWorkouts = workouts.filter((w) => w.status === 'planned');
 
   return (
     <MainLayout agent="health" noPadding defaultChatWidthPct={30}>
@@ -426,7 +501,7 @@ export function Health() {
               Задачи
             </div>
             <div className="space-y-1">
-              {MOCK_HEALTH_TASKS.map((task) => {
+              {healthTasks.map((task) => {
                 const effectiveStatus = getEffectiveStatus(task);
                 const pColor = PRIORITY_COLORS[task.priority];
                 const isDone = effectiveStatus === 'done';
@@ -500,22 +575,37 @@ export function Health() {
 
         {/* === MAIN CONTENT === */}
         <main className="flex-1 overflow-auto p-6">
-          {mainView.kind === 'workouts-overview' && (
+          {loading && (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 size={24} className="animate-spin text-neutral-500" />
+            </div>
+          )}
+          {dbError && (
+            <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+              {dbError}
+            </div>
+          )}
+          {isDemo && !loading && (
+            <div className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
+              Demo data — БД недоступна или пуста
+            </div>
+          )}
+          {!loading && mainView.kind === 'workouts-overview' && (
             <WorkoutsOverview
               doneWorkouts={doneWorkouts}
               plannedWorkouts={plannedWorkouts}
               onWorkoutClick={(id) => setMainView({ kind: 'workout-detail', workoutId: id })}
             />
           )}
-          {mainView.kind === 'workout-detail' && (
+          {!loading && mainView.kind === 'workout-detail' && (
             <WorkoutDetailView
-              workout={MOCK_WORKOUTS.find((w) => w.id === mainView.workoutId)}
+              workout={workouts.find((w) => w.id === mainView.workoutId)}
               onBack={() => setMainView({ kind: 'workouts-overview' })}
             />
           )}
-          {mainView.kind === 'nutrition-overview' && <NutritionOverview />}
-          {mainView.kind === 'stats-dashboard' && <StatsDashboard />}
-          {mainView.kind === 'sleep-overview' && <SleepOverview />}
+          {!loading && mainView.kind === 'nutrition-overview' && <NutritionOverview />}
+          {!loading && mainView.kind === 'stats-dashboard' && <StatsDashboard />}
+          {!loading && mainView.kind === 'sleep-overview' && <SleepOverview />}
         </main>
       </div>
     </MainLayout>

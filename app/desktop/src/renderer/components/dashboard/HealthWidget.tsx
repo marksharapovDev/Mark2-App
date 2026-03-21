@@ -1,13 +1,52 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dumbbell } from 'lucide-react';
 
-const LAST_WORKOUT = { date: '2026-03-20', type: 'Зал', label: 'Грудь + трицепс', duration: 65 };
+const MOCK_LAST_WORKOUT = { date: '2026-03-20', type: 'Зал', label: 'Грудь + трицепс', duration: 65 };
 const TODAY_CALORIES = 1400;
 const TARGET_CALORIES = 2500;
 
 export function HealthWidget() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [lastWorkout, setLastWorkout] = useState<{ date: string; type: string; label: string; duration: number }>(MOCK_LAST_WORKOUT);
   const pct = Math.round((TODAY_CALORIES / TARGET_CALORIES) * 100);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const result = await window.db.workouts.list();
+        if (cancelled) return;
+        if (result.length > 0) {
+          const sorted = [...result].sort((a, b) => b.date.localeCompare(a.date));
+          const w = sorted[0];
+          if (w) {
+            setLastWorkout({
+              date: w.date,
+              type: w.type ?? 'Зал',
+              label: w.notes ?? w.type ?? '',
+              duration: w.duration ?? 0,
+            });
+          }
+        }
+      } catch {
+        // keep mock data
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-neutral-900/50 border border-orange-500/10 rounded-xl p-5 flex items-center justify-center min-h-[140px]">
+        <div className="w-4 h-4 border-2 border-neutral-600 border-t-neutral-400 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="bg-neutral-900/50 border border-orange-500/10 rounded-xl p-5 flex flex-col">
@@ -20,10 +59,10 @@ export function HealthWidget() {
         <div>
           <span className="text-xs text-neutral-500">Последняя тренировка</span>
           <div className="text-xs text-neutral-300 mt-0.5">
-            {LAST_WORKOUT.type} &mdash; {LAST_WORKOUT.label}
+            {lastWorkout.type} &mdash; {lastWorkout.label}
           </div>
           <div className="text-[11px] text-neutral-500">
-            {formatDate(LAST_WORKOUT.date)} &middot; {LAST_WORKOUT.duration} мин
+            {formatDate(lastWorkout.date)} &middot; {lastWorkout.duration} мин
           </div>
         </div>
 

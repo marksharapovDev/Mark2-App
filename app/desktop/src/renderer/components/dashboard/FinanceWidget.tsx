@@ -1,13 +1,52 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wallet } from 'lucide-react';
 
 const MONTH_INCOME = 48000;
-const MONTH_EXPENSES = 31989;
-const TODAY_EXPENSES = 850;
+const MOCK_MONTH_EXPENSES = 31989;
+const MOCK_TODAY_EXPENSES = 850;
 
 export function FinanceWidget() {
   const navigate = useNavigate();
-  const balance = MONTH_INCOME - MONTH_EXPENSES;
+  const [loading, setLoading] = useState(true);
+  const [monthExpenses, setMonthExpenses] = useState(MOCK_MONTH_EXPENSES);
+  const [todayExpenses, setTodayExpenses] = useState(MOCK_TODAY_EXPENSES);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const result = await window.db.transactions.list('2026-03');
+        if (cancelled) return;
+        if (result.length > 0) {
+          const expenses = result.filter((t: { type: string }) => t.type === 'expense');
+          const total = expenses.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+          setMonthExpenses(total);
+          const today = new Date().toISOString().slice(0, 10);
+          const todayTotal = expenses
+            .filter((t: { date: string }) => t.date === today)
+            .reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+          setTodayExpenses(todayTotal);
+        }
+      } catch {
+        // keep mock data
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-neutral-900/50 border border-yellow-500/10 rounded-xl p-5 flex items-center justify-center min-h-[140px]">
+        <div className="w-4 h-4 border-2 border-neutral-600 border-t-neutral-400 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  const balance = MONTH_INCOME - monthExpenses;
 
   return (
     <div className="bg-neutral-900/50 border border-yellow-500/10 rounded-xl p-5 flex flex-col">
@@ -29,13 +68,13 @@ export function FinanceWidget() {
           <span className="text-[11px] text-neutral-400">
             <span className="text-emerald-400/80">{formatMoney(MONTH_INCOME)}</span>
             {' / '}
-            <span className="text-red-400/80">{formatMoney(MONTH_EXPENSES)}</span>
+            <span className="text-red-400/80">{formatMoney(monthExpenses)}</span>
           </span>
         </div>
 
         <div className="flex items-baseline justify-between">
           <span className="text-xs text-neutral-500">Сегодня потрачено</span>
-          <span className="text-xs text-red-400">{formatMoney(TODAY_EXPENSES)}</span>
+          <span className="text-xs text-red-400">{formatMoney(todayExpenses)}</span>
         </div>
       </div>
 

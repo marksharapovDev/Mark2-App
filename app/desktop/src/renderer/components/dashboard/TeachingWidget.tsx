@@ -1,12 +1,43 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
 
 const NEXT_LESSON = { student: 'Миша Козлов', subject: 'Информатика (ЕГЭ)', date: '2026-03-25', topic: 'Рекурсия' };
 const OVERDUE_HW = 1;
 const UPCOMING_HW = 2;
+const MOCK_STUDENT_COUNT = 3;
 
 export function TeachingWidget() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [studentCount, setStudentCount] = useState(MOCK_STUDENT_COUNT);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const result = await window.db.students.list();
+        if (cancelled) return;
+        if (result.length > 0) {
+          setStudentCount(result.length);
+        }
+      } catch {
+        // keep mock data
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-neutral-900/50 border border-green-500/10 rounded-xl p-5 flex items-center justify-center min-h-[140px]">
+        <div className="w-4 h-4 border-2 border-neutral-600 border-t-neutral-400 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="bg-neutral-900/50 border border-green-500/10 rounded-xl p-5 flex flex-col">
@@ -16,6 +47,11 @@ export function TeachingWidget() {
       </div>
 
       <div className="space-y-2 flex-1">
+        <div className="flex items-baseline justify-between">
+          <span className="text-xs text-neutral-500">Всего учеников</span>
+          <span className="text-sm font-bold text-green-400">{studentCount}</span>
+        </div>
+
         <div>
           <span className="text-xs text-neutral-500">Ближайший урок</span>
           <div className="text-xs text-neutral-300 mt-0.5">{NEXT_LESSON.student}</div>

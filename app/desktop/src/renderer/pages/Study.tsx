@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import type { TaskStatus } from '@mark2/shared';
-import { BookOpen, PenLine, ClipboardList, BarChart3, FileText, MapPin, NotebookText, CheckCircle2, Clock, Paperclip, RefreshCw } from 'lucide-react';
+import { BookOpen, PenLine, ClipboardList, BarChart3, FileText, MapPin, NotebookText, CheckCircle2, Clock, Paperclip, RefreshCw, Loader2 } from 'lucide-react';
 
 // --- Types ---
 
@@ -326,12 +326,24 @@ const MOCK_STUDY_TASKS: StudyTask[] = [
 
 // --- Helpers ---
 
-function getSubjectMaterials(subjectId: string): Material[] {
-  return MATERIALS.filter((m) => m.subjectId === subjectId);
+const PRIORITY_FROM_INT: Record<number, Priority> = { 0: 'low', 1: 'medium', 2: 'high' };
+
+function mapDbTaskToStudy(t: Record<string, unknown>): StudyTask {
+  const meta = (t.metadata ?? {}) as Record<string, unknown>;
+  const dueDate = t.dueDate ? new Date(t.dueDate as string).toISOString().slice(0, 10) : null;
+  return {
+    id: String(t.id),
+    subjectId: String(meta.subjectId ?? ''),
+    title: String(t.title),
+    status: (t.status as TaskStatus) ?? 'todo',
+    priority: PRIORITY_FROM_INT[t.priority as number] ?? 'low',
+    context: String(t.description ?? ''),
+    deadline: dueDate,
+  };
 }
 
-function getSubjectTasks(subjectId: string): StudyTask[] {
-  return MOCK_STUDY_TASKS.filter((t) => t.subjectId === subjectId);
+function getSubjectMaterials(subjectId: string): Material[] {
+  return MATERIALS.filter((m) => m.subjectId === subjectId);
 }
 
 function getSubjectName(subjectId: string): string {
@@ -455,16 +467,46 @@ export function Study() {
     description: '',
     deadline: '',
   });
+  // DB state
+  const [studyTasks, setStudyTasks] = useState<StudyTask[]>(MOCK_STUDY_TASKS);
+  const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
+
   const isDraggingSidebar = useRef(false);
 
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadData() {
+      try {
+        const dbTasks = await window.db.tasks.list('study');
+        if (cancelled) return;
+        if (dbTasks.length > 0) {
+          setStudyTasks(dbTasks.map((t) => mapDbTaskToStudy(t as unknown as Record<string, unknown>)));
+          setIsDemo(false);
+        } else {
+          setIsDemo(true);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+        setIsDemo(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    loadData();
+    return () => { cancelled = true; };
+  }, []);
+
   const courseSubjects = SUBJECTS.filter((s) => s.courseId === selectedCourseId);
   const subject = selectedSubjectId ? SUBJECTS.find((s) => s.id === selectedSubjectId) : null;
   const materials = subject ? getSubjectMaterials(subject.id) : [];
   const grouped = groupByCategory(materials);
-  const subjectTasks = subject ? getSubjectTasks(subject.id) : [];
+  const subjectTasks = subject ? studyTasks.filter((t) => t.subjectId === subject.id) : [];
   const deadlines = getUpcomingDeadlines(selectedCourseId);
 
   // General tab stats
@@ -474,7 +516,7 @@ export function Study() {
   );
   const totalInProgress = allMaterialsCurrent.filter((m) => m.status === 'in_progress').length;
   const totalDone = allMaterialsCurrent.filter((m) => m.status === 'done').length;
-  const allTasksTodo = MOCK_STUDY_TASKS.filter((t) => t.status === 'todo').length;
+  const allTasksTodo = studyTasks.filter((t) => t.status === 'todo').length;
 
   const selectSubject = useCallback((id: string) => {
     setSelectedSubjectId(id);
@@ -511,8 +553,15 @@ export function Study() {
   }, []);
 
   const toggleTaskChecked = useCallback((taskId: string) => {
-    setTaskChecked((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
-  }, []);
+    setTaskChecked((prev) => {
+      const newChecked = !prev[taskId];
+      if (!isDemo) {
+        const newStatus = newChecked ? 'done' : 'todo';
+        window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
+      }
+      return { ...prev, [taskId]: newChecked };
+    });
+  }, [isDemo]);
 
   const getEffectiveStatus = useCallback((task: StudyTask): TaskStatus => {
     if (taskChecked[task.id]) return 'done';
@@ -768,7 +817,7 @@ export function Study() {
                   Мои задачи
                 </div>
                 <div className="space-y-1">
-                  {MOCK_STUDY_TASKS.map((task) => {
+                  {studyTasks.map((task) => {
                     const effectiveStatus = getEffectiveStatus(task);
                     const pColor = PRIORITY_COLORS[task.priority];
                     const isDone = effectiveStatus === 'done';
@@ -881,13 +930,28 @@ export function Study() {
 
         {/* === MAIN CONTENT === */}
         <main className="flex-1 overflow-auto p-6">
-          {!subject && mainView.kind !== 'add-material' && (
+          {loading && (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 size={24} className="animate-spin text-neutral-500" />
+            </div>
+          )}
+          {dbError && (
+            <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+              {dbError}
+            </div>
+          )}
+          {isDemo && !loading && (
+            <div className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
+              Demo data — БД недоступна или пуста
+            </div>
+          )}
+          {!loading && !subject && mainView.kind !== 'add-material' && (
             <div className="flex items-center justify-center h-full text-neutral-500">
               Выберите предмет
             </div>
           )}
 
-          {subject && mainView.kind === 'overview' && (
+          {!loading && subject && mainView.kind === 'overview' && (
             <SubjectOverview
               subject={subject}
               materials={materials}
@@ -901,7 +965,7 @@ export function Study() {
             />
           )}
 
-          {subject && mainView.kind === 'material-detail' && (
+          {!loading && subject && mainView.kind === 'material-detail' && (
             <MaterialDetailView
               material={materials.find((m) => m.id === mainView.materialId)
                 ?? MATERIALS.find((m) => m.id === mainView.materialId)}
@@ -909,7 +973,7 @@ export function Study() {
             />
           )}
 
-          {subject && mainView.kind === 'category-list' && (
+          {!loading && subject && mainView.kind === 'category-list' && (
             <CategoryListView
               subject={subject}
               category={mainView.category}
@@ -921,9 +985,9 @@ export function Study() {
             />
           )}
 
-          {subject && mainView.kind === 'task-detail' && (
+          {!loading && subject && mainView.kind === 'task-detail' && (
             <TaskDetailView
-              task={MOCK_STUDY_TASKS.find((t) => t.id === mainView.taskId)}
+              task={studyTasks.find((t) => t.id === mainView.taskId)}
               onBack={() => setMainView({ kind: 'overview' })}
               toggleTaskChecked={toggleTaskChecked}
               getEffectiveStatus={getEffectiveStatus}
@@ -931,7 +995,7 @@ export function Study() {
             />
           )}
 
-          {mainView.kind === 'add-material' && (
+          {!loading && mainView.kind === 'add-material' && (
             <AddMaterialView
               form={newMaterial}
               onChange={setNewMaterial}

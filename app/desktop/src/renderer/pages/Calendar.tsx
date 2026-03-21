@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Bell } from 'lucide-react';
+import { Bell, Loader2 } from 'lucide-react';
 import { useCalendar } from '../context/calendar-context';
 
 // --- Types ---
@@ -224,6 +224,45 @@ function generateMockEvents(): CalendarEvent[] {
   return events;
 }
 
+// --- DB ↔ Local mapping ---
+
+function mapDbEventToLocal(e: Record<string, unknown>): CalendarEvent {
+  const startAt = new Date(e.startAt as string);
+  const endAt = e.endAt ? new Date(e.endAt as string) : new Date(startAt.getTime() + 60 * 60 * 1000);
+  const meta = (e.metadata ?? {}) as Record<string, unknown>;
+  return {
+    id: String(e.id),
+    title: String(e.title),
+    sphere: (e.sphere as Sphere) ?? 'personal',
+    date: `${startAt.getFullYear()}-${pad2(startAt.getMonth() + 1)}-${pad2(startAt.getDate())}`,
+    startHour: startAt.getHours(),
+    startMin: startAt.getMinutes(),
+    endHour: endAt.getHours(),
+    endMin: endAt.getMinutes(),
+    type: (meta.type as EventType) ?? 'event',
+    done: (meta.done as boolean) ?? false,
+    subtasks: Array.isArray(meta.subtasks) ? (meta.subtasks as Subtask[]) : [],
+    description: meta.description ? String(meta.description) : undefined,
+  };
+}
+
+function localEventToDb(e: CalendarEvent): Record<string, unknown> {
+  const startAt = new Date(`${e.date}T${pad2(e.startHour)}:${pad2(e.startMin)}:00`);
+  const endAt = new Date(`${e.date}T${pad2(e.endHour)}:${pad2(e.endMin)}:00`);
+  return {
+    sphere: e.sphere,
+    title: e.title,
+    startAt: startAt.toISOString(),
+    endAt: endAt.toISOString(),
+    metadata: {
+      type: e.type,
+      done: e.done,
+      subtasks: e.subtasks,
+      description: e.description,
+    },
+  };
+}
+
 // --- Overlapping event positioning ---
 
 interface PositionedEvent {
@@ -293,6 +332,10 @@ export function Calendar() {
   const [viewYear, setViewYear] = useState(() => new Date(selectedDate).getFullYear());
   const [viewMonth, setViewMonth] = useState(() => new Date(selectedDate).getMonth());
   const [events, setEvents] = useState<CalendarEvent[]>(generateMockEvents);
+  const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
+  const isDemoRef = useRef(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [createModal, setCreateModal] = useState<CreateModalData | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -361,6 +404,34 @@ export function Calendar() {
   useEffect(() => {
     localStorage.setItem(ZOOM_LS_KEY, String(hourHeight));
   }, [hourHeight]);
+
+  // Load events from DB on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function loadData() {
+      try {
+        const dbEvents = await window.db.events.list('2026-01-01', '2026-12-31');
+        if (cancelled) return;
+        if (dbEvents.length > 0) {
+          setEvents(dbEvents.map((e) => mapDbEventToLocal(e as unknown as Record<string, unknown>)));
+          isDemoRef.current = false;
+          setIsDemo(false);
+        } else {
+          isDemoRef.current = true;
+          setIsDemo(true);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+        isDemoRef.current = true;
+        setIsDemo(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    loadData();
+    return () => { cancelled = true; };
+  }, []);
 
   // Update current time every minute
   useEffect(() => {
@@ -482,31 +553,62 @@ export function Calendar() {
   const addEvent = useCallback((event: CalendarEvent) => {
     commitEvents((prev) => [...prev, event]);
     setCreateModal(null);
+    if (!isDemoRef.current) {
+      window.db.events.create(localEventToDb(event)).catch(() => {});
+    }
   }, [commitEvents]);
 
   const updateEvent = useCallback((updated: CalendarEvent) => {
     commitEvents((prev) => prev.map((e) => e.id === updated.id ? updated : e));
     setCreateModal(null);
+    if (!isDemoRef.current) {
+      window.db.events.update(updated.id, localEventToDb(updated)).catch(() => {});
+    }
   }, [commitEvents]);
 
   const deleteEvent = useCallback((id: string) => {
     commitEvents((prev) => prev.filter((e) => e.id !== id));
     setSelectedEvent(null);
+    if (!isDemoRef.current) {
+      window.db.events.delete(id).catch(() => {});
+    }
   }, [commitEvents]);
 
   const moveEvent = useCallback((id: string, updates: { date: string; startHour: number; startMin: number; endHour: number; endMin: number }) => {
-    commitEvents((prev) => prev.map((e) => e.id === id ? { ...e, ...updates } : e));
+    commitEvents((prev) => prev.map((e) => {
+      if (e.id !== id) return e;
+      const moved = { ...e, ...updates };
+      if (!isDemoRef.current) {
+        const startAt = new Date(`${moved.date}T${pad2(moved.startHour)}:${pad2(moved.startMin)}:00`);
+        const endAt = new Date(`${moved.date}T${pad2(moved.endHour)}:${pad2(moved.endMin)}:00`);
+        window.db.events.update(id, { startAt: startAt.toISOString(), endAt: endAt.toISOString() }).catch(() => {});
+      }
+      return moved;
+    }));
   }, [commitEvents]);
 
   const toggleEventDone = useCallback((id: string) => {
-    commitEvents((prev) => prev.map((e) => e.id === id ? { ...e, done: !e.done } : e));
-  }, [commitEvents]);
+    commitEvents((prev) => prev.map((e) => {
+      if (e.id !== id) return e;
+      const updated = { ...e, done: !e.done };
+      if (!isDemoRef.current) {
+        const existing = events.find((ev) => ev.id === id);
+        const meta = existing ? { type: existing.type, done: updated.done, subtasks: existing.subtasks, description: existing.description } : { done: updated.done };
+        window.db.events.update(id, { metadata: meta }).catch(() => {});
+      }
+      return updated;
+    }));
+  }, [commitEvents, events]);
 
   const toggleSubtask = useCallback((eventId: string, subtaskIdx: number) => {
     commitEvents((prev) => prev.map((e) => {
       if (e.id !== eventId) return e;
       const subtasks = e.subtasks.map((s, i) => i === subtaskIdx ? { ...s, done: !s.done } : s);
-      return { ...e, subtasks };
+      const updated = { ...e, subtasks };
+      if (!isDemoRef.current) {
+        window.db.events.update(eventId, { metadata: { type: updated.type, done: updated.done, subtasks, description: updated.description } }).catch(() => {});
+      }
+      return updated;
     }));
   }, [commitEvents]);
 
@@ -603,6 +705,22 @@ export function Calendar() {
       </div>
 
       {/* === BODY === */}
+      {loading && (
+        <div className="flex items-center justify-center py-2 border-b border-neutral-800">
+          <Loader2 size={14} className="animate-spin text-neutral-500 mr-2" />
+          <span className="text-xs text-neutral-500">Загрузка событий…</span>
+        </div>
+      )}
+      {dbError && (
+        <div className="shrink-0 mx-6 mt-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+          {dbError}
+        </div>
+      )}
+      {isDemo && !loading && (
+        <div className="shrink-0 mx-6 mt-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
+          Demo data — БД недоступна или пуста
+        </div>
+      )}
       <div className="flex flex-1 overflow-hidden" ref={bodyRef}>
         <div className="flex-1 overflow-hidden">
           {view === 'week' && (
@@ -694,11 +812,17 @@ export function Calendar() {
             const newSubtasks = [...selectedEvent.subtasks, { title, done: false }];
             commitEvents((prev) => prev.map((e) => e.id === selectedEvent.id ? { ...e, subtasks: newSubtasks } : e));
             setSelectedEvent((prev) => prev ? { ...prev, subtasks: newSubtasks } : null);
+            if (!isDemoRef.current) {
+              window.db.events.update(selectedEvent.id, { metadata: { type: selectedEvent.type, done: selectedEvent.done, subtasks: newSubtasks, description: selectedEvent.description } }).catch(() => {});
+            }
           }}
           onDeleteSubtask={(idx) => {
             const newSubtasks = selectedEvent.subtasks.filter((_, i) => i !== idx);
             commitEvents((prev) => prev.map((e) => e.id === selectedEvent.id ? { ...e, subtasks: newSubtasks } : e));
             setSelectedEvent((prev) => prev ? { ...prev, subtasks: newSubtasks } : null);
+            if (!isDemoRef.current) {
+              window.db.events.update(selectedEvent.id, { metadata: { type: selectedEvent.type, done: selectedEvent.done, subtasks: newSubtasks, description: selectedEvent.description } }).catch(() => {});
+            }
           }}
         />
       )}
