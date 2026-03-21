@@ -342,7 +342,7 @@ function groupByCategory(materials: Material[]): Record<MaterialCategory, Materi
   const groups: Record<string, Material[]> = {};
   for (const m of materials) {
     if (!groups[m.category]) groups[m.category] = [];
-    groups[m.category].push(m);
+    (groups[m.category] as Material[]).push(m);
   }
   return groups as Record<MaterialCategory, Material[]>;
 }
@@ -363,14 +363,16 @@ function getUpcomingDeadlines(courseId?: string): Array<Material & { subjectName
 }
 
 function formatDate(dateStr: string): string {
-  const [, month, day] = dateStr.split('-');
+  const parts = dateStr.split('-');
+  const month = parts[1] ?? '0';
+  const day = parts[2] ?? '0';
   const months = ['', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
   return `${parseInt(day, 10)} ${months[parseInt(month, 10)]}`;
 }
 
 function openFile(filePath: string) {
-  (window as Record<string, unknown>).electronAPI
-    ? (window as { electronAPI: { openFile: (p: string) => Promise<void> } }).electronAPI.openFile(filePath)
+  (window as unknown as Record<string, unknown>).electronAPI
+    ? (window as unknown as { electronAPI: { openFile: (p: string) => Promise<void> } }).electronAPI.openFile(filePath)
     : console.log('Would open:', filePath);
 }
 
@@ -436,7 +438,7 @@ function CollapsibleCategory({
 export function Study() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('subjects');
   const [selectedCourseId, setSelectedCourseId] = useState<string>(
-    COURSES.find((c) => c.isCurrent)?.id ?? COURSES[0].id,
+    COURSES.find((c) => c.isCurrent)?.id ?? COURSES[0]?.id ?? '',
   );
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [mainView, setMainView] = useState<MainView>({ kind: 'overview' });

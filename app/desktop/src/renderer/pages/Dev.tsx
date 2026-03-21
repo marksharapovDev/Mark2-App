@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import type { TaskStatus } from '@mark2/shared';
-import { CheckCircle2, RefreshCw, Clock, FileText, AlertTriangle, Minus, ArrowDown } from 'lucide-react';
+import { CheckCircle2, RefreshCw, Clock, FileText, Loader2 } from 'lucide-react';
 
 // --- Types ---
 
@@ -490,8 +490,40 @@ const STACK_COLORS: Record<string, string> = {
   'React': 'bg-sky-900/40 text-sky-300',
 };
 
-function getProjectTasks(projectId: string): MockTask[] {
-  return MOCK_TASKS.filter((t) => t.projectId === projectId);
+const PRIORITY_FROM_INT: Record<number, Priority> = { 0: 'low', 1: 'medium', 2: 'high' };
+function mapDbProjectToMock(p: Record<string, unknown>): MockProject {
+  const stack = p.stack;
+  return {
+    id: String(p.id),
+    name: String(p.name),
+    slug: String(p.slug),
+    status: (p.status as MockProject['status']) ?? 'active',
+    description: '',
+    stack: Array.isArray(stack) ? stack as string[] : [],
+    repoUrl: (p.repoUrl as string) ?? null,
+    deployUrl: (p.deployUrl as string) ?? null,
+  };
+}
+
+function mapDbTaskToMock(t: Record<string, unknown>): MockTask {
+  const meta = (t.metadata ?? {}) as Record<string, unknown>;
+  const createdAt = t.createdAt ? new Date(t.createdAt as string).toISOString().slice(0, 10) : '';
+  const dueDate = t.dueDate ? new Date(t.dueDate as string).toISOString().slice(0, 10) : null;
+  return {
+    id: String(t.id),
+    projectId: String(meta.projectId ?? ''),
+    title: String(t.title),
+    status: (t.status as TaskStatus) ?? 'todo',
+    priority: PRIORITY_FROM_INT[t.priority as number] ?? 'low',
+    description: String(t.description ?? ''),
+    subtasks: Array.isArray(meta.subtasks) ? (meta.subtasks as SubTask[]) : [],
+    createdAt,
+    deadline: dueDate,
+  };
+}
+
+function getProjectTasks(projectId: string, allTasks: MockTask[]): MockTask[] {
+  return allTasks.filter((t) => t.projectId === projectId);
 }
 
 function getProjectDocs(projectId: string): DocFile[] {
@@ -504,7 +536,7 @@ function getProjectChanges(projectId: string): MockChange[] {
 
 function taskStats(tasks: MockTask[]) {
   const counts: Record<string, number> = { todo: 0, in_progress: 0, done: 0, cancelled: 0 };
-  for (const t of tasks) counts[t.status]++;
+  for (const t of tasks) counts[t.status] = (counts[t.status] ?? 0) + 1;
   return counts;
 }
 
@@ -545,7 +577,7 @@ type MainView =
 // --- Component ---
 
 export function Dev() {
-  const [activeProjectId, setActiveProjectId] = useState<string>(MOCK_PROJECTS[0]?.id ?? '');
+  const [activeProjectId, setActiveProjectId] = useState<string>('li-group');
   const [mainView, setMainView] = useState<MainView>({ kind: 'overview' });
   const [visibleChanges, setVisibleChanges] = useState(10);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -560,14 +592,55 @@ export function Dev() {
   const [editingTask, setEditingTask] = useState<string | null>(null);
   const [taskEdits, setTaskEdits] = useState<{ title: string; description: string } | null>(null);
 
+  // DB state
+  const [projects, setProjects] = useState<MockProject[]>(MOCK_PROJECTS);
+  const [allTasks, setAllTasks] = useState<MockTask[]>(MOCK_TASKS);
+  const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
+
   const changesEndRef = useRef<HTMLDivElement>(null);
   const isDraggingSidebar = useRef(false);
 
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
 
-  const project = MOCK_PROJECTS.find((p) => p.id === activeProjectId);
-  const tasks = project ? getProjectTasks(project.id) : [];
+  // Load data from DB on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function loadData() {
+      try {
+        const [dbProjects, dbTasks] = await Promise.all([
+          window.db.projects.list(),
+          window.db.tasks.list('dev'),
+        ]);
+        if (cancelled) return;
+        if (dbProjects.length > 0 || dbTasks.length > 0) {
+          const mapped = dbProjects.map((p) => mapDbProjectToMock(p as unknown as Record<string, unknown>));
+          const mappedTasks = dbTasks.map((t) => mapDbTaskToMock(t as unknown as Record<string, unknown>));
+          setProjects(mapped);
+          setAllTasks(mappedTasks);
+          if (mapped.length > 0 && mapped[0]) {
+            setActiveProjectId(mapped[0].id);
+          }
+          setIsDemo(false);
+        } else {
+          setIsDemo(true);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+        setIsDemo(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    loadData();
+    return () => { cancelled = true; };
+  }, []);
+
+  const project = projects.find((p) => p.id === activeProjectId);
+  const tasks = project ? getProjectTasks(project.id, allTasks) : [];
   const docs = project ? getProjectDocs(project.id) : [];
   const changes = project ? getProjectChanges(project.id) : [];
   const stats = taskStats(tasks);
@@ -617,8 +690,16 @@ export function Dev() {
   }, [activeProjectId]);
 
   const toggleTaskChecked = useCallback((taskId: string) => {
-    setTaskChecked((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
-  }, []);
+    setTaskChecked((prev) => {
+      const newChecked = !prev[taskId];
+      // Persist to DB (fire-and-forget)
+      if (!isDemo) {
+        const newStatus = newChecked ? 'done' : 'todo';
+        window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
+      }
+      return { ...prev, [taskId]: newChecked };
+    });
+  }, [isDemo]);
 
   const toggleSubtaskChecked = useCallback((subtaskId: string) => {
     setSubtaskChecked((prev) => ({ ...prev, [subtaskId]: !prev[subtaskId] }));
@@ -653,8 +734,7 @@ export function Dev() {
   }, [taskChecked]);
 
   const isSubtaskDone = useCallback((subtask: SubTask): boolean => {
-    if (subtaskChecked[subtask.id] !== undefined) return subtaskChecked[subtask.id];
-    return subtask.done;
+    return subtaskChecked[subtask.id] ?? subtask.done;
   }, [subtaskChecked]);
 
   return (
@@ -670,7 +750,7 @@ export function Dev() {
             Projects
           </div>
           <nav className="px-2 space-y-0.5">
-            {MOCK_PROJECTS.map((p) => (
+            {projects.map((p) => (
               <button
                 key={p.id}
                 onClick={() => selectProject(p.id)}
@@ -800,7 +880,28 @@ export function Dev() {
 
         {/* === MAIN CONTENT === */}
         <main className="flex-1 overflow-auto p-6">
-          {project && mainView.kind === 'overview' && (
+          {loading && (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 size={24} className="animate-spin text-neutral-500" />
+            </div>
+          )}
+          {dbError && (
+            <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+              {dbError}
+            </div>
+          )}
+          {isDemo && !loading && (
+            <div className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
+              Demo data — БД недоступна или пуста
+            </div>
+          )}
+          {!loading && projects.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full text-neutral-500">
+              <p className="text-lg mb-2">Нет проектов</p>
+              <p className="text-sm">Создайте первый!</p>
+            </div>
+          )}
+          {!loading && project && mainView.kind === 'overview' && (
             <ProjectOverview
               project={project}
               tasks={tasks}
@@ -811,7 +912,7 @@ export function Dev() {
               getEffectiveStatus={getEffectiveStatus}
             />
           )}
-          {project && mainView.kind === 'all-tasks' && (
+          {!loading && project && mainView.kind === 'all-tasks' && (
             <AllTasksView
               project={project}
               tasks={tasks}
@@ -819,17 +920,15 @@ export function Dev() {
               onFilterChange={(f) => setMainView({ kind: 'all-tasks', filter: f })}
               onViewTask={(id) => { setMainView({ kind: 'task-detail', taskId: id }); setEditingTask(null); }}
               toggleTaskChecked={toggleTaskChecked}
-              taskChecked={taskChecked}
               getEffectiveStatus={getEffectiveStatus}
               sendTaskToChat={sendTaskToChat}
             />
           )}
-          {project && mainView.kind === 'task-detail' && (
+          {!loading && project && mainView.kind === 'task-detail' && (
             <TaskDetailView
               task={tasks.find((t) => t.id === mainView.taskId)}
               onBack={() => setMainView({ kind: 'all-tasks', filter: 'all' })}
               toggleTaskChecked={toggleTaskChecked}
-              taskChecked={taskChecked}
               toggleSubtaskChecked={toggleSubtaskChecked}
               isSubtaskDone={isSubtaskDone}
               sendTaskToChat={sendTaskToChat}
@@ -851,7 +950,7 @@ export function Dev() {
               onTaskEditsChange={setTaskEdits}
             />
           )}
-          {project && mainView.kind === 'doc-view' && (
+          {!loading && project && mainView.kind === 'doc-view' && (
             <DocDetailView
               doc={docs.find((d) => d.id === mainView.docId)}
               content={getDocContent(mainView.docId)}
@@ -861,7 +960,7 @@ export function Dev() {
               onSave={(content) => saveDocContent(mainView.docId, content)}
             />
           )}
-          {project && mainView.kind === 'change-detail' && (
+          {!loading && project && mainView.kind === 'change-detail' && (
             <ChangeDetailView
               change={changes.find((c) => c.id === mainView.changeId)}
               onBack={() => setMainView({ kind: 'overview' })}
@@ -939,9 +1038,9 @@ function ProjectOverview({
           </button>
         </div>
         <div className="flex gap-3 mb-4">
-          <StatBadge label="Todo" count={stats.todo} color="text-yellow-400 bg-yellow-400/10" />
-          <StatBadge label="In Progress" count={stats.in_progress} color="text-blue-400 bg-blue-400/10" />
-          <StatBadge label="Done" count={stats.done} color="text-emerald-400 bg-emerald-400/10" />
+          <StatBadge label="Todo" count={stats.todo ?? 0} color="text-yellow-400 bg-yellow-400/10" />
+          <StatBadge label="In Progress" count={stats.in_progress ?? 0} color="text-blue-400 bg-blue-400/10" />
+          <StatBadge label="Done" count={stats.done ?? 0} color="text-emerald-400 bg-emerald-400/10" />
         </div>
 
         {/* Recent tasks */}
@@ -1002,7 +1101,6 @@ function AllTasksView({
   onFilterChange,
   onViewTask,
   toggleTaskChecked,
-  taskChecked,
   getEffectiveStatus,
   sendTaskToChat,
 }: {
@@ -1012,7 +1110,6 @@ function AllTasksView({
   onFilterChange: (f: TaskStatus | 'all') => void;
   onViewTask: (id: string) => void;
   toggleTaskChecked: (id: string) => void;
-  taskChecked: Record<string, boolean>;
   getEffectiveStatus: (task: MockTask) => TaskStatus;
   sendTaskToChat: (task: MockTask) => void;
 }) {
@@ -1134,7 +1231,6 @@ function TaskDetailView({
   task,
   onBack,
   toggleTaskChecked,
-  taskChecked,
   toggleSubtaskChecked,
   isSubtaskDone,
   sendTaskToChat,
@@ -1147,7 +1243,6 @@ function TaskDetailView({
   task: MockTask | undefined;
   onBack: () => void;
   toggleTaskChecked: (id: string) => void;
-  taskChecked: Record<string, boolean>;
   toggleSubtaskChecked: (id: string) => void;
   isSubtaskDone: (subtask: SubTask) => boolean;
   sendTaskToChat: (task: MockTask) => void;

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import type { TaskStatus } from '@mark2/shared';
-import { CheckCircle2, RefreshCw, Clock, XCircle, FileText, FileType, Code2, FileCode, PenLine, ClipboardList, BarChart3 } from 'lucide-react';
+import { CheckCircle2, RefreshCw, Clock, XCircle, FileText, FileType, FileCode, PenLine, ClipboardList, BarChart3, Loader2 } from 'lucide-react';
 
 // --- Types ---
 
@@ -116,7 +116,7 @@ const MOCK_LESSONS: MockLesson[] = [
     status: 'completed',
     notes: 'Разобрали алгоритм перевода. Миша быстро понял двоичную систему, восьмеричная далась сложнее.',
     homeworkGiven: 'Перевести 10 чисел между системами счисления',
-    files: [MOCK_FILES[2]],
+    files: [MOCK_FILES[2]!],
   },
   {
     id: 'l2',
@@ -126,7 +126,7 @@ const MOCK_LESSONS: MockLesson[] = [
     status: 'completed',
     notes: 'Таблицы истинности для AND, OR, NOT, XOR. Начали составлять выражения по таблицам.',
     homeworkGiven: 'Составить таблицы истинности для 5 выражений',
-    files: [MOCK_FILES[3]],
+    files: [MOCK_FILES[3]!],
   },
   {
     id: 'l3',
@@ -136,7 +136,7 @@ const MOCK_LESSONS: MockLesson[] = [
     status: 'completed',
     notes: 'Разбирали типичные задачи на анализ алгоритмов из ЕГЭ. Трассировка циклов.',
     homeworkGiven: 'Решить 8 задач из сборника',
-    files: [MOCK_FILES[0]],
+    files: [MOCK_FILES[0]!],
   },
   {
     id: 'l4',
@@ -389,6 +389,37 @@ const FILE_ICON: Record<string, React.ReactNode> = {
   txt: <FileText size={16} strokeWidth={1.5} className="text-neutral-400" />,
 };
 
+const PRIORITY_FROM_INT: Record<number, Priority> = { 0: 'low', 1: 'medium', 2: 'high' };
+
+function mapDbStudentToMock(s: Record<string, unknown>): MockStudent {
+  const sched = s.schedule as Record<string, unknown> | null;
+  const schedArr = Array.isArray(sched) ? (sched as ScheduleSlot[]) : [];
+  const stats = (s.stats ?? {}) as Record<string, unknown>;
+  return {
+    id: String(s.id),
+    name: String(s.name),
+    subject: String(s.subject ?? ''),
+    level: (s.level as StudentLevel) ?? 'beginner',
+    schedule: schedArr,
+    startDate: stats.startDate ? String(stats.startDate) : new Date(s.createdAt as string).toISOString().slice(0, 10),
+    totalLessons: (stats.totalLessons as number) ?? 0,
+  };
+}
+
+function mapDbTaskToTeaching(t: Record<string, unknown>): TeachingTask {
+  const meta = (t.metadata ?? {}) as Record<string, unknown>;
+  const dueDate = t.dueDate ? new Date(t.dueDate as string).toISOString().slice(0, 10) : null;
+  return {
+    id: String(t.id),
+    studentId: String(meta.studentId ?? ''),
+    title: String(t.title),
+    status: (t.status as TaskStatus) ?? 'todo',
+    priority: PRIORITY_FROM_INT[t.priority as number] ?? 'low',
+    context: String(t.description ?? ''),
+    deadline: dueDate,
+  };
+}
+
 function getStudentLessons(studentId: string): MockLesson[] {
   return MOCK_LESSONS.filter((l) => l.studentId === studentId);
 }
@@ -399,10 +430,6 @@ function getStudentHomeworks(studentId: string): MockHomework[] {
 
 function getStudentTopics(studentId: string): MockTopic[] {
   return MOCK_TOPICS.filter((t) => t.studentId === studentId);
-}
-
-function getStudentTasks(studentId: string): TeachingTask[] {
-  return MOCK_TEACHING_TASKS.filter((t) => t.studentId === studentId);
 }
 
 function getStudentName(studentId: string): string {
@@ -418,14 +445,16 @@ function getTaskTypeIcon(title: string): React.ReactNode {
 
 function hwStats(homeworks: MockHomework[]) {
   const counts: Record<string, number> = { done: 0, upcoming: 0, overdue: 0 };
-  for (const h of homeworks) counts[h.status]++;
+  for (const h of homeworks) counts[h.status] = (counts[h.status] ?? 0) + 1;
   return counts;
 }
 
 function formatDate(dateStr: string): string {
-  const [, month, day] = dateStr.split('-');
+  const parts = dateStr.split('-');
+  const month = parts[1] ?? '0';
+  const day = parts[2] ?? '0';
   const months = ['', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-  return `${parseInt(day, 10)} ${months[parseInt(month, 10)]}`;
+  return `${parseInt(day, 10)} ${months[parseInt(month, 10)] ?? ''}`;
 }
 
 // --- Views ---
@@ -442,7 +471,7 @@ type MainView =
 
 export function Teaching() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('students');
-  const [activeStudentId, setActiveStudentId] = useState<string>(MOCK_STUDENTS[0].id);
+  const [activeStudentId, setActiveStudentId] = useState<string>(MOCK_STUDENTS[0]?.id ?? '');
   const [mainView, setMainView] = useState<MainView>({ kind: 'overview' });
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem('mark2-teaching-sidebar-width');
@@ -453,14 +482,55 @@ export function Teaching() {
   const [newStudent, setNewStudent] = useState({ name: '', subject: '', level: 'beginner' as StudentLevel, days: '', time: '' });
   const isDraggingSidebar = useRef(false);
 
+  // DB state
+  const [students, setStudents] = useState<MockStudent[]>(MOCK_STUDENTS);
+  const [teachingTasks, setTeachingTasks] = useState<TeachingTask[]>(MOCK_TEACHING_TASKS);
+  const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
+
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
 
-  const student = MOCK_STUDENTS.find((s) => s.id === activeStudentId);
+  // Load data from DB on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function loadData() {
+      try {
+        const [dbStudents, dbTasks] = await Promise.all([
+          window.db.students.list(),
+          window.db.tasks.list('teaching'),
+        ]);
+        if (cancelled) return;
+        if (dbStudents.length > 0 || dbTasks.length > 0) {
+          const mapped = dbStudents.map((s) => mapDbStudentToMock(s as unknown as Record<string, unknown>));
+          const mappedTasks = dbTasks.map((t) => mapDbTaskToTeaching(t as unknown as Record<string, unknown>));
+          setStudents(mapped);
+          setTeachingTasks(mappedTasks);
+          if (mapped.length > 0 && mapped[0]) {
+            setActiveStudentId(mapped[0].id);
+          }
+          setIsDemo(false);
+        } else {
+          setIsDemo(true);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+        setIsDemo(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    loadData();
+    return () => { cancelled = true; };
+  }, []);
+
+  const student = students.find((s) => s.id === activeStudentId);
   const lessons = student ? getStudentLessons(student.id) : [];
   const homeworks = student ? getStudentHomeworks(student.id) : [];
   const topics = student ? getStudentTopics(student.id) : [];
-  const studentTasks = student ? getStudentTasks(student.id) : [];
+  const studentTasks = student ? teachingTasks.filter((t) => t.studentId === student.id) : [];
 
   // All-students data for General tab
   const allUpcomingLessons = MOCK_LESSONS
@@ -504,8 +574,15 @@ export function Teaching() {
   }, []);
 
   const toggleTaskChecked = useCallback((taskId: string) => {
-    setTaskChecked((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
-  }, []);
+    setTaskChecked((prev) => {
+      const newChecked = !prev[taskId];
+      if (!isDemo) {
+        const newStatus = newChecked ? 'done' : 'todo';
+        window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
+      }
+      return { ...prev, [taskId]: newChecked };
+    });
+  }, [isDemo]);
 
   const getEffectiveStatus = useCallback((task: TeachingTask): TaskStatus => {
     if (taskChecked[task.id]) return 'done';
@@ -569,7 +646,7 @@ export function Teaching() {
                 </button>
               </div>
               <nav className="px-2 space-y-0.5">
-                {MOCK_STUDENTS.map((s) => (
+                {students.map((s) => (
                   <button
                     key={s.id}
                     onClick={() => selectStudent(s.id)}
@@ -762,7 +839,7 @@ export function Teaching() {
                 </div>
                 <div className="grid grid-cols-2 gap-1.5">
                   <div className="bg-blue-400/10 rounded px-2 py-1.5">
-                    <div className="text-sm font-bold text-blue-400">{MOCK_STUDENTS.length}</div>
+                    <div className="text-sm font-bold text-blue-400">{students.length}</div>
                     <div className="text-[10px] text-blue-400/70 uppercase">Учеников</div>
                   </div>
                   <div className="bg-emerald-400/10 rounded px-2 py-1.5">
@@ -784,7 +861,7 @@ export function Teaching() {
                   Мои задачи
                 </div>
                 <div className="space-y-1">
-                  {MOCK_TEACHING_TASKS.map((task) => {
+                  {teachingTasks.map((task) => {
                     const effectiveStatus = getEffectiveStatus(task);
                     const pColor = PRIORITY_COLORS[task.priority];
                     const isDone = effectiveStatus === 'done';
@@ -894,7 +971,28 @@ export function Teaching() {
 
         {/* === MAIN CONTENT === */}
         <main className="flex-1 overflow-auto p-6">
-          {student && mainView.kind === 'overview' && (
+          {loading && (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 size={24} className="animate-spin text-neutral-500" />
+            </div>
+          )}
+          {dbError && (
+            <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+              {dbError}
+            </div>
+          )}
+          {isDemo && !loading && (
+            <div className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
+              Demo data — БД недоступна или пуста
+            </div>
+          )}
+          {!loading && students.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full text-neutral-500">
+              <p className="text-lg mb-2">Нет учеников</p>
+              <p className="text-sm">Добавьте первого!</p>
+            </div>
+          )}
+          {!loading && student && mainView.kind === 'overview' && (
             <StudentOverview
               student={student}
               lessons={lessons}
@@ -907,7 +1005,7 @@ export function Teaching() {
               getEffectiveStatus={getEffectiveStatus}
             />
           )}
-          {student && mainView.kind === 'all-homeworks' && (
+          {!loading && student && mainView.kind === 'all-homeworks' && (
             <AllHomeworksView
               student={student}
               homeworks={homeworks}
@@ -931,20 +1029,45 @@ export function Teaching() {
               onBack={() => setMainView({ kind: 'overview' })}
             />
           )}
-          {mainView.kind === 'task-detail' && (
+          {!loading && mainView.kind === 'task-detail' && (
             <TaskDetailView
-              task={MOCK_TEACHING_TASKS.find((t) => t.id === mainView.taskId)}
+              task={teachingTasks.find((t) => t.id === mainView.taskId)}
               onBack={() => setMainView({ kind: 'overview' })}
               toggleTaskChecked={toggleTaskChecked}
               getEffectiveStatus={getEffectiveStatus}
               sendTaskToChat={sendTaskToChat}
             />
           )}
-          {mainView.kind === 'add-student' && (
+          {!loading && mainView.kind === 'add-student' && (
             <AddStudentView
               form={newStudent}
               onChange={setNewStudent}
               onBack={() => setMainView({ kind: 'overview' })}
+              onSave={async () => {
+                if (!newStudent.name.trim()) return;
+                const schedule = newStudent.days
+                  ? newStudent.days.split(',').map((d) => ({ day: d.trim(), time: newStudent.time || '17:00' }))
+                  : [];
+                if (!isDemo) {
+                  try {
+                    const created = await window.db.students.create({
+                      name: newStudent.name,
+                      subject: newStudent.subject || null,
+                      level: newStudent.level,
+                      schedule,
+                      stats: {},
+                    });
+                    const mapped = mapDbStudentToMock(created as unknown as Record<string, unknown>);
+                    setStudents((prev) => [mapped, ...prev]);
+                    setActiveStudentId(mapped.id);
+                  } catch {
+                    // fallback: add locally
+                  }
+                }
+                setNewStudent({ name: '', subject: '', level: 'beginner', days: '', time: '' });
+                setMainView({ kind: 'overview' });
+              }}
+              isDemo={isDemo}
             />
           )}
         </main>
@@ -1018,10 +1141,10 @@ function StudentOverview({
       {/* Stats */}
       <div className="flex gap-3 mb-6">
         <StatBadge label="Уроков" count={student.totalLessons} color="text-blue-400 bg-blue-400/10" />
-        <StatBadge label="ДЗ выполнено" count={stats.done} color="text-emerald-400 bg-emerald-400/10" />
-        <StatBadge label="ДЗ предстоит" count={stats.upcoming} color="text-yellow-400 bg-yellow-400/10" />
-        {stats.overdue > 0 && (
-          <StatBadge label="Просрочено" count={stats.overdue} color="text-red-400 bg-red-400/10" />
+        <StatBadge label="ДЗ выполнено" count={stats.done ?? 0} color="text-emerald-400 bg-emerald-400/10" />
+        <StatBadge label="ДЗ предстоит" count={stats.upcoming ?? 0} color="text-yellow-400 bg-yellow-400/10" />
+        {(stats.overdue ?? 0) > 0 && (
+          <StatBadge label="Просрочено" count={stats.overdue ?? 0} color="text-red-400 bg-red-400/10" />
         )}
       </div>
 
@@ -1486,10 +1609,14 @@ function AddStudentView({
   form,
   onChange,
   onBack,
+  onSave,
+  isDemo,
 }: {
   form: { name: string; subject: string; level: StudentLevel; days: string; time: string };
   onChange: (f: { name: string; subject: string; level: StudentLevel; days: string; time: string }) => void;
   onBack: () => void;
+  onSave: () => void;
+  isDemo: boolean;
 }) {
   return (
     <div className="max-w-md">
@@ -1498,6 +1625,11 @@ function AddStudentView({
       </button>
 
       <h1 className="text-2xl font-bold mb-6">Новый ученик</h1>
+      {isDemo && (
+        <div className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
+          Demo mode — данные не сохранятся в БД
+        </div>
+      )}
 
       <div className="space-y-4">
         <div>
@@ -1555,7 +1687,10 @@ function AddStudentView({
           </div>
         </div>
 
-        <button className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors">
+        <button
+          onClick={onSave}
+          className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+        >
           Сохранить
         </button>
 

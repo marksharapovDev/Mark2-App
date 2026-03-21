@@ -294,7 +294,9 @@ const WEIGHT_PROGRESS = [
 // --- Helpers ---
 
 function formatDate(dateStr: string): string {
-  const [, month, day] = dateStr.split('-');
+  const parts = dateStr.split('-');
+  const month = parts[1] ?? '0';
+  const day = parts[2] ?? '0';
   const months = ['', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
   return `${parseInt(day, 10)} ${months[parseInt(month, 10)]}`;
 }
@@ -1156,9 +1158,9 @@ function StatsDashboard() {
           Прогресс по весу
         </h2>
         <div className="flex items-baseline gap-3 mb-4">
-          <span className="text-2xl font-bold text-neutral-200">{WEIGHT_PROGRESS[WEIGHT_PROGRESS.length - 1].weight} кг</span>
+          <span className="text-2xl font-bold text-neutral-200">{(WEIGHT_PROGRESS[WEIGHT_PROGRESS.length - 1]?.weight ?? 0)} кг</span>
           <span className="text-xs text-emerald-400">
-            -{(WEIGHT_PROGRESS[0].weight - WEIGHT_PROGRESS[WEIGHT_PROGRESS.length - 1].weight).toFixed(1)} кг за период
+            -{((WEIGHT_PROGRESS[0]?.weight ?? 0) - (WEIGHT_PROGRESS[WEIGHT_PROGRESS.length - 1]?.weight ?? 0)).toFixed(1)} кг за период
           </span>
         </div>
         <div className="relative h-24 flex items-end overflow-hidden">

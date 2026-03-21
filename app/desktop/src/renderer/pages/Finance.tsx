@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import type { TaskStatus } from '@mark2/shared';
-import { ArrowDownCircle, ArrowUpCircle, PieChart, TrendingUp, Utensils, Bus, Clapperboard, Smartphone, Home, Package, BookOpen, Code, Building2, Banknote, Laptop, BarChart3, Shield } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, PieChart, TrendingUp, Utensils, Bus, Clapperboard, Smartphone, Home, Package, BookOpen, Code, Building2, Banknote, Laptop, Shield } from 'lucide-react';
 
 // --- Types ---
 
@@ -79,12 +79,6 @@ const PRIORITY_COLORS: Record<Priority, { border: string; badge: string; label: 
   low: { border: 'border-l-neutral-600', badge: 'bg-neutral-700/50 text-neutral-400', label: 'Low' },
 };
 
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  done: 'text-emerald-400',
-  in_progress: 'text-blue-400',
-  todo: 'text-yellow-400',
-  cancelled: 'text-red-400',
-};
 
 // --- Mock Data ---
 
@@ -161,7 +155,9 @@ const SAVINGS_TREND = [
 // --- Helpers ---
 
 function formatDate(dateStr: string): string {
-  const [, month, day] = dateStr.split('-');
+  const parts = dateStr.split('-');
+  const month = parts[1] ?? '0';
+  const day = parts[2] ?? '0';
   const months = ['', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
   return `${parseInt(day, 10)} ${months[parseInt(month, 10)]}`;
 }

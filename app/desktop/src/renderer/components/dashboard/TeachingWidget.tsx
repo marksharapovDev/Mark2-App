@@ -46,7 +46,9 @@ export function TeachingWidget() {
 }
 
 function formatDate(dateStr: string): string {
-  const [, month, day] = dateStr.split('-');
+  const parts = dateStr.split('-');
+  const month = parts[1] ?? '0';
+  const day = parts[2] ?? '0';
   const months = ['', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-  return `${parseInt(day, 10)} ${months[parseInt(month, 10)]}`;
+  return `${parseInt(day, 10)} ${months[parseInt(month, 10)] ?? ''}`;
 }
