@@ -17,6 +17,7 @@ interface CalendarEvent {
   endMin: number;
   allDay?: boolean;
   description?: string;
+  isReminder?: boolean;
 }
 
 // --- Constants (shared with Calendar.tsx — later extract to shared module) ---
@@ -37,34 +38,87 @@ const TODAY = '2026-03-21';
 
 // --- Mock Events (same as Calendar.tsx) ---
 
-function weekDate(dayIndex: number): string {
-  const base = 16;
-  const d = base + dayIndex;
-  return `2026-03-${String(d).padStart(2, '0')}`;
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
 }
 
-const MOCK_EVENTS: CalendarEvent[] = [
-  { id: 'ev1',  title: 'Урок Миша (ЕГЭ Информатика)',  sphere: 'teaching', date: weekDate(1), startHour: 17, startMin: 0, endHour: 18, endMin: 0, description: 'Системы счисления — повторение' },
-  { id: 'ev2',  title: 'Урок Аня (Python)',              sphere: 'teaching', date: weekDate(2), startHour: 15, startMin: 0, endHour: 16, endMin: 0, description: 'Циклы while и for' },
-  { id: 'ev3',  title: 'Урок Миша (ЕГЭ Информатика)',   sphere: 'teaching', date: weekDate(5), startHour: 11, startMin: 0, endHour: 12, endMin: 0, description: 'Рекурсия — базовые понятия' },
-  { id: 'ev4',  title: 'Матанализ (лекция)',    sphere: 'study', date: weekDate(0), startHour: 10, startMin: 0, endHour: 11, endMin: 30, description: 'Интегралы — продолжение' },
-  { id: 'ev5',  title: 'Физика (лекция)',       sphere: 'study', date: weekDate(1), startHour: 14, startMin: 0, endHour: 15, endMin: 30, description: 'Термодинамика' },
-  { id: 'ev6',  title: 'Матанализ (семинар)',   sphere: 'study', date: weekDate(2), startHour: 12, startMin: 0, endHour: 13, endMin: 30, description: 'Задачи на производные' },
-  { id: 'ev7',  title: 'Физика (лаб.)',         sphere: 'study', date: weekDate(3), startHour: 16, startMin: 0, endHour: 17, endMin: 30, description: 'Теплоёмкость — лабораторная' },
-  { id: 'ev8',  title: 'Информатика (лекция)',  sphere: 'study', date: weekDate(4), startHour: 10, startMin: 0, endHour: 11, endMin: 30, description: 'Графы и деревья' },
-  { id: 'ev9',  title: 'Зал (грудь + трицепс)',  sphere: 'health', date: weekDate(0), startHour: 18, startMin: 0, endHour: 19, endMin: 0 },
-  { id: 'ev10', title: 'Зал (спина + бицепс)',   sphere: 'health', date: weekDate(3), startHour: 18, startMin: 0, endHour: 19, endMin: 0 },
-  { id: 'ev11', title: 'Бег 5км',                sphere: 'health', date: weekDate(5), startHour: 9,  startMin: 0, endHour: 9,  endMin: 45 },
-  { id: 'ev12', title: 'Работа над LI Group',   sphere: 'dev', date: weekDate(2), startHour: 20, startMin: 0, endHour: 22, endMin: 0, description: 'Интеграция CRM API' },
-  { id: 'ev13', title: 'Mark2 разработка',       sphere: 'dev', date: weekDate(4), startHour: 19, startMin: 0, endHour: 21, endMin: 0, description: 'Calendar view + Claude Bridge streaming' },
-  { id: 'ev14', title: 'Оплата VPS',            sphere: 'finance', date: weekDate(4), startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true },
-  { id: 'ev15', title: 'Встреча с друзьями',     sphere: 'personal', date: weekDate(5), startHour: 16, startMin: 0, endHour: 18, endMin: 0 },
-  { id: 'ev16', title: 'Стрижка',               sphere: 'personal', date: weekDate(6), startHour: 12, startMin: 0, endHour: 13, endMin: 0 },
-];
+function pad2(n: number): string { return String(n).padStart(2, '0'); }
+
+function dateToStr(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function generateMockEvents(): CalendarEvent[] {
+  const events: CalendarEvent[] = [];
+  let id = 1;
+
+  const weekStarts = [
+    new Date(2026, 2, 9),
+    new Date(2026, 2, 16),
+    new Date(2026, 2, 23),
+  ];
+
+  const recurring: Array<{
+    title: string; sphere: Sphere; dayOfWeek: number;
+    startHour: number; startMin: number; endHour: number; endMin: number;
+    description?: string;
+  }> = [
+    { title: 'Матанализ (лекция)', sphere: 'study', dayOfWeek: 0, startHour: 10, startMin: 0, endHour: 11, endMin: 30, description: 'Интегралы' },
+    { title: 'Зал (грудь + трицепс)', sphere: 'health', dayOfWeek: 0, startHour: 18, startMin: 0, endHour: 19, endMin: 0 },
+    { title: 'Физика (лекция)', sphere: 'study', dayOfWeek: 1, startHour: 14, startMin: 0, endHour: 15, endMin: 30, description: 'Термодинамика' },
+    { title: 'Урок Миша (ЕГЭ Информатика)', sphere: 'teaching', dayOfWeek: 1, startHour: 17, startMin: 0, endHour: 18, endMin: 0, description: 'Подготовка к ЕГЭ' },
+    { title: 'Матанализ (семинар)', sphere: 'study', dayOfWeek: 2, startHour: 12, startMin: 0, endHour: 13, endMin: 30, description: 'Задачи' },
+    { title: 'Урок Аня (Python)', sphere: 'teaching', dayOfWeek: 2, startHour: 15, startMin: 0, endHour: 16, endMin: 0, description: 'Основы Python' },
+    { title: 'Физика (лаб.)', sphere: 'study', dayOfWeek: 3, startHour: 16, startMin: 0, endHour: 17, endMin: 30, description: 'Лабораторная работа' },
+    { title: 'Зал (спина + бицепс)', sphere: 'health', dayOfWeek: 3, startHour: 18, startMin: 0, endHour: 19, endMin: 0 },
+    { title: 'Информатика (лекция)', sphere: 'study', dayOfWeek: 4, startHour: 10, startMin: 0, endHour: 11, endMin: 30, description: 'Графы и деревья' },
+    { title: 'Бег 5км', sphere: 'health', dayOfWeek: 5, startHour: 9, startMin: 0, endHour: 9, endMin: 45 },
+    { title: 'Урок Миша (ЕГЭ Информатика)', sphere: 'teaching', dayOfWeek: 5, startHour: 11, startMin: 0, endHour: 12, endMin: 0, description: 'Рекурсия' },
+  ];
+
+  for (const ws of weekStarts) {
+    for (const r of recurring) {
+      const date = addDays(ws, r.dayOfWeek);
+      events.push({
+        id: `ev${id++}`,
+        title: r.title,
+        sphere: r.sphere,
+        date: dateToStr(date),
+        startHour: r.startHour,
+        startMin: r.startMin,
+        endHour: r.endHour,
+        endMin: r.endMin,
+        description: r.description,
+      });
+    }
+  }
+
+  const oneOffs: Array<Omit<CalendarEvent, 'id'>> = [
+    { title: 'Работа над LI Group', sphere: 'dev', date: '2026-03-18', startHour: 20, startMin: 0, endHour: 22, endMin: 0, description: 'Интеграция CRM API' },
+    { title: 'Оплата VPS', sphere: 'finance', date: '2026-03-20', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true },
+    { title: 'Mark2 разработка', sphere: 'dev', date: '2026-03-20', startHour: 19, startMin: 0, endHour: 21, endMin: 0, description: 'Calendar view' },
+    { title: 'Встреча с друзьями', sphere: 'personal', date: '2026-03-21', startHour: 16, startMin: 0, endHour: 18, endMin: 0 },
+    { title: 'Стрижка', sphere: 'personal', date: '2026-03-22', startHour: 12, startMin: 0, endHour: 13, endMin: 0 },
+    { title: 'Дедлайн курсовая', sphere: 'study', date: '2026-03-23', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true },
+    { title: 'Созвон с заказчиком', sphere: 'dev', date: '2026-03-25', startHour: 10, startMin: 0, endHour: 10, endMin: 30, description: 'Обсуждение ТЗ' },
+    { title: 'Mark2 разработка', sphere: 'dev', date: '2026-03-27', startHour: 19, startMin: 0, endHour: 21, endMin: 0, description: 'Agent system' },
+    { title: 'Оплата за обучение', sphere: 'finance', date: '2026-03-10', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true },
+    { title: 'Работа над LI Group', sphere: 'dev', date: '2026-03-11', startHour: 20, startMin: 0, endHour: 22, endMin: 0, description: 'Frontend рефакторинг' },
+  ];
+
+  for (const o of oneOffs) {
+    events.push({ ...o, id: `ev${id++}` });
+  }
+
+  return events;
+}
+
+const MOCK_EVENTS = generateMockEvents();
 
 // --- Utilities ---
 
-function pad2(n: number): string { return String(n).padStart(2, '0'); }
 function fmtTime(h: number, m: number): string { return `${pad2(h)}:${pad2(m)}`; }
 
 function getMonthGrid(year: number, month: number): string[][] {
@@ -112,17 +166,19 @@ function fmtDateShort(dateStr: string): string {
 // --- Component ---
 
 export function CalendarPanel() {
-  const { closeCalendar } = useCalendar();
+  const { closeCalendar, selectedDate, setSelectedDate } = useCalendar();
   const navigate = useNavigate();
 
   const [viewYear, setViewYear] = useState(2026);
   const [viewMonth, setViewMonth] = useState(2); // March = 2 (0-indexed)
 
   const monthGrid = useMemo(() => getMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
-  const todayEvents = useMemo(() => eventsForDate(TODAY).sort((a, b) =>
+
+  const selectedDayEvents = useMemo(() => eventsForDate(selectedDate).sort((a, b) =>
     (a.allDay ? -1 : b.allDay ? 1 : (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin))
-  ), []);
-  const upcomingEvents = useMemo(() => getUpcomingEvents(TODAY, 3), []);
+  ), [selectedDate]);
+
+  const upcomingEvents = useMemo(() => getUpcomingEvents(selectedDate, 3), [selectedDate]);
 
   const navigateMonth = useCallback((dir: -1 | 1) => {
     let m = viewMonth + dir;
@@ -142,6 +198,10 @@ export function CalendarPanel() {
     navigate('/calendar');
     closeCalendar();
   }, [navigate, closeCalendar]);
+
+  const handleSelectDate = useCallback((date: string) => {
+    setSelectedDate(date);
+  }, [setSelectedDate]);
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
@@ -191,21 +251,27 @@ export function CalendarPanel() {
               if (!date) return <div key={idx} />;
               const d = new Date(date);
               const isToday = date === TODAY;
+              const isSelected = date === selectedDate;
               const hasEvents = eventsForDate(date).length > 0;
               return (
-                <div
+                <button
                   key={date}
-                  className={`text-[10px] py-0.5 text-center rounded-full relative ${
+                  onClick={() => handleSelectDate(date)}
+                  className={`text-[10px] py-0.5 rounded-full relative transition-colors ${
                     isToday
                       ? 'bg-blue-500/30 text-blue-300 font-bold'
-                      : 'text-neutral-400'
+                      : isSelected
+                        ? 'ring-1 ring-neutral-500 text-white'
+                        : 'text-neutral-400 hover:bg-neutral-800'
                   }`}
                 >
                   {d.getDate()}
-                  {hasEvents && !isToday && (
-                    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0.5 h-0.5 rounded-full bg-blue-400" />
+                  {hasEvents && (
+                    <span className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-0.5 h-0.5 rounded-full ${
+                      isToday ? 'bg-blue-300' : 'bg-blue-400'
+                    }`} />
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -213,19 +279,21 @@ export function CalendarPanel() {
 
         <div className="mx-3 border-t border-neutral-800" />
 
-        {/* Today's events */}
+        {/* Selected day's events */}
         <div className="p-3">
           <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-            Сегодня &middot; {fmtDateShort(TODAY)}
+            {selectedDate === TODAY ? 'Сегодня' : fmtDateShort(selectedDate)}
           </div>
-          {todayEvents.length === 0 ? (
+          {selectedDayEvents.length === 0 ? (
             <div className="text-[11px] text-neutral-700">Нет событий</div>
           ) : (
             <div className="space-y-1">
-              {todayEvents.map((ev) => (
+              {selectedDayEvents.map((ev) => (
                 <div key={ev.id} className={`flex gap-2 py-1 border-l-2 pl-2 rounded-r ${SPHERE_META[ev.sphere].border}`}>
                   <div className="flex-1 min-w-0">
-                    <div className={`text-[11px] truncate ${SPHERE_META[ev.sphere].color}`}>{ev.title}</div>
+                    <div className={`text-[11px] truncate ${SPHERE_META[ev.sphere].color}`}>
+                      {ev.isReminder && '\uD83D\uDD14 '}{ev.title}
+                    </div>
                     <div className="text-[10px] text-neutral-600">
                       {ev.allDay ? 'Весь день' : `${fmtTime(ev.startHour, ev.startMin)} – ${fmtTime(ev.endHour, ev.endMin)}`}
                     </div>

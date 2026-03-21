@@ -1,10 +1,14 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 
+const TODAY = '2026-03-21';
+
 interface CalendarContextValue {
   calendarOpen: boolean;
   toggleCalendar: () => void;
   closeCalendar: () => void;
   openCalendar: () => void;
+  selectedDate: string;
+  setSelectedDate: (date: string) => void;
 }
 
 const CalendarContext = createContext<CalendarContextValue | null>(null);
@@ -15,6 +19,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   const [calendarOpen, setCalendarOpen] = useState(() => {
     return localStorage.getItem(LS_KEY) === 'true';
   });
+  const [selectedDate, setSelectedDate] = useState(TODAY);
 
   const toggleCalendar = useCallback(() => {
     setCalendarOpen((prev) => {
@@ -35,7 +40,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <CalendarContext.Provider value={{ calendarOpen, toggleCalendar, closeCalendar, openCalendar }}>
+    <CalendarContext.Provider value={{ calendarOpen, toggleCalendar, closeCalendar, openCalendar, selectedDate, setSelectedDate }}>
       {children}
     </CalendarContext.Provider>
   );
