@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { GraduationCap } from 'lucide-react';
 
 const NEXT_LESSON = { student: 'Миша Козлов', subject: 'Информатика (ЕГЭ)', date: '2026-03-25', topic: 'Рекурсия' };
 const OVERDUE_HW = 1;
@@ -10,7 +11,7 @@ export function TeachingWidget() {
   return (
     <div className="bg-neutral-900/50 border border-green-500/10 rounded-xl p-5 flex flex-col">
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-green-400 text-lg">{'\uD83C\uDF93'}</span>
+        <span className="text-green-400"><GraduationCap size={16} strokeWidth={1.5} /></span>
         <h3 className="text-sm font-semibold text-neutral-200">Ученики</h3>
       </div>
 

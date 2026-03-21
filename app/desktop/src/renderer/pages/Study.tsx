@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import type { TaskStatus } from '@mark2/shared';
+import { BookOpen, PenLine, ClipboardList, BarChart3, FileText, MapPin, NotebookText, CheckCircle2, Clock, Paperclip, RefreshCw } from 'lucide-react';
 
 // --- Types ---
 
@@ -56,20 +57,20 @@ interface StudyTask {
 
 // --- Constants ---
 
-const CATEGORY_META: Record<MaterialCategory, { icon: string; label: string; pluralLabel: string }> = {
-  lecture: { icon: '\uD83D\uDCD2', label: 'Лекция', pluralLabel: 'Лекции' },
-  seminar: { icon: '\uD83D\uDCDD', label: 'Семинар', pluralLabel: 'Семинары' },
-  homework: { icon: '\uD83D\uDCCB', label: 'ДЗ', pluralLabel: 'ДЗ' },
-  typovoy: { icon: '\uD83D\uDCCA', label: 'Типовой расчёт', pluralLabel: 'Типовые расчёты' },
-  coursework: { icon: '\uD83D\uDCC4', label: 'Курсовая', pluralLabel: 'Курсовая' },
-  report: { icon: '\uD83D\uDCCC', label: 'Доклад', pluralLabel: 'Доклады' },
-  notes: { icon: '\uD83D\uDCD3', label: 'Конспект', pluralLabel: 'Конспекты' },
+const CATEGORY_META: Record<MaterialCategory, { icon: React.ReactNode; label: string; pluralLabel: string }> = {
+  lecture: { icon: <BookOpen size={14} strokeWidth={1.5} />, label: 'Лекция', pluralLabel: 'Лекции' },
+  seminar: { icon: <PenLine size={14} strokeWidth={1.5} />, label: 'Семинар', pluralLabel: 'Семинары' },
+  homework: { icon: <ClipboardList size={14} strokeWidth={1.5} />, label: 'ДЗ', pluralLabel: 'ДЗ' },
+  typovoy: { icon: <BarChart3 size={14} strokeWidth={1.5} />, label: 'Типовой расчёт', pluralLabel: 'Типовые расчёты' },
+  coursework: { icon: <FileText size={14} strokeWidth={1.5} />, label: 'Курсовая', pluralLabel: 'Курсовая' },
+  report: { icon: <MapPin size={14} strokeWidth={1.5} />, label: 'Доклад', pluralLabel: 'Доклады' },
+  notes: { icon: <NotebookText size={14} strokeWidth={1.5} />, label: 'Конспект', pluralLabel: 'Конспекты' },
 };
 
-const STATUS_META: Record<MaterialStatus, { icon: string; label: string; color: string }> = {
-  done: { icon: '\u2705', label: 'Сдано', color: 'bg-emerald-900/40 text-emerald-300' },
-  in_progress: { icon: '\u23F3', label: 'В работе', color: 'bg-yellow-900/40 text-yellow-300' },
-  draft: { icon: '\uD83D\uDCCE', label: 'Черновик', color: 'bg-neutral-700/40 text-neutral-400' },
+const STATUS_META: Record<MaterialStatus, { icon: React.ReactNode; label: string; color: string }> = {
+  done: { icon: <CheckCircle2 size={14} strokeWidth={1.5} className="text-emerald-400" />, label: 'Сдано', color: 'bg-emerald-900/40 text-emerald-300' },
+  in_progress: { icon: <Clock size={14} strokeWidth={1.5} className="text-yellow-400" />, label: 'В работе', color: 'bg-yellow-900/40 text-yellow-300' },
+  draft: { icon: <Paperclip size={14} strokeWidth={1.5} className="text-neutral-400" />, label: 'Черновик', color: 'bg-neutral-700/40 text-neutral-400' },
 };
 
 const PRIORITY_COLORS: Record<Priority, { border: string; badge: string; label: string }> = {
@@ -651,7 +652,7 @@ export function Study() {
                                   }`}
                                 >
                                   <span className={`shrink-0 ${STATUS_COLORS[effectiveStatus]}`}>
-                                    {effectiveStatus === 'done' ? '\u2705' : effectiveStatus === 'in_progress' ? '\uD83D\uDD04' : '\u23F3'}
+                                    {effectiveStatus === 'done' ? <CheckCircle2 size={14} strokeWidth={1.5} /> : effectiveStatus === 'in_progress' ? <RefreshCw size={14} strokeWidth={1.5} /> : <Clock size={14} strokeWidth={1.5} />}
                                   </span>
                                   <span className={`truncate ${effectiveStatus === 'done' ? 'text-neutral-500 line-through' : 'text-neutral-400'}`}>
                                     {task.title}
@@ -1007,7 +1008,7 @@ function SubjectOverview({
                   className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg border-l-2 ${pColor.border} bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors`}
                 >
                   <span className={`text-sm shrink-0 ${STATUS_COLORS[effectiveStatus]}`}>
-                    {effectiveStatus === 'done' ? '\u2705' : effectiveStatus === 'in_progress' ? '\uD83D\uDD04' : '\u23F3'}
+                    {effectiveStatus === 'done' ? <CheckCircle2 size={14} strokeWidth={1.5} /> : effectiveStatus === 'in_progress' ? <RefreshCw size={14} strokeWidth={1.5} /> : <Clock size={14} strokeWidth={1.5} />}
                   </span>
                   <span className={`text-sm flex-1 ${effectiveStatus === 'done' ? 'text-neutral-500 line-through' : 'text-neutral-300'}`}>
                     {task.title}
@@ -1253,7 +1254,7 @@ function MaterialDetailView({
           onClick={() => openFile(material.filePath!)}
           className="flex items-center gap-2 bg-blue-900/30 border border-blue-800/50 rounded-lg px-4 py-3 text-sm text-blue-300 hover:bg-blue-900/50 transition-colors"
         >
-          <span>{'\uD83D\uDCC4'}</span> Посмотреть файл
+          <FileText size={16} strokeWidth={1.5} /> Посмотреть файл
         </button>
       ) : (
         !hasContent && (
@@ -1487,7 +1488,7 @@ function AddMaterialView({
               className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
             >
               {(Object.keys(CATEGORY_META) as MaterialCategory[]).map((cat) => (
-                <option key={cat} value={cat}>{CATEGORY_META[cat].icon} {CATEGORY_META[cat].label}</option>
+                <option key={cat} value={cat}>{CATEGORY_META[cat].label}</option>
               ))}
             </select>
           </div>
@@ -1499,7 +1500,7 @@ function AddMaterialView({
               className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
             >
               {(Object.keys(STATUS_META) as MaterialStatus[]).map((st) => (
-                <option key={st} value={st}>{STATUS_META[st].icon} {STATUS_META[st].label}</option>
+                <option key={st} value={st}>{STATUS_META[st].label}</option>
               ))}
             </select>
           </div>

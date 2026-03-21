@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Bell } from 'lucide-react';
 import { useCalendar } from '../../context/calendar-context';
 
 // --- Types ---
@@ -292,7 +293,7 @@ export function CalendarPanel() {
                 <div key={ev.id} className={`flex gap-2 py-1 border-l-2 pl-2 rounded-r ${SPHERE_META[ev.sphere].border}`}>
                   <div className="flex-1 min-w-0">
                     <div className={`text-[11px] truncate ${SPHERE_META[ev.sphere].color}`}>
-                      {ev.isReminder && '\uD83D\uDD14 '}{ev.title}
+                      {ev.isReminder && <><Bell size={11} strokeWidth={1.5} className="inline mr-0.5" /></>}{ev.title}
                     </div>
                     <div className="text-[10px] text-neutral-600">
                       {ev.allDay ? 'Весь день' : `${fmtTime(ev.startHour, ev.startMin)} – ${fmtTime(ev.endHour, ev.endMin)}`}

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import type { TaskStatus } from '@mark2/shared';
+import { ArrowDownCircle, ArrowUpCircle, PieChart, TrendingUp, Utensils, Bus, Clapperboard, Smartphone, Home, Package, BookOpen, Code, Building2, Banknote, Laptop, BarChart3, Shield } from 'lucide-react';
 
 // --- Types ---
 
@@ -35,7 +36,7 @@ interface FinanceGoal {
   title: string;
   target: number;
   current: number;
-  icon: string;
+  icon: React.ReactNode;
 }
 
 interface FinanceTask {
@@ -49,27 +50,27 @@ interface FinanceTask {
 
 // --- Constants ---
 
-const SECTIONS: Array<{ id: SectionId; icon: string; label: string }> = [
-  { id: 'expenses', icon: '\uD83D\uDCB8', label: 'Расходы' },
-  { id: 'income', icon: '\uD83D\uDCB0', label: 'Доходы' },
-  { id: 'budget', icon: '\uD83D\uDCCA', label: 'Бюджет' },
-  { id: 'analytics', icon: '\uD83D\uDCC8', label: 'Аналитика' },
+const SECTIONS: Array<{ id: SectionId; icon: React.ReactNode; label: string }> = [
+  { id: 'expenses', icon: <ArrowDownCircle size={16} strokeWidth={1.5} />, label: 'Расходы' },
+  { id: 'income', icon: <ArrowUpCircle size={16} strokeWidth={1.5} />, label: 'Доходы' },
+  { id: 'budget', icon: <PieChart size={16} strokeWidth={1.5} />, label: 'Бюджет' },
+  { id: 'analytics', icon: <TrendingUp size={16} strokeWidth={1.5} />, label: 'Аналитика' },
 ];
 
-const EXPENSE_CATEGORY_META: Record<ExpenseCategory, { icon: string; label: string; color: string; barColor: string }> = {
-  food: { icon: '\uD83C\uDF54', label: 'Еда', color: 'bg-orange-900/40 text-orange-300', barColor: 'bg-orange-500' },
-  transport: { icon: '\uD83D\uDE8C', label: 'Транспорт', color: 'bg-blue-900/40 text-blue-300', barColor: 'bg-blue-500' },
-  entertainment: { icon: '\uD83C\uDFAC', label: 'Развлечения', color: 'bg-purple-900/40 text-purple-300', barColor: 'bg-purple-500' },
-  subscriptions: { icon: '\uD83D\uDCF1', label: 'Подписки', color: 'bg-pink-900/40 text-pink-300', barColor: 'bg-pink-500' },
-  housing: { icon: '\uD83C\uDFE0', label: 'Жильё', color: 'bg-emerald-900/40 text-emerald-300', barColor: 'bg-emerald-500' },
-  other: { icon: '\uD83D\uDCE6', label: 'Прочее', color: 'bg-neutral-700/40 text-neutral-300', barColor: 'bg-neutral-500' },
+const EXPENSE_CATEGORY_META: Record<ExpenseCategory, { icon: React.ReactNode; label: string; color: string; barColor: string }> = {
+  food: { icon: <Utensils size={14} strokeWidth={1.5} />, label: 'Еда', color: 'bg-orange-900/40 text-orange-300', barColor: 'bg-orange-500' },
+  transport: { icon: <Bus size={14} strokeWidth={1.5} />, label: 'Транспорт', color: 'bg-blue-900/40 text-blue-300', barColor: 'bg-blue-500' },
+  entertainment: { icon: <Clapperboard size={14} strokeWidth={1.5} />, label: 'Развлечения', color: 'bg-purple-900/40 text-purple-300', barColor: 'bg-purple-500' },
+  subscriptions: { icon: <Smartphone size={14} strokeWidth={1.5} />, label: 'Подписки', color: 'bg-pink-900/40 text-pink-300', barColor: 'bg-pink-500' },
+  housing: { icon: <Home size={14} strokeWidth={1.5} />, label: 'Жильё', color: 'bg-emerald-900/40 text-emerald-300', barColor: 'bg-emerald-500' },
+  other: { icon: <Package size={14} strokeWidth={1.5} />, label: 'Прочее', color: 'bg-neutral-700/40 text-neutral-300', barColor: 'bg-neutral-500' },
 };
 
-const INCOME_SOURCE_META: Record<IncomeSource, { icon: string; label: string; color: string }> = {
-  tutoring: { icon: '\uD83D\uDCDA', label: 'Репетиторство', color: 'bg-blue-900/40 text-blue-300' },
-  freelance: { icon: '\uD83D\uDCBB', label: 'Фриланс', color: 'bg-emerald-900/40 text-emerald-300' },
-  salary: { icon: '\uD83C\uDFE2', label: 'Зарплата', color: 'bg-yellow-900/40 text-yellow-300' },
-  other: { icon: '\uD83D\uDCB5', label: 'Прочее', color: 'bg-neutral-700/40 text-neutral-300' },
+const INCOME_SOURCE_META: Record<IncomeSource, { icon: React.ReactNode; label: string; color: string }> = {
+  tutoring: { icon: <BookOpen size={14} strokeWidth={1.5} />, label: 'Репетиторство', color: 'bg-blue-900/40 text-blue-300' },
+  freelance: { icon: <Code size={14} strokeWidth={1.5} />, label: 'Фриланс', color: 'bg-emerald-900/40 text-emerald-300' },
+  salary: { icon: <Building2 size={14} strokeWidth={1.5} />, label: 'Зарплата', color: 'bg-yellow-900/40 text-yellow-300' },
+  other: { icon: <Banknote size={14} strokeWidth={1.5} />, label: 'Прочее', color: 'bg-neutral-700/40 text-neutral-300' },
 };
 
 const PRIORITY_COLORS: Record<Priority, { border: string; badge: string; label: string }> = {
@@ -128,9 +129,9 @@ const MOCK_BUDGET: BudgetCategory[] = [
 ];
 
 const MOCK_GOALS: FinanceGoal[] = [
-  { id: 'g1', title: 'Накопить на MacBook Pro', target: 200000, current: 85000, icon: '\uD83D\uDCBB' },
-  { id: 'g2', title: 'Повысить доход до 150000\u20BD/мес', target: 150000, current: 95000, icon: '\uD83D\uDCC8' },
-  { id: 'g3', title: 'Подушка безопасности (3 мес)', target: 285000, current: 120000, icon: '\uD83D\uDEE1\uFE0F' },
+  { id: 'g1', title: 'Накопить на MacBook Pro', target: 200000, current: 85000, icon: <Laptop size={16} strokeWidth={1.5} /> },
+  { id: 'g2', title: 'Повысить доход до 150000₽/мес', target: 150000, current: 95000, icon: <TrendingUp size={16} strokeWidth={1.5} /> },
+  { id: 'g3', title: 'Подушка безопасности (3 мес)', target: 285000, current: 120000, icon: <Shield size={16} strokeWidth={1.5} /> },
 ];
 
 const MOCK_FINANCE_TASKS: FinanceTask[] = [

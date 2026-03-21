@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { Dumbbell } from 'lucide-react';
 
 const LAST_WORKOUT = { date: '2026-03-20', type: 'Зал', label: 'Грудь + трицепс', duration: 65 };
 const TODAY_CALORIES = 1400;
@@ -11,7 +12,7 @@ export function HealthWidget() {
   return (
     <div className="bg-neutral-900/50 border border-orange-500/10 rounded-xl p-5 flex flex-col">
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-orange-400 text-lg">{'\uD83C\uDFCB\uFE0F'}</span>
+        <span className="text-orange-400"><Dumbbell size={16} strokeWidth={1.5} /></span>
         <h3 className="text-sm font-semibold text-neutral-200">Здоровье</h3>
       </div>
 

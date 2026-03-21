@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import type { TaskStatus } from '@mark2/shared';
+import { CheckCircle2, RefreshCw, Clock, XCircle, FileText, FileType, Code2, FileCode, PenLine, ClipboardList, BarChart3 } from 'lucide-react';
 
 // --- Types ---
 
@@ -344,10 +345,10 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   cancelled: 'text-red-400',
 };
 
-const HW_STATUS_ICON: Record<HomeworkStatus, string> = {
-  done: '\u2705',
-  upcoming: '\u23F3',
-  overdue: '\u274C',
+const HW_STATUS_ICON: Record<HomeworkStatus, React.ReactNode> = {
+  done: <CheckCircle2 size={14} strokeWidth={1.5} className="text-emerald-400" />,
+  upcoming: <Clock size={14} strokeWidth={1.5} className="text-yellow-400" />,
+  overdue: <XCircle size={14} strokeWidth={1.5} className="text-red-400" />,
 };
 
 const HW_STATUS_LABEL: Record<HomeworkStatus, string> = {
@@ -356,10 +357,10 @@ const HW_STATUS_LABEL: Record<HomeworkStatus, string> = {
   overdue: 'Не сдана',
 };
 
-const TOPIC_ICON: Record<TopicStatus, string> = {
-  done: '\u2705',
-  current: '\uD83D\uDD04',
-  upcoming: '\u23F3',
+const TOPIC_ICON: Record<TopicStatus, React.ReactNode> = {
+  done: <CheckCircle2 size={14} strokeWidth={1.5} className="text-emerald-400" />,
+  current: <RefreshCw size={14} strokeWidth={1.5} className="text-blue-400" />,
+  upcoming: <Clock size={14} strokeWidth={1.5} className="text-yellow-400" />,
 };
 
 const LEVEL_LABEL: Record<StudentLevel, string> = {
@@ -374,18 +375,18 @@ const LEVEL_COLOR: Record<StudentLevel, string> = {
   advanced: 'bg-purple-900/40 text-purple-300',
 };
 
-const TASK_TYPE_ICON: Record<string, string> = {
-  hw: '\uD83D\uDCDD',
-  check: '\u2705',
-  plan: '\uD83D\uDCCB',
-  test: '\uD83D\uDCCA',
+const TASK_TYPE_ICON: Record<string, React.ReactNode> = {
+  hw: <PenLine size={14} strokeWidth={1.5} />,
+  check: <CheckCircle2 size={14} strokeWidth={1.5} />,
+  plan: <ClipboardList size={14} strokeWidth={1.5} />,
+  test: <BarChart3 size={14} strokeWidth={1.5} />,
 };
 
-const FILE_ICON: Record<string, string> = {
-  docx: '\uD83D\uDCC4',
-  pdf: '\uD83D\uDCD5',
-  py: '\uD83D\uDC0D',
-  txt: '\uD83D\uDCC3',
+const FILE_ICON: Record<string, React.ReactNode> = {
+  docx: <FileText size={16} strokeWidth={1.5} />,
+  pdf: <FileType size={16} strokeWidth={1.5} className="text-red-400" />,
+  py: <FileCode size={16} strokeWidth={1.5} className="text-green-400" />,
+  txt: <FileText size={16} strokeWidth={1.5} className="text-neutral-400" />,
 };
 
 function getStudentLessons(studentId: string): MockLesson[] {
@@ -408,7 +409,7 @@ function getStudentName(studentId: string): string {
   return MOCK_STUDENTS.find((s) => s.id === studentId)?.name ?? studentId;
 }
 
-function getTaskTypeIcon(title: string): string {
+function getTaskTypeIcon(title: string): React.ReactNode {
   if (title.includes('Проверить')) return TASK_TYPE_ICON.check;
   if (title.includes('план')) return TASK_TYPE_ICON.plan;
   if (title.includes('тест') || title.includes('Тест')) return TASK_TYPE_ICON.test;
@@ -631,7 +632,7 @@ export function Teaching() {
                                   }`}
                                 >
                                   <span className={`shrink-0 ${STATUS_COLORS[effectiveStatus]}`}>
-                                    {effectiveStatus === 'done' ? '\u2705' : effectiveStatus === 'in_progress' ? '\uD83D\uDD04' : '\u23F3'}
+                                    {effectiveStatus === 'done' ? <CheckCircle2 size={14} strokeWidth={1.5} /> : effectiveStatus === 'in_progress' ? <RefreshCw size={14} strokeWidth={1.5} /> : <Clock size={14} strokeWidth={1.5} />}
                                   </span>
                                   <span className={`truncate ${effectiveStatus === 'done' ? 'text-neutral-500 line-through' : 'text-neutral-400'}`}>
                                     {task.title}
@@ -1039,7 +1040,7 @@ function StudentOverview({
                   className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg border-l-2 ${pColor.border} bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors`}
                 >
                   <span className={`text-sm shrink-0 ${STATUS_COLORS[effectiveStatus]}`}>
-                    {effectiveStatus === 'done' ? '\u2705' : effectiveStatus === 'in_progress' ? '\uD83D\uDD04' : '\u23F3'}
+                    {effectiveStatus === 'done' ? <CheckCircle2 size={14} strokeWidth={1.5} /> : effectiveStatus === 'in_progress' ? <RefreshCw size={14} strokeWidth={1.5} /> : <Clock size={14} strokeWidth={1.5} />}
                   </span>
                   <span className={`text-sm flex-1 ${effectiveStatus === 'done' ? 'text-neutral-500 line-through' : 'text-neutral-300'}`}>
                     {task.title}

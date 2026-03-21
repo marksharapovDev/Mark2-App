@@ -1,8 +1,12 @@
+import { Dumbbell, ClipboardList, BookOpen, Code, BarChart3 } from 'lucide-react';
+
+import { Dumbbell, ClipboardList, BookOpen, Code, BarChart3 } from 'lucide-react';
+
 const TODAY = '2026-03-21';
 
 interface TodayItem {
   time?: string;
-  icon: string;
+  icon: React.ReactNode;
   text: string;
   sphere: string;
   sphereColor: string;
@@ -11,31 +15,31 @@ interface TodayItem {
 const TODAY_ITEMS: TodayItem[] = [
   {
     time: '15:00',
-    icon: '\uD83C\uDFCB\uFE0F',
+    icon: <Dumbbell size={16} strokeWidth={1.5} className="text-orange-400" />,
     text: 'Зал — Плечи + пресс (запланировано на 22 мар)',
     sphere: 'Health',
     sphereColor: 'text-orange-400',
   },
   {
-    icon: '\uD83D\uDCCB',
+    icon: <ClipboardList size={16} strokeWidth={1.5} className="text-purple-400" />,
     text: 'Сдать ДЗ «Производные» — дедлайн 25 мар',
     sphere: 'Study',
     sphereColor: 'text-purple-400',
   },
   {
-    icon: '\uD83D\uDCDA',
+    icon: <BookOpen size={16} strokeWidth={1.5} className="text-green-400" />,
     text: 'Подготовить материал по рекурсии для Миши (урок 25 мар)',
     sphere: 'Teaching',
     sphereColor: 'text-green-400',
   },
   {
-    icon: '\uD83D\uDCBB',
+    icon: <Code size={16} strokeWidth={1.5} className="text-blue-400" />,
     text: 'Claude Bridge: streaming — в работе',
     sphere: 'Dev',
     sphereColor: 'text-blue-400',
   },
   {
-    icon: '\uD83D\uDCCA',
+    icon: <BarChart3 size={16} strokeWidth={1.5} className="text-purple-400" />,
     text: 'Доклад по квантовой механике — дедлайн 3 апр',
     sphere: 'Study',
     sphereColor: 'text-purple-400',

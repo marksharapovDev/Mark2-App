@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import type { TaskStatus } from '@mark2/shared';
+import { CheckCircle2, RefreshCw, Clock, FileText, AlertTriangle, Minus, ArrowDown } from 'lucide-react';
 
 // --- Types ---
 
@@ -255,7 +256,7 @@ const MOCK_DOCS: DocFile[] = [
     id: 'doc-li-brief',
     projectId: 'li-group',
     title: 'Бриф',
-    icon: '\uD83D\uDCC4',
+    icon: 'file',
     updatedAt: '2026-03-18',
     content: `# Бриф: LI Group
 
@@ -288,7 +289,7 @@ const MOCK_DOCS: DocFile[] = [
     id: 'doc-li-arch',
     projectId: 'li-group',
     title: 'Архитектура',
-    icon: '\uD83D\uDCC4',
+    icon: 'file',
     updatedAt: '2026-03-16',
     content: `# Архитектура: LI Group
 
@@ -329,7 +330,7 @@ src/
     id: 'doc-li-style',
     projectId: 'li-group',
     title: 'Стилегайд',
-    icon: '\uD83D\uDCC4',
+    icon: 'file',
     updatedAt: '2026-03-14',
     content: `# Стилегайд: LI Group
 
@@ -357,7 +358,7 @@ src/
     id: 'doc-li-notes',
     projectId: 'li-group',
     title: 'Заметки',
-    icon: '\uD83D\uDCC4',
+    icon: 'file',
     updatedAt: '2026-03-20',
     content: `# Заметки: LI Group
 
@@ -379,7 +380,7 @@ src/
     id: 'doc-my-brief',
     projectId: 'my-site',
     title: 'Бриф',
-    icon: '\uD83D\uDCC4',
+    icon: 'file',
     updatedAt: '2026-03-10',
     content: `# Personal Site
 
@@ -389,7 +390,7 @@ src/
     id: 'doc-my-notes',
     projectId: 'my-site',
     title: 'Заметки',
-    icon: '\uD83D\uDCC4',
+    icon: 'file',
     updatedAt: '2026-03-18',
     content: `# Заметки
 
@@ -402,7 +403,7 @@ src/
     id: 'doc-m2-brief',
     projectId: 'mark2',
     title: 'Бриф',
-    icon: '\uD83D\uDCC4',
+    icon: 'file',
     updatedAt: '2026-03-12',
     content: `# Mark2
 
@@ -412,7 +413,7 @@ src/
     id: 'doc-m2-arch',
     projectId: 'mark2',
     title: 'Архитектура',
-    icon: '\uD83D\uDCC4',
+    icon: 'file',
     updatedAt: '2026-03-15',
     content: `# Архитектура Mark2
 
@@ -712,7 +713,7 @@ export function Dev() {
                         }`}
                       >
                         <span className={`shrink-0 ${STATUS_COLORS[effectiveStatus]}`}>
-                          {effectiveStatus === 'done' ? '\u2705' : effectiveStatus === 'in_progress' ? '\uD83D\uDD04' : '\u23F3'}
+                          {effectiveStatus === 'done' ? <CheckCircle2 size={14} strokeWidth={1.5} /> : effectiveStatus === 'in_progress' ? <RefreshCw size={14} strokeWidth={1.5} /> : <Clock size={14} strokeWidth={1.5} />}
                         </span>
                         <span className={`truncate ${effectiveStatus === 'done' ? 'text-neutral-500 line-through' : 'text-neutral-400'}`}>
                           {task.title}
@@ -752,7 +753,7 @@ export function Dev() {
                           : 'text-neutral-400'
                       }`}
                     >
-                      <span className="shrink-0">{doc.icon}</span>
+                      <span className="shrink-0"><FileText size={14} strokeWidth={1.5} /></span>
                       <span className="truncate">{doc.title}</span>
                     </button>
                   ))}
@@ -955,7 +956,7 @@ function ProjectOverview({
                 className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg border-l-2 ${pColor.border} bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors`}
               >
                 <span className={`text-sm shrink-0 ${STATUS_COLORS[effectiveStatus]}`}>
-                  {effectiveStatus === 'done' ? '\u2705' : effectiveStatus === 'in_progress' ? '\uD83D\uDD04' : '\u23F3'}
+                  {effectiveStatus === 'done' ? <CheckCircle2 size={14} strokeWidth={1.5} /> : effectiveStatus === 'in_progress' ? <RefreshCw size={14} strokeWidth={1.5} /> : <Clock size={14} strokeWidth={1.5} />}
                 </span>
                 <span className={`text-sm flex-1 ${effectiveStatus === 'done' ? 'text-neutral-500 line-through' : 'text-neutral-300'}`}>
                   {task.title}
@@ -1370,7 +1371,7 @@ function DocDetailView({
 
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold">{doc.icon} {doc.title}</h1>
+          <h1 className="text-xl font-bold flex items-center gap-2"><FileText size={18} strokeWidth={1.5} /> {doc.title}</h1>
           <div className="text-xs text-neutral-600 mt-1">
             Обновлено: {doc.updatedAt}
             <span className="ml-3">{Math.round(content.length / 1024 * 10) / 10} KB</span>

@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { Wallet } from 'lucide-react';
 
 const MONTH_INCOME = 48000;
 const MONTH_EXPENSES = 31989;
@@ -11,7 +12,7 @@ export function FinanceWidget() {
   return (
     <div className="bg-neutral-900/50 border border-yellow-500/10 rounded-xl p-5 flex flex-col">
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-yellow-400 text-lg">{'\uD83D\uDCB0'}</span>
+        <span className="text-yellow-400"><Wallet size={16} strokeWidth={1.5} /></span>
         <h3 className="text-sm font-semibold text-neutral-200">Финансы</h3>
       </div>
 

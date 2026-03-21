@@ -14,6 +14,7 @@
     "@mark2/shared": "workspace:*",
     "@supabase/supabase-js": "^2.99.3",
     "dotenv": "^17.3.1",
+    "lucide-react": "^0.577.0",
     "openai": "^6.32.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

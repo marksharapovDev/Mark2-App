@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { Bell } from 'lucide-react';
 import { useCalendar } from '../context/calendar-context';
 
 // --- Types ---
@@ -1042,7 +1043,7 @@ function WeekView({
                             ? <svg className="w-2.5 h-2.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
                             : <svg className={`w-2.5 h-2.5 shrink-0 ${SPHERE_META[ev.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
                         )}
-                        {isRem && <span className="text-[9px]">{'\uD83D\uDD14'}</span>}
+                        {isRem && <Bell size={10} strokeWidth={1.5} className="inline" />}
                         <span className={`${SPHERE_META[ev.sphere].color} ${ev.done ? 'line-through' : ''}`}>{ev.title}</span>
                       </div>
                     );
@@ -1131,7 +1132,7 @@ function WeekView({
                             <svg className={`w-2.5 h-2.5 ${SPHERE_META[ev.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
                           )}
                         </button>
-                        <span className="text-[9px]">{'\uD83D\uDD14'}</span>
+                        <Bell size={12} strokeWidth={1.5} />
                         <span className={`text-[9px] truncate ${ev.done ? 'text-neutral-600 line-through' : SPHERE_META[ev.sphere].color}`}>{ev.title}</span>
                       </div>
                     );
@@ -1704,7 +1705,7 @@ function DayView({
                         <svg className={`w-3 h-3 ${SPHERE_META[evnt.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
                       )}
                     </button>
-                    <span className="text-[10px]">{'\uD83D\uDD14'}</span>
+                    <Bell size={12} strokeWidth={1.5} />
                     <span className={`text-[10px] truncate ${evnt.done ? 'text-neutral-600 line-through' : SPHERE_META[evnt.sphere].color}`}>{evnt.title}</span>
                   </div>
                 );
@@ -1915,7 +1916,7 @@ function ListView({
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className={`text-sm ${SPHERE_META[ev.sphere].color} ${ev.done ? 'line-through opacity-50' : ''}`}>
-                          {ev.type === 'reminder' && '\uD83D\uDD14 '}{ev.title}
+                          {ev.type === 'reminder' && <><Bell size={11} strokeWidth={1.5} className="inline mr-0.5" /></>}{ev.title}
                         </div>
                         {ev.description && (
                           <div className="text-[11px] text-neutral-600 truncate">{ev.description}</div>
@@ -2026,7 +2027,7 @@ function CalendarSidebar({
               <div key={ev.id} className={`flex gap-2 py-1 border-l-2 pl-2 rounded-r ${SPHERE_META[ev.sphere].border}`}>
                 <div className="flex-1 min-w-0">
                   <div className={`text-[11px] truncate ${SPHERE_META[ev.sphere].color} ${ev.done ? 'line-through opacity-50' : ''}`}>
-                    {ev.type === 'reminder' && '\uD83D\uDD14 '}{ev.title}
+                    {ev.type === 'reminder' && <><Bell size={11} strokeWidth={1.5} className="inline mr-0.5" /></>}{ev.title}
                   </div>
                   <div className="text-[10px] text-neutral-600">
                     {ev.allDay ? 'Весь день' : `${fmtTime(ev.startHour, ev.startMin)} – ${fmtTime(ev.endHour, ev.endMin)}`}
@@ -2134,7 +2135,7 @@ function EventDetailModal({
             </button>
           )}
           <h3 className={`text-lg font-bold text-neutral-100 ${event.done ? 'line-through opacity-50' : ''}`}>
-            {isReminder && '\uD83D\uDD14 '}{event.title}
+            {isReminder && <><Bell size={11} strokeWidth={1.5} className="inline mr-0.5" /></>}{event.title}
           </h3>
         </div>
 
@@ -2366,7 +2367,7 @@ function CreateEventModal({
                     : 'border-neutral-700 text-neutral-500 hover:text-neutral-300'
                 }`}
               >
-                {t === 'reminder' && '\uD83D\uDD14 '}{label}
+                {t === 'reminder' && <><Bell size={11} strokeWidth={1.5} className="inline mr-0.5" /></>}{label}
               </button>
             ))}
           </div>
@@ -2536,7 +2537,7 @@ function ContextMenuComponent({
         onClick={onNewReminder}
         className="w-full text-left px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-700 transition-colors flex items-center gap-2"
       >
-        <span className="text-base leading-none">{'\uD83D\uDD14'}</span>
+        <Bell size={12} strokeWidth={1.5} />
         Новое напоминание
       </button>
     </div>

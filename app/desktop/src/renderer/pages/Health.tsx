@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import type { TaskStatus } from '@mark2/shared';
+import { Dumbbell, UtensilsCrossed, BarChart3, Moon, PersonStanding, Waves, CheckCircle2, Clock, Star } from 'lucide-react';
 
 // --- Types ---
 
@@ -62,17 +63,17 @@ interface HealthTask {
 
 // --- Constants ---
 
-const SECTIONS: Array<{ id: SectionId; icon: string; label: string }> = [
-  { id: 'workouts', icon: '\uD83C\uDFCB\uFE0F', label: 'Тренировки' },
-  { id: 'nutrition', icon: '\uD83C\uDF7D\uFE0F', label: 'Питание' },
-  { id: 'stats', icon: '\uD83D\uDCCA', label: 'Статистика' },
-  { id: 'sleep', icon: '\uD83D\uDCA4', label: 'Сон/восстановление' },
+const SECTIONS: Array<{ id: SectionId; icon: React.ReactNode; label: string }> = [
+  { id: 'workouts', icon: <Dumbbell size={16} strokeWidth={1.5} />, label: 'Тренировки' },
+  { id: 'nutrition', icon: <UtensilsCrossed size={16} strokeWidth={1.5} />, label: 'Питание' },
+  { id: 'stats', icon: <BarChart3 size={16} strokeWidth={1.5} />, label: 'Статистика' },
+  { id: 'sleep', icon: <Moon size={16} strokeWidth={1.5} />, label: 'Сон/восстановление' },
 ];
 
-const WORKOUT_TYPE_META: Record<WorkoutType, { icon: string; label: string; color: string }> = {
-  gym: { icon: '\uD83C\uDFCB\uFE0F', label: 'Зал', color: 'bg-blue-900/40 text-blue-300' },
-  run: { icon: '\uD83C\uDFC3', label: 'Бег', color: 'bg-green-900/40 text-green-300' },
-  swim: { icon: '\uD83C\uDFCA', label: 'Плавание', color: 'bg-cyan-900/40 text-cyan-300' },
+const WORKOUT_TYPE_META: Record<WorkoutType, { icon: React.ReactNode; label: string; color: string }> = {
+  gym: { icon: <Dumbbell size={14} strokeWidth={1.5} />, label: 'Зал', color: 'bg-blue-900/40 text-blue-300' },
+  run: { icon: <PersonStanding size={14} strokeWidth={1.5} />, label: 'Бег', color: 'bg-green-900/40 text-green-300' },
+  swim: { icon: <Waves size={14} strokeWidth={1.5} />, label: 'Плавание', color: 'bg-cyan-900/40 text-cyan-300' },
 };
 
 const MEAL_SLOT_LABEL: Record<MealSlot, string> = {
@@ -546,7 +547,7 @@ function WorkoutsSidebar({
                 className="w-full text-left text-xs py-1.5 px-2 rounded hover:bg-neutral-800/50 transition-colors group"
               >
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] shrink-0">{'\u23F3'}</span>
+                  <Clock size={12} strokeWidth={1.5} className="shrink-0 text-neutral-500" />
                   <span className="text-neutral-600 text-[10px] shrink-0">{formatDate(w.date)}</span>
                   <span className={`text-[10px] px-1 py-0.5 rounded ${WORKOUT_TYPE_META[w.type].color}`}>
                     {WORKOUT_TYPE_META[w.type].label}
@@ -576,7 +577,7 @@ function WorkoutsSidebar({
               className="w-full text-left text-xs py-1.5 px-2 rounded hover:bg-neutral-800/50 transition-colors group"
             >
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] shrink-0">{'\u2705'}</span>
+                <CheckCircle2 size={12} strokeWidth={1.5} className="shrink-0 text-emerald-400" />
                 <span className="text-neutral-600 text-[10px] shrink-0">{formatDate(w.date)}</span>
                 <span className={`text-[10px] px-1 py-0.5 rounded ${WORKOUT_TYPE_META[w.type].color}`}>
                   {WORKOUT_TYPE_META[w.type].label}
@@ -814,7 +815,7 @@ function WorkoutsOverview({
             )}
             {lastWorkout.feeling && (
               <div className="mt-2 text-xs text-neutral-500">
-                Самочувствие: {'⭐'.repeat(lastWorkout.feeling)} {FEELING_LABELS[lastWorkout.feeling]}
+                Самочувствие: {Array.from({ length: lastWorkout.feeling }, (_, i) => <Star key={i} size={12} strokeWidth={1.5} className="inline text-yellow-400 fill-yellow-400" />)} {FEELING_LABELS[lastWorkout.feeling]}
               </div>
             )}
           </button>
@@ -914,12 +915,12 @@ function WorkoutDetailView({
           <div className="flex items-center gap-3">
             <div className="flex gap-1">
               {[1, 2, 3, 4, 5].map((n) => (
-                <span
+                <Star
                   key={n}
-                  className={`text-lg ${n <= workout.feeling! ? 'opacity-100' : 'opacity-20'}`}
-                >
-                  ⭐
-                </span>
+                  size={18}
+                  strokeWidth={1.5}
+                  className={`inline ${n <= workout.feeling! ? 'text-yellow-400 fill-yellow-400' : 'text-neutral-700'}`}
+                />
               ))}
             </div>
             <span className="text-neutral-400 text-sm">{FEELING_LABELS[workout.feeling]}</span>

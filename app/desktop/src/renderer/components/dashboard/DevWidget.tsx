@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { Code, CheckCircle2, RefreshCw, Clock } from 'lucide-react';
 
 const PROJECTS = [
   { name: 'LI Group', status: 'active' },
@@ -8,7 +9,11 @@ const PROJECTS = [
 
 const LAST_TASK = { title: 'Claude Bridge: streaming', status: 'in_progress' as const };
 
-const STATUS_ICON = { done: '\u2705', in_progress: '\uD83D\uDD04', todo: '\u23F3' };
+const STATUS_ICON: Record<string, React.ReactNode> = {
+  done: <CheckCircle2 size={14} strokeWidth={1.5} className="text-emerald-400" />,
+  in_progress: <RefreshCw size={14} strokeWidth={1.5} className="text-blue-400" />,
+  todo: <Clock size={14} strokeWidth={1.5} className="text-yellow-400" />,
+};
 const STATUS_LABEL = { done: 'Готово', in_progress: 'В работе', todo: 'Todo' };
 
 export function DevWidget() {
@@ -18,7 +23,7 @@ export function DevWidget() {
   return (
     <div className="bg-neutral-900/50 border border-blue-500/10 rounded-xl p-5 flex flex-col">
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-blue-400 text-lg">{'\uD83D\uDCBB'}</span>
+        <span className="text-blue-400"><Code size={16} strokeWidth={1.5} /></span>
         <h3 className="text-sm font-semibold text-neutral-200">Разработка</h3>
       </div>
 

@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { BookOpen } from 'lucide-react';
 
 const NEXT_DEADLINE = { title: 'Производные (ДЗ)', subject: 'Мат. анализ', deadline: '2026-03-25' };
 const IN_PROGRESS_COUNT = 6;
@@ -9,7 +10,7 @@ export function StudyWidget() {
   return (
     <div className="bg-neutral-900/50 border border-purple-500/10 rounded-xl p-5 flex flex-col">
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-purple-400 text-lg">{'\uD83D\uDCDA'}</span>
+        <span className="text-purple-400"><BookOpen size={16} strokeWidth={1.5} /></span>
         <h3 className="text-sm font-semibold text-neutral-200">Учёба</h3>
       </div>
 
