@@ -1,7 +1,5 @@
 import { Dumbbell, ClipboardList, BookOpen, Code, BarChart3 } from 'lucide-react';
 
-import { Dumbbell, ClipboardList, BookOpen, Code, BarChart3 } from 'lucide-react';
-
 const TODAY = '2026-03-21';
 
 interface TodayItem {

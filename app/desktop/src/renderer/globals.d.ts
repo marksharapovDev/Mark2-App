@@ -55,8 +55,52 @@ interface CalendarAPI {
   onPoppedIn: (callback: () => void) => () => void;
 }
 
+interface DbAPI {
+  tasks: {
+    list: (sphere?: string) => Promise<import('@mark2/shared').Task[]>;
+    get: (id: string) => Promise<import('@mark2/shared').Task>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').Task>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').Task>;
+    delete: (id: string) => Promise<void>;
+  };
+  events: {
+    list: (startDate: string, endDate: string) => Promise<import('@mark2/shared').CalendarEvent[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').CalendarEvent>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').CalendarEvent>;
+    delete: (id: string) => Promise<void>;
+  };
+  projects: {
+    list: () => Promise<import('@mark2/shared').DevProject[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').DevProject>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').DevProject>;
+  };
+  students: {
+    list: () => Promise<import('@mark2/shared').Student[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').Student>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').Student>;
+    delete: (id: string) => Promise<void>;
+  };
+  subjects: {
+    list: (semester?: number) => Promise<import('@mark2/shared').Subject[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').Subject>;
+  };
+  transactions: {
+    list: (month?: string) => Promise<import('@mark2/shared').Transaction[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').Transaction>;
+    delete: (id: string) => Promise<void>;
+  };
+  workouts: {
+    list: () => Promise<import('@mark2/shared').Workout[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').Workout>;
+  };
+  notes: {
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').DailyNote>;
+  };
+}
+
 interface Window {
   chat: ChatAPI;
   claude: ClaudeAPI;
   calendar: CalendarAPI;
+  db: DbAPI;
 }

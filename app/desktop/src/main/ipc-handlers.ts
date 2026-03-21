@@ -12,6 +12,8 @@ import {
   handleAgentSwitch,
   handleBackfillSummaries,
 } from './hybrid-engine';
+import * as db from './db-service';
+import type { Sphere } from '@mark2/shared';
 
 const VALID_AGENTS = new Set<string>(['dev', 'teaching', 'study', 'health', 'finance', 'general']);
 
@@ -109,6 +111,112 @@ export function registerIpcHandlers(): void {
     if (!proc) throw new Error(`Session ${sessionId} not found`);
     if (!proc.stdin || !proc.stdin.writable) throw new Error(`Session ${sessionId} stdin not writable`);
     proc.stdin.write(message + '\n');
+  });
+
+  // === Database CRUD ===
+
+  // Tasks
+  ipcMain.handle('db:tasks:list', async (_event, sphere?: Sphere) => {
+    return db.getTasks(sphere);
+  });
+
+  ipcMain.handle('db:tasks:get', async (_event, id: string) => {
+    return db.getTask(id);
+  });
+
+  ipcMain.handle('db:tasks:create', async (_event, data: Record<string, unknown>) => {
+    return db.createTask(data);
+  });
+
+  ipcMain.handle('db:tasks:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateTask(id, data);
+  });
+
+  ipcMain.handle('db:tasks:delete', async (_event, id: string) => {
+    return db.deleteTask(id);
+  });
+
+  // Calendar Events
+  ipcMain.handle('db:events:list', async (_event, startDate: string, endDate: string) => {
+    return db.getCalendarEvents(startDate, endDate);
+  });
+
+  ipcMain.handle('db:events:create', async (_event, data: Record<string, unknown>) => {
+    return db.createCalendarEvent(data);
+  });
+
+  ipcMain.handle('db:events:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateCalendarEvent(id, data);
+  });
+
+  ipcMain.handle('db:events:delete', async (_event, id: string) => {
+    return db.deleteCalendarEvent(id);
+  });
+
+  // Dev Projects
+  ipcMain.handle('db:projects:list', async () => {
+    return db.getProjects();
+  });
+
+  ipcMain.handle('db:projects:create', async (_event, data: Record<string, unknown>) => {
+    return db.createProject(data);
+  });
+
+  ipcMain.handle('db:projects:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateProject(id, data);
+  });
+
+  // Students
+  ipcMain.handle('db:students:list', async () => {
+    return db.getStudents();
+  });
+
+  ipcMain.handle('db:students:create', async (_event, data: Record<string, unknown>) => {
+    return db.createStudent(data);
+  });
+
+  ipcMain.handle('db:students:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateStudent(id, data);
+  });
+
+  ipcMain.handle('db:students:delete', async (_event, id: string) => {
+    return db.deleteStudent(id);
+  });
+
+  // Subjects
+  ipcMain.handle('db:subjects:list', async (_event, semester?: number) => {
+    return db.getSubjects(semester);
+  });
+
+  ipcMain.handle('db:subjects:create', async (_event, data: Record<string, unknown>) => {
+    return db.createSubject(data);
+  });
+
+  // Transactions
+  ipcMain.handle('db:transactions:list', async (_event, month?: string) => {
+    return db.getTransactions(month);
+  });
+
+  ipcMain.handle('db:transactions:create', async (_event, data: Record<string, unknown>) => {
+    return db.createTransaction(data);
+  });
+
+  ipcMain.handle('db:transactions:delete', async (_event, id: string) => {
+    return db.deleteTransaction(id);
+  });
+
+  // Workouts
+  ipcMain.handle('db:workouts:list', async () => {
+    return db.getWorkouts();
+  });
+
+  ipcMain.handle('db:workouts:create', async (_event, data: Record<string, unknown>) => {
+    return db.createWorkout(data);
+  });
+
+  // Daily Notes
+  ipcMain.handle('db:notes:create', async (_event, data: Record<string, unknown>) => {
+    return db.createDailyNote(data);
   });
 
   // === File operations ===

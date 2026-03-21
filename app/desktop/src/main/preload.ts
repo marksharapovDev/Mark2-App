@@ -152,7 +152,75 @@ const electronAPI = {
     ipcRenderer.invoke('file:open', filePath),
 };
 
+const dbApi = {
+  tasks: {
+    list: (sphere?: string) =>
+      ipcRenderer.invoke('db:tasks:list', sphere),
+    get: (id: string) =>
+      ipcRenderer.invoke('db:tasks:get', id),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:tasks:create', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:tasks:update', id, data),
+    delete: (id: string) =>
+      ipcRenderer.invoke('db:tasks:delete', id),
+  },
+  events: {
+    list: (startDate: string, endDate: string) =>
+      ipcRenderer.invoke('db:events:list', startDate, endDate),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:events:create', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:events:update', id, data),
+    delete: (id: string) =>
+      ipcRenderer.invoke('db:events:delete', id),
+  },
+  projects: {
+    list: () =>
+      ipcRenderer.invoke('db:projects:list'),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:projects:create', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:projects:update', id, data),
+  },
+  students: {
+    list: () =>
+      ipcRenderer.invoke('db:students:list'),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:students:create', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:students:update', id, data),
+    delete: (id: string) =>
+      ipcRenderer.invoke('db:students:delete', id),
+  },
+  subjects: {
+    list: (semester?: number) =>
+      ipcRenderer.invoke('db:subjects:list', semester),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:subjects:create', data),
+  },
+  transactions: {
+    list: (month?: string) =>
+      ipcRenderer.invoke('db:transactions:list', month),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:transactions:create', data),
+    delete: (id: string) =>
+      ipcRenderer.invoke('db:transactions:delete', id),
+  },
+  workouts: {
+    list: () =>
+      ipcRenderer.invoke('db:workouts:list'),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:workouts:create', data),
+  },
+  notes: {
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:notes:create', data),
+  },
+};
+
 contextBridge.exposeInMainWorld('chat', chatApi);
 contextBridge.exposeInMainWorld('claude', claudeApi);
 contextBridge.exposeInMainWorld('calendar', calendarApi);
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+contextBridge.exposeInMainWorld('db', dbApi);
