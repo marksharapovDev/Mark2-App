@@ -104,11 +104,19 @@ interface DbAPI {
   notes: {
     create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').DailyNote>;
   };
+  files: {
+    list: (entityType: string, entityId?: string) => Promise<import('@mark2/shared').AttachedFile[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').AttachedFile>;
+  };
 }
 
 interface DataEventsAPI {
   onDataChanged: (callback: (entities: string[]) => void) => () => void;
   emitDataChanged: (entities: string[]) => void;
+}
+
+interface ElectronAPI {
+  openFile: (filePath: string) => Promise<string>;
 }
 
 interface Window {
@@ -117,4 +125,5 @@ interface Window {
   calendar: CalendarAPI;
   db: DbAPI;
   dataEvents: DataEventsAPI;
+  electronAPI: ElectronAPI;
 }

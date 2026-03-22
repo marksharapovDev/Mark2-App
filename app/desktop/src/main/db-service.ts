@@ -9,6 +9,7 @@ import type {
   Workout,
   DailyNote,
   Sphere,
+  AttachedFile,
 } from '@mark2/shared';
 
 // --- Helpers: snake_case ↔ camelCase mapping ---
@@ -270,4 +271,24 @@ export async function createDailyNote(input: Record<string, unknown>): Promise<D
   const { data, error } = await sb.from('daily_notes').insert(toDbFields(input)).select().single();
   if (error) throw error;
   return mapRow<DailyNote>(data);
+}
+
+// --- Attached Files ---
+
+export async function getAttachedFiles(entityType: string, entityId?: string): Promise<AttachedFile[]> {
+  const sb = getSupabase();
+  let query = sb.from('attached_files').select('*').eq('entity_type', entityType).order('created_at', { ascending: false });
+  if (entityId) {
+    query = query.eq('entity_id', entityId);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return mapRows<AttachedFile>(data);
+}
+
+export async function createAttachedFile(input: Record<string, unknown>): Promise<AttachedFile> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from('attached_files').insert(toDbFields(input)).select().single();
+  if (error) throw error;
+  return mapRow<AttachedFile>(data);
 }

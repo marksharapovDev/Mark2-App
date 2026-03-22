@@ -1052,6 +1052,33 @@ function StudentOverview({
   const upcomingLessons = lessons.filter((l) => l.status === 'planned').slice(0, 3);
   const lastDoneHomework = homeworks.filter((h) => h.status === 'done').at(-1);
 
+  const [dbFiles, setDbFiles] = useState<Array<{id: string; filename: string; filepath: string; fileType: string; category: string; createdAt: string}>>([]);
+
+  const loadFiles = useCallback(() => {
+    window.db.files.list('student', student.id).then((files) => {
+      setDbFiles(files.map((f) => ({
+        id: f.id,
+        filename: f.filename,
+        filepath: f.filepath,
+        fileType: f.fileType ?? 'md',
+        category: f.category ?? 'material',
+        createdAt: f.createdAt ? String(f.createdAt) : '',
+      })));
+    }).catch(() => {});
+  }, [student.id]);
+
+  useEffect(() => {
+    loadFiles();
+  }, [loadFiles]);
+
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('files')) {
+        loadFiles();
+      }
+    });
+  }, [student.id]);
+
   // Collect all files from lessons and homeworks
   const attachedFiles: Array<{ file: MockFile; source: string }> = [];
   for (const l of lessons) {
@@ -1141,6 +1168,34 @@ function StudentOverview({
                   <div className="text-[10px] text-neutral-600 truncate">{source}</div>
                 </div>
                 <button className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors shrink-0">
+                  Открыть
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* DB Attached Files */}
+      {dbFiles.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold text-neutral-300 mb-3">Файлы от ИИ</h2>
+          <div className="space-y-1.5">
+            {dbFiles.map((file) => (
+              <div
+                key={file.id}
+                className="flex items-center gap-3 bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-2.5 cursor-pointer hover:bg-neutral-800/50 transition-colors"
+                onClick={() => window.electronAPI.openFile(file.filepath)}
+              >
+                <span className="text-sm shrink-0">{FILE_ICON[file.fileType] ?? FILE_ICON.txt}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-neutral-300 truncate">{file.filename}</div>
+                  <div className="text-[10px] text-neutral-600 truncate">{file.category}</div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); window.electronAPI.openFile(file.filepath); }}
+                  className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors shrink-0"
+                >
                   Открыть
                 </button>
               </div>

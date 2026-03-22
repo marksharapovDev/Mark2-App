@@ -7,6 +7,7 @@ export type { TransactionType, TransactionSource, Transaction } from './types/tr
 export type { WorkoutType, Exercise, Workout } from './types/workout.js';
 export type { Recurrence, CalendarEvent } from './types/calendar.js';
 export type { NoteSource, DailyNote } from './types/note.js';
+export type { AttachedFileEntityType, AttachedFileCategory, AttachedFileType, AttachedFile } from './types/attached-file.js';
 export type { AgentName, ChatEngine, ChatRole, ChatSession, ChatMessage } from './types/chat.js';
 
 // Validation schemas

@@ -1,4 +1,7 @@
 import * as db from './db-service';
+import { mkdirSync, writeFileSync } from 'fs';
+import { resolve, dirname, basename } from 'path';
+import os from 'os';
 
 function formatError(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -98,6 +101,24 @@ const AI_TOOLS: Record<string, ActionHandler> = {
   add_workout: async (params) => {
     const result = await db.createWorkout(params);
     return { success: true, message: `Тренировка добавлена`, entity: 'workouts', data: result as unknown as Record<string, unknown> };
+  },
+
+  // Files
+  save_file: async (params) => {
+    const filePath = String(params.path ?? '');
+    const content = String(params.content ?? '');
+    if (!filePath) throw new Error('path is required');
+    // Resolve relative to ~/mark2/
+    const home = os.homedir();
+    const fullPath = filePath.startsWith('/') ? filePath : resolve(home, 'mark2', filePath);
+    mkdirSync(dirname(fullPath), { recursive: true });
+    writeFileSync(fullPath, content, 'utf-8');
+    return { success: true, message: `Файл сохранён: ${basename(fullPath)}`, entity: 'files', data: { path: fullPath } };
+  },
+
+  attach_file: async (params) => {
+    const result = await db.createAttachedFile(params);
+    return { success: true, message: `Файл прикреплён: ${params.filename}`, entity: 'files', data: result as unknown as Record<string, unknown> };
   },
 };
 

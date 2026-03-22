@@ -54,9 +54,16 @@
 - `create_event` — событие в календарь: `{title, startAt, endAt, sphere: "teaching"}`
 - `create_student` — добавить ученика: `{name, subject, level?, schedule?}`
 - `update_student` — обновить ученика: `{id, name?, subject?, level?, schedule?}`
+- `save_file` — сохранить файл: `{path: "agents/teaching/context/materials/filename.md", content: "содержимое"}`
+- `attach_file` — прикрепить файл к сущности: `{entityType: "student"|"lesson"|"homework"|"subject"|"project"|"task", entityId?, filename, filepath, fileType: "docx"|"pdf"|"md"|"py"|"txt", category: "homework"|"lesson_plan"|"material"|"notes"|"test"|"solution"}`
 
 ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
 После выполнения действия сообщи пользователю что сделано.
+
+Когда создаёшь ДЗ, план урока или материал — сначала сохрани файл,
+затем прикрепи его к ученику:
+1. [ACTION:save_file]{"path":"agents/teaching/context/materials/dz_drobi.md","content":"# ДЗ: Дроби\n\n1. ..."}[/ACTION]
+2. [ACTION:attach_file]{"entityType":"student","entityId":"uuid","filename":"dz_drobi.md","filepath":"agents/teaching/context/materials/dz_drobi.md","fileType":"md","category":"homework"}[/ACTION]
 
 ## Автоматизация: новый ученик + расписание
 

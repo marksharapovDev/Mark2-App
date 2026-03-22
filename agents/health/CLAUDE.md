@@ -52,6 +52,8 @@
 - `complete_task` — завершить задачу: `{id}`
 - `create_event` — событие в календарь: `{title, startAt, endAt, sphere: "health"}`
 - `add_workout` — записать тренировку: `{type: "gym"|"run"|"swim", exercises?, duration?, notes?}`
+- `save_file` — сохранить файл: `{path: "agents/health/context/materials/filename.md", content: "содержимое"}`
+- `attach_file` — прикрепить файл к сущности: `{entityType: "student"|"lesson"|"homework"|"subject"|"project"|"task", entityId?, filename, filepath, fileType: "docx"|"pdf"|"md"|"py"|"txt", category: "homework"|"lesson_plan"|"material"|"notes"|"test"|"solution"}`
 
 ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
 После выполнения действия сообщи пользователю что сделано.

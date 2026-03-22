@@ -225,6 +225,12 @@ const dbApi = {
     create: (data: Record<string, unknown>) =>
       ipcRenderer.invoke('db:notes:create', data),
   },
+  files: {
+    list: (entityType: string, entityId?: string) =>
+      ipcRenderer.invoke('db:files:list', entityType, entityId),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:files:create', data),
+  },
 };
 
 const dataEvents = {

@@ -219,6 +219,15 @@ export function registerIpcHandlers(): void {
     return db.createDailyNote(data);
   });
 
+  // Attached Files
+  ipcMain.handle('db:files:list', async (_event, entityType: string, entityId?: string) => {
+    return db.getAttachedFiles(entityType, entityId);
+  });
+
+  ipcMain.handle('db:files:create', async (_event, data: Record<string, unknown>) => {
+    return db.createAttachedFile(data);
+  });
+
   // === File operations ===
 
   ipcMain.handle('file:open', async (_event, filePath: string) => {
