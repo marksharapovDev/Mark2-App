@@ -175,6 +175,13 @@ export async function getStudents(): Promise<Student[]> {
   return mapRows<Student>(data);
 }
 
+export async function findStudentByName(name: string): Promise<Student | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from('students').select('*').ilike('name', `%${name}%`).limit(1).maybeSingle();
+  if (error) throw error;
+  return data ? mapRow<Student>(data) : null;
+}
+
 export async function createStudent(input: Record<string, unknown>): Promise<Student> {
   const sb = getSupabase();
   const { data, error } = await sb.from('students').insert(toDbFields(input)).select().single();
@@ -288,7 +295,19 @@ export async function getAttachedFiles(entityType: string, entityId?: string): P
 
 export async function createAttachedFile(input: Record<string, unknown>): Promise<AttachedFile> {
   const sb = getSupabase();
-  const { data, error } = await sb.from('attached_files').insert(toDbFields(input)).select().single();
-  if (error) throw error;
+  // Remove fields that aren't in the DB table
+  const clean: Record<string, unknown> = { ...input };
+  // entity_id must be a valid UUID or null
+  if (clean.entityId && typeof clean.entityId === 'string' && !/^[0-9a-f-]{36}$/i.test(clean.entityId)) {
+    console.warn('[DB] Invalid entityId (not UUID), setting to null:', clean.entityId);
+    clean.entityId = null;
+  }
+  const dbFields = toDbFields(clean);
+  console.log('[DB] Creating attached file:', JSON.stringify(dbFields));
+  const { data, error } = await sb.from('attached_files').insert(dbFields).select().single();
+  if (error) {
+    console.error('[DB] createAttachedFile error:', JSON.stringify(error));
+    throw error;
+  }
   return mapRow<AttachedFile>(data);
 }

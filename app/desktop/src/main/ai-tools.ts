@@ -85,6 +85,16 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     return { success: true, message: `Ученик удалён`, entity: 'students' };
   },
 
+  // Find student by name
+  find_student: async (params) => {
+    const name = String(params.name ?? '');
+    const result = await db.findStudentByName(name);
+    if (!result) {
+      return { success: false, message: `Ученик "${name}" не найден`, entity: '' };
+    }
+    return { success: true, message: `Найден: ${result.name} (ID: ${result.id})`, entity: '', data: { id: result.id, name: result.name } };
+  },
+
   // Subjects
   create_subject: async (params) => {
     const result = await db.createSubject(params);
@@ -117,6 +127,7 @@ const AI_TOOLS: Record<string, ActionHandler> = {
   },
 
   attach_file: async (params) => {
+    console.log('[AI Tools] attach_file params:', JSON.stringify(params));
     const result = await db.createAttachedFile(params);
     return { success: true, message: `Файл прикреплён: ${params.filename}`, entity: 'files', data: result as unknown as Record<string, unknown> };
   },

@@ -67,6 +67,7 @@
 - `create_event` — событие в календарь: `{title, startAt, endAt, sphere}`
 - `create_project` — новый проект: `{name, slug, stack?}`
 - `create_student` — добавить ученика: `{name, subject, level?}`
+- `find_student` — найти ученика по имени: `{name}` → вернёт ID
 - `create_subject` — добавить предмет: `{name, semester, professor?}`
 - `add_transaction` — транзакция: `{amount, type: "income"|"expense", category?, description?}`
 - `add_workout` — тренировка: `{type: "gym"|"run"|"swim", exercises?, duration?}`

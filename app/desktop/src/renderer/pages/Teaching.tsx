@@ -1055,7 +1055,9 @@ function StudentOverview({
   const [dbFiles, setDbFiles] = useState<Array<{id: string; filename: string; filepath: string; fileType: string; category: string; createdAt: string}>>([]);
 
   const loadFiles = useCallback(() => {
+    console.log('[Teaching] Loading files for student:', student.id);
     window.db.files.list('student', student.id).then((files) => {
+      console.log('[Teaching] Files result:', files);
       setDbFiles(files.map((f) => ({
         id: f.id,
         filename: f.filename,
@@ -1064,7 +1066,9 @@ function StudentOverview({
         category: f.category ?? 'material',
         createdAt: f.createdAt ? String(f.createdAt) : '',
       })));
-    }).catch(() => {});
+    }).catch((err) => {
+      console.error('[Teaching] Failed to load files:', err);
+    });
   }, [student.id]);
 
   useEffect(() => {
@@ -1176,33 +1180,46 @@ function StudentOverview({
         </div>
       )}
 
-      {/* DB Attached Files */}
-      {dbFiles.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-sm font-semibold text-neutral-300 mb-3">Файлы от ИИ</h2>
-          <div className="space-y-1.5">
-            {dbFiles.map((file) => (
-              <div
-                key={file.id}
-                className="flex items-center gap-3 bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-2.5 cursor-pointer hover:bg-neutral-800/50 transition-colors"
-                onClick={() => window.electronAPI.openFile(file.filepath)}
-              >
-                <span className="text-sm shrink-0">{FILE_ICON[file.fileType] ?? FILE_ICON.txt}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-neutral-300 truncate">{file.filename}</div>
-                  <div className="text-[10px] text-neutral-600 truncate">{file.category}</div>
-                </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); window.electronAPI.openFile(file.filepath); }}
-                  className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors shrink-0"
-                >
-                  Открыть
-                </button>
+      {/* DB Attached Files — by category */}
+      {dbFiles.length > 0 && (() => {
+        const CATEGORY_LABELS: Record<string, string> = {
+          homework: 'Домашние задания',
+          lesson_plan: 'Планы уроков',
+          material: 'Материалы',
+          notes: 'Заметки',
+          test: 'Тесты',
+          solution: 'Решения',
+        };
+        const categories = [...new Set(dbFiles.map((f) => f.category))];
+        return categories.map((cat) => {
+          const catFiles = dbFiles.filter((f) => f.category === cat);
+          return (
+            <div key={cat} className="mb-6">
+              <h2 className="text-sm font-semibold text-neutral-300 mb-3">{CATEGORY_LABELS[cat] ?? cat}</h2>
+              <div className="space-y-1.5">
+                {catFiles.map((file) => (
+                  <div
+                    key={file.id}
+                    className="flex items-center gap-3 bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-2.5 cursor-pointer hover:bg-neutral-800/50 transition-colors"
+                    onClick={() => window.electronAPI.openFile(file.filepath)}
+                  >
+                    <span className="text-sm shrink-0">{FILE_ICON[file.fileType] ?? FILE_ICON.txt}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-neutral-300 truncate">{file.filename}</div>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); window.electronAPI.openFile(file.filepath); }}
+                      className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors shrink-0"
+                    >
+                      Открыть
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </div>
+          );
+        });
+      })()}
 
       {/* Upcoming lessons */}
       {upcomingLessons.length > 0 && (
