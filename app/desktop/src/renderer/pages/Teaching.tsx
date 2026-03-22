@@ -440,7 +440,9 @@ type MainView =
   | { kind: 'lesson-detail'; lessonId: string }
   | { kind: 'homework-detail'; homeworkId: string }
   | { kind: 'task-detail'; taskId: string }
-  | { kind: 'add-student' };
+  | { kind: 'add-student' }
+  | { kind: 'learning-path' }
+  | { kind: 'learning-path-topic'; topicId: string };
 
 // --- Component ---
 
@@ -844,20 +846,24 @@ export function Teaching() {
 
                     {/* Learning path */}
                     <div className="px-3 pt-3 pb-2">
-                      <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                      <button
+                        onClick={() => setMainView({ kind: 'learning-path' })}
+                        className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 hover:text-neutral-300 transition-colors"
+                      >
                         Путь обучения
-                      </div>
+                      </button>
                       <div className="space-y-1">
                         {dbLearningPath.length > 0 ? dbLearningPath.map((topic) => (
-                          <div
+                          <button
                             key={topic.id}
-                            className={`flex items-center gap-1.5 text-xs ${
+                            onClick={() => setMainView({ kind: 'learning-path-topic', topicId: topic.id })}
+                            className={`w-full text-left flex items-center gap-1.5 text-xs py-0.5 px-1 rounded hover:bg-neutral-800/50 transition-colors ${
                               topic.status === 'in_progress' ? 'text-neutral-200' : 'text-neutral-400'
                             }`}
                           >
                             <span className="text-[11px] shrink-0">{LP_STATUS_ICON[topic.status]}</span>
                             <span className="truncate">{topic.title}</span>
-                          </div>
+                          </button>
                         )) : topics.map((topic) => (
                           <div
                             key={topic.id}
@@ -1073,6 +1079,8 @@ export function Teaching() {
               onLessonClick={(id) => setMainView({ kind: 'lesson-detail', lessonId: id })}
               onHomeworkClick={(id) => setMainView({ kind: 'homework-detail', homeworkId: id })}
               onTaskClick={(id) => setMainView({ kind: 'task-detail', taskId: id })}
+              onLearningPathClick={() => setMainView({ kind: 'learning-path' })}
+              onLearningPathTopicClick={(id) => setMainView({ kind: 'learning-path-topic', topicId: id })}
               getEffectiveStatus={getEffectiveStatus}
             />
           )}
@@ -1107,6 +1115,24 @@ export function Teaching() {
               toggleTaskChecked={toggleTaskChecked}
               getEffectiveStatus={getEffectiveStatus}
               sendTaskToChat={sendTaskToChat}
+            />
+          )}
+          {!loading && student && mainView.kind === 'learning-path' && (
+            <LearningPathView
+              student={student}
+              dbLearningPath={dbLearningPath}
+              onBack={() => setMainView({ kind: 'overview' })}
+              onTopicClick={(id) => setMainView({ kind: 'learning-path-topic', topicId: id })}
+            />
+          )}
+          {!loading && student && mainView.kind === 'learning-path-topic' && (
+            <LearningPathTopicView
+              topic={dbLearningPath.find((t) => t.id === mainView.topicId)}
+              topicIndex={dbLearningPath.findIndex((t) => t.id === mainView.topicId)}
+              dbLessons={dbLessons}
+              sidebarHomeworkFiles={sidebarHomeworkFiles}
+              onBack={() => setMainView({ kind: 'learning-path' })}
+              onReload={() => { if (student) loadLearningPath(student.id); }}
             />
           )}
           {!loading && mainView.kind === 'add-student' && (
@@ -1160,6 +1186,8 @@ function StudentOverview({
   onLessonClick,
   onHomeworkClick,
   onTaskClick,
+  onLearningPathClick,
+  onLearningPathTopicClick,
   getEffectiveStatus,
 }: {
   student: MockStudent;
@@ -1174,6 +1202,8 @@ function StudentOverview({
   onLessonClick: (id: string) => void;
   onHomeworkClick: (id: string) => void;
   onTaskClick: (id: string) => void;
+  onLearningPathClick: () => void;
+  onLearningPathTopicClick: (id: string) => void;
   getEffectiveStatus: (task: TeachingTask) => TaskStatus;
 }) {
   const stats = hwStats(homeworks);
@@ -1398,13 +1428,24 @@ function StudentOverview({
 
       {/* Learning path */}
       <div>
-        <h2 className="text-sm font-semibold text-neutral-300 mb-3">Путь обучения</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-neutral-300">Путь обучения</h2>
+          {dbLearningPath.length > 0 && (
+            <button
+              onClick={onLearningPathClick}
+              className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+            >
+              Показать всё &rarr;
+            </button>
+          )}
+        </div>
         {dbLearningPath.length > 0 ? (
           <div className="space-y-2">
             {dbLearningPath.map((topic, idx) => (
-              <div
+              <button
                 key={topic.id}
-                className={`flex items-start gap-3 px-4 py-2.5 rounded-lg border ${LP_STATUS_COLOR[topic.status]}`}
+                onClick={() => onLearningPathTopicClick(topic.id)}
+                className={`w-full text-left flex items-start gap-3 px-4 py-2.5 rounded-lg border hover:brightness-125 transition ${LP_STATUS_COLOR[topic.status]}`}
               >
                 <span className="shrink-0 mt-0.5">{LP_STATUS_ICON[topic.status]}</span>
                 <div className="flex-1 min-w-0">
@@ -1419,7 +1460,7 @@ function StudentOverview({
                     <p className="text-[11px] text-neutral-600 mt-1 italic">{topic.notes}</p>
                   )}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         ) : (
@@ -1775,6 +1816,294 @@ function TaskDetailView({
           Отправить боту
         </button>
       </div>
+    </div>
+  );
+}
+
+const LP_STATUS_LABEL: Record<LearningPathStatus, string> = {
+  completed: 'Завершён',
+  in_progress: 'В процессе',
+  planned: 'Запланирован',
+  skipped: 'Пропущен',
+};
+
+function LearningPathView({
+  student,
+  dbLearningPath,
+  onBack,
+  onTopicClick,
+}: {
+  student: MockStudent;
+  dbLearningPath: LearningPathTopic[];
+  onBack: () => void;
+  onTopicClick: (id: string) => void;
+}) {
+  const completedCount = dbLearningPath.filter((t) => t.status === 'completed').length;
+  const totalCount = dbLearningPath.length;
+  const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  return (
+    <div className="max-w-2xl">
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
+        &larr; Назад к ученику
+      </button>
+
+      <h1 className="text-2xl font-bold mb-1">{student.name}</h1>
+      <h2 className="text-neutral-500 text-sm mb-6">Путь обучения</h2>
+
+      {/* Progress bar */}
+      {totalCount > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between text-xs text-neutral-500 mb-1.5">
+            <span>{completedCount} из {totalCount} этапов завершено</span>
+            <span>{progressPct}%</span>
+          </div>
+          <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald-500 rounded-full transition-all"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Timeline */}
+      <div className="space-y-1">
+        {dbLearningPath.map((topic, idx) => (
+          <button
+            key={topic.id}
+            onClick={() => onTopicClick(topic.id)}
+            className={`w-full text-left flex items-start gap-3 px-4 py-3 rounded-lg border hover:brightness-125 transition ${LP_STATUS_COLOR[topic.status]}`}
+          >
+            {/* Timeline dot + line */}
+            <div className="flex flex-col items-center shrink-0 mt-0.5">
+              <span>{LP_STATUS_ICON[topic.status]}</span>
+              {idx < dbLearningPath.length - 1 && (
+                <div className="w-px h-4 bg-neutral-700 mt-1" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-neutral-600 font-mono">{idx + 1}</span>
+                <span className="text-sm font-medium">{topic.title}</span>
+                <span className="text-[10px] uppercase ml-auto shrink-0 opacity-70">
+                  {LP_STATUS_LABEL[topic.status]}
+                </span>
+              </div>
+              {topic.description && (
+                <p className="text-xs text-neutral-500 mt-0.5">{topic.description}</p>
+              )}
+              {topic.notes && (
+                <p className="text-[11px] text-neutral-600 mt-1 italic">{topic.notes}</p>
+              )}
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {dbLearningPath.length === 0 && (
+        <div className="text-neutral-600 text-sm py-8 text-center">
+          Путь обучения пока не создан. Попросите бота составить план.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LearningPathTopicView({
+  topic,
+  topicIndex,
+  dbLessons,
+  sidebarHomeworkFiles,
+  onBack,
+  onReload,
+}: {
+  topic: LearningPathTopic | undefined;
+  topicIndex: number;
+  dbLessons: Array<{ id: string; studentId: string; date: string; topic: string; status: string; notes: string; homeworkGiven: string | null }>;
+  sidebarHomeworkFiles: Array<{ id: string; filename: string; filepath: string; status: string; createdAt: string }>;
+  onBack: () => void;
+  onReload: () => void;
+}) {
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [descDraft, setDescDraft] = useState('');
+  const [notesDraft, setNotesDraft] = useState('');
+  const [statusValue, setStatusValue] = useState<LearningPathStatus>('planned');
+
+  useEffect(() => {
+    if (topic) {
+      setTitleDraft(topic.title);
+      setDescDraft(topic.description ?? '');
+      setNotesDraft(topic.notes ?? '');
+      setStatusValue(topic.status);
+      setEditingTitle(false);
+    }
+  }, [topic?.id]);
+
+  if (!topic) {
+    return (
+      <div className="text-neutral-500">
+        <button onClick={onBack} className="text-sm hover:text-neutral-300 transition-colors mb-4">&larr; Назад</button>
+        <p>Этап не найден</p>
+      </div>
+    );
+  }
+
+  const saveField = async (field: string, value: string) => {
+    try {
+      await window.db.learningPath.update(topic.id, { [field]: value });
+      window.dataEvents.emitDataChanged(['learning-path']);
+      onReload();
+    } catch (err) {
+      console.error('[LearningPathTopicView] Failed to save:', err);
+    }
+  };
+
+  const saveStatus = async (newStatus: LearningPathStatus) => {
+    setStatusValue(newStatus);
+    try {
+      await window.db.learningPath.update(topic.id, { status: newStatus });
+      window.dataEvents.emitDataChanged(['learning-path']);
+      onReload();
+    } catch (err) {
+      console.error('[LearningPathTopicView] Failed to save status:', err);
+    }
+  };
+
+  // Related lessons: topic ILIKE '%title%'
+  const titleWords = topic.title.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+  const relatedLessons = dbLessons.filter((l) => {
+    const lt = l.topic.toLowerCase();
+    return titleWords.some((w) => lt.includes(w));
+  });
+
+  // Related homework files
+  const relatedHomework = sidebarHomeworkFiles.filter((f) => {
+    const fn = f.filename.toLowerCase();
+    return titleWords.some((w) => fn.includes(w));
+  });
+
+  return (
+    <div className="max-w-2xl">
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
+        &larr; Назад к плану
+      </button>
+
+      {/* Header: number + title */}
+      <div className="flex items-center gap-3 mb-2">
+        <span className="text-neutral-600 text-sm font-mono">#{topicIndex + 1}</span>
+        {editingTitle ? (
+          <input
+            autoFocus
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={() => { setEditingTitle(false); if (titleDraft !== topic.title) saveField('title', titleDraft); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { setEditingTitle(false); if (titleDraft !== topic.title) saveField('title', titleDraft); } }}
+            className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xl font-bold text-neutral-200 focus:outline-none focus:border-neutral-500"
+          />
+        ) : (
+          <h1
+            onClick={() => setEditingTitle(true)}
+            className="text-xl font-bold cursor-pointer hover:text-neutral-300 transition-colors"
+            title="Кликните для редактирования"
+          >
+            {topic.title}
+          </h1>
+        )}
+      </div>
+
+      {/* Status dropdown */}
+      <div className="flex items-center gap-3 mb-6">
+        <select
+          value={statusValue}
+          onChange={(e) => saveStatus(e.target.value as LearningPathStatus)}
+          className={`text-xs px-2.5 py-1 rounded border font-medium focus:outline-none ${LP_STATUS_COLOR[statusValue]}`}
+          style={{ backgroundColor: 'transparent' }}
+        >
+          <option value="planned" className="bg-neutral-900 text-neutral-300">Запланирован</option>
+          <option value="in_progress" className="bg-neutral-900 text-neutral-300">В процессе</option>
+          <option value="completed" className="bg-neutral-900 text-neutral-300">Завершён</option>
+          <option value="skipped" className="bg-neutral-900 text-neutral-300">Пропущен</option>
+        </select>
+      </div>
+
+      {/* Description */}
+      <div className="mb-6">
+        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Описание</h2>
+        <textarea
+          value={descDraft}
+          onChange={(e) => setDescDraft(e.target.value)}
+          onBlur={() => { if (descDraft !== (topic.description ?? '')) saveField('description', descDraft); }}
+          placeholder="Добавьте описание..."
+          rows={3}
+          className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-neutral-300 focus:outline-none focus:border-neutral-600 resize-none placeholder:text-neutral-600"
+        />
+      </div>
+
+      {/* Notes */}
+      <div className="mb-6">
+        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Заметки</h2>
+        <textarea
+          value={notesDraft}
+          onChange={(e) => setNotesDraft(e.target.value)}
+          onBlur={() => { if (notesDraft !== (topic.notes ?? '')) saveField('notes', notesDraft); }}
+          placeholder="Заметки после уроков..."
+          rows={3}
+          className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-neutral-300 focus:outline-none focus:border-neutral-600 resize-none placeholder:text-neutral-600"
+        />
+      </div>
+
+      {/* Related lessons */}
+      {relatedLessons.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Уроки по этой теме</h2>
+          <div className="space-y-1.5">
+            {relatedLessons.map((lesson) => (
+              <div
+                key={lesson.id}
+                className="flex items-center gap-3 bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-2.5"
+              >
+                <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
+                  lesson.status === 'completed' ? 'bg-emerald-900/40 text-emerald-300' : 'bg-blue-900/40 text-blue-300'
+                }`}>
+                  {lesson.status === 'completed' ? 'Проведён' : 'Запланирован'}
+                </span>
+                <span className="text-neutral-500 text-xs shrink-0">{formatDate(lesson.date)}</span>
+                <span className="text-sm text-neutral-300 truncate">{lesson.topic}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Related homework files */}
+      {relatedHomework.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Домашние задания</h2>
+          <div className="space-y-1.5">
+            {relatedHomework.map((file) => (
+              <div
+                key={file.id}
+                onClick={() => window.electronAPI.openFile(file.filepath)}
+                className="flex items-center gap-3 bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-2.5 cursor-pointer hover:bg-neutral-800/50 transition-colors"
+              >
+                <span className="text-sm shrink-0">{FILE_ICON.docx}</span>
+                <span className="text-sm text-neutral-300 truncate flex-1">{file.filename}</span>
+                <span className={`text-[10px] uppercase ${file.status === 'completed' ? 'text-emerald-400' : 'text-yellow-400'}`}>
+                  {file.status === 'completed' ? 'Готово' : 'Ожидает'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {relatedLessons.length === 0 && relatedHomework.length === 0 && (
+        <div className="text-neutral-600 text-xs py-4">
+          Связанных уроков и домашних заданий пока нет.
+        </div>
+      )}
     </div>
   );
 }
