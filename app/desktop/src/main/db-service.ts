@@ -358,36 +358,44 @@ export async function updateAttachedFile(id: string, input: Record<string, unkno
 // --- Lessons ---
 
 export async function getLessons(studentId?: string): Promise<Lesson[]> {
-  const sb = getSupabase();
-  let query = sb.from('lessons').select('*').order('date', { ascending: false });
-  if (studentId) {
-    query = query.eq('student_id', studentId);
-  }
-  const { data, error } = await query;
-  if (error) throw error;
-  return mapRows<Lesson>(data);
+  return withRetry(async () => {
+    const sb = getSupabase();
+    let query = sb.from('lessons').select('*').order('date', { ascending: false });
+    if (studentId) {
+      query = query.eq('student_id', studentId);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    return mapRows<Lesson>(data);
+  });
 }
 
 export async function createLesson(input: Record<string, unknown>): Promise<Lesson> {
-  const sb = getSupabase();
-  const dbFields = toDbFields(input);
-  const { data, error } = await sb.from('lessons').insert(dbFields).select().single();
-  if (error) throw error;
-  return mapRow<Lesson>(data);
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const dbFields = toDbFields(input);
+    const { data, error } = await sb.from('lessons').insert(dbFields).select().single();
+    if (error) throw error;
+    return mapRow<Lesson>(data);
+  });
 }
 
 export async function updateLesson(id: string, input: Record<string, unknown>): Promise<Lesson> {
-  const sb = getSupabase();
-  const dbFields = toDbFields(input);
-  const { data, error } = await sb.from('lessons').update(dbFields).eq('id', id).select().single();
-  if (error) throw error;
-  return mapRow<Lesson>(data);
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const dbFields = toDbFields(input);
+    const { data, error } = await sb.from('lessons').update(dbFields).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<Lesson>(data);
+  });
 }
 
 export async function deleteLesson(id: string): Promise<void> {
-  const sb = getSupabase();
-  const { error } = await sb.from('lessons').delete().eq('id', id);
-  if (error) throw error;
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('lessons').delete().eq('id', id);
+    if (error) throw error;
+  });
 }
 
 // --- Learning Path Topics ---
