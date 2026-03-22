@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dumbbell } from 'lucide-react';
 
@@ -12,33 +12,37 @@ export function HealthWidget() {
   const [lastWorkout, setLastWorkout] = useState<{ date: string; type: string; label: string; duration: number }>(MOCK_LAST_WORKOUT);
   const pct = Math.round((TODAY_CALORIES / TARGET_CALORIES) * 100);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const result = await window.db.workouts.list();
-        if (cancelled) return;
-        if (result.length > 0) {
-          const sorted = [...result].sort((a, b) => b.date.localeCompare(a.date));
-          const w = sorted[0];
-          if (w) {
-            setLastWorkout({
-              date: w.date,
-              type: w.type ?? 'Зал',
-              label: w.notes ?? w.type ?? '',
-              duration: w.duration ?? 0,
-            });
-          }
+  const reload = useCallback(async () => {
+    try {
+      const result = await window.db.workouts.list();
+      if (result.length > 0) {
+        const sorted = [...result].sort((a, b) => b.date.localeCompare(a.date));
+        const w = sorted[0];
+        if (w) {
+          setLastWorkout({
+            date: w.date,
+            type: w.type ?? 'Зал',
+            label: w.notes ?? w.type ?? '',
+            duration: w.duration ?? 0,
+          });
         }
-      } catch {
-        // keep mock data
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+    } catch {
+      // keep mock data
     }
-    load();
-    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    reload().finally(() => setLoading(false));
+  }, [reload]);
+
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('workouts') || entities.includes('tasks')) {
+        reload();
+      }
+    });
+  }, [reload]);
 
   if (loading) {
     return (

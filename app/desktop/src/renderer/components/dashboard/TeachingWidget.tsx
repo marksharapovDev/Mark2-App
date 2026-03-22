@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
 
@@ -12,24 +12,28 @@ export function TeachingWidget() {
   const [loading, setLoading] = useState(true);
   const [studentCount, setStudentCount] = useState(MOCK_STUDENT_COUNT);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const result = await window.db.students.list();
-        if (cancelled) return;
-        if (result.length > 0) {
-          setStudentCount(result.length);
-        }
-      } catch {
-        // keep mock data
-      } finally {
-        if (!cancelled) setLoading(false);
+  const reload = useCallback(async () => {
+    try {
+      const result = await window.db.students.list();
+      if (result.length > 0) {
+        setStudentCount(result.length);
       }
+    } catch {
+      // keep mock data
     }
-    load();
-    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    reload().finally(() => setLoading(false));
+  }, [reload]);
+
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('students') || entities.includes('tasks')) {
+        reload();
+      }
+    });
+  }, [reload]);
 
   if (loading) {
     return (

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen } from 'lucide-react';
 
@@ -11,42 +11,46 @@ export function StudyWidget() {
   const [inProgressCount, setInProgressCount] = useState(MOCK_IN_PROGRESS_COUNT);
   const [nextDeadline, setNextDeadline] = useState<{ title: string; subject: string; deadline: string } | null>(MOCK_NEXT_DEADLINE);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const result = await window.db.tasks.list('study');
-        if (cancelled) return;
-        if (result.length > 0) {
-          const inProgress = result.filter((t: { status: string }) => t.status === 'in_progress');
-          setInProgressCount(inProgress.length);
-          const withDeadline = result
-            .filter((t) => t.dueDate != null)
-            .sort((a, b) => {
-              const da = a.dueDate ? new Date(a.dueDate).getTime() : 0;
-              const db = b.dueDate ? new Date(b.dueDate).getTime() : 0;
-              return da - db;
+  const reload = useCallback(async () => {
+    try {
+      const result = await window.db.tasks.list('study');
+      if (result.length > 0) {
+        const inProgress = result.filter((t: { status: string }) => t.status === 'in_progress');
+        setInProgressCount(inProgress.length);
+        const withDeadline = result
+          .filter((t) => t.dueDate != null)
+          .sort((a, b) => {
+            const da = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+            const dlb = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+            return da - dlb;
+          });
+        if (withDeadline.length > 0) {
+          const t = withDeadline[0];
+          if (t) {
+            setNextDeadline({
+              title: t.title,
+              subject: '',
+              deadline: t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : '',
             });
-          if (withDeadline.length > 0) {
-            const t = withDeadline[0];
-            if (t) {
-              setNextDeadline({
-                title: t.title,
-                subject: '',
-                deadline: t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : '',
-              });
-            }
           }
         }
-      } catch {
-        // keep mock data
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+    } catch {
+      // keep mock data
     }
-    load();
-    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    reload().finally(() => setLoading(false));
+  }, [reload]);
+
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('tasks') || entities.includes('subjects')) {
+        reload();
+      }
+    });
+  }, [reload]);
 
   if (loading) {
     return (

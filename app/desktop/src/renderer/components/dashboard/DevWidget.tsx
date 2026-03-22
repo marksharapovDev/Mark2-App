@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Code, CheckCircle2, RefreshCw, Clock } from 'lucide-react';
 
@@ -23,34 +23,38 @@ export function DevWidget() {
   const [projects, setProjects] = useState(MOCK_PROJECTS);
   const [lastTask, setLastTask] = useState<{ title: string; status: string } | null>(MOCK_LAST_TASK);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const [projectsResult, tasksResult] = await Promise.all([
-          window.db.projects.list(),
-          window.db.tasks.list('dev'),
-        ]);
-        if (cancelled) return;
-        if (projectsResult.length > 0) {
-          setProjects(projectsResult.map((p: { name: string; status: string }) => ({ name: p.name, status: p.status })));
-        }
-        if (tasksResult.length > 0) {
-          const inProgress = tasksResult.find((t: { status: string }) => t.status === 'in_progress');
-          const task = inProgress ?? tasksResult[0];
-          if (task) {
-            setLastTask({ title: task.title, status: task.status });
-          }
-        }
-      } catch {
-        // keep mock data
-      } finally {
-        if (!cancelled) setLoading(false);
+  const reload = useCallback(async () => {
+    try {
+      const [projectsResult, tasksResult] = await Promise.all([
+        window.db.projects.list(),
+        window.db.tasks.list('dev'),
+      ]);
+      if (projectsResult.length > 0) {
+        setProjects(projectsResult.map((p: { name: string; status: string }) => ({ name: p.name, status: p.status })));
       }
+      if (tasksResult.length > 0) {
+        const inProgress = tasksResult.find((t: { status: string }) => t.status === 'in_progress');
+        const task = inProgress ?? tasksResult[0];
+        if (task) {
+          setLastTask({ title: task.title, status: task.status });
+        }
+      }
+    } catch {
+      // keep mock data
     }
-    load();
-    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    reload().finally(() => setLoading(false));
+  }, [reload]);
+
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('tasks') || entities.includes('projects')) {
+        reload();
+      }
+    });
+  }, [reload]);
 
   if (loading) {
     return (

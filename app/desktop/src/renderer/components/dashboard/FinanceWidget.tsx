@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wallet } from 'lucide-react';
 
@@ -12,31 +12,35 @@ export function FinanceWidget() {
   const [monthExpenses, setMonthExpenses] = useState(MOCK_MONTH_EXPENSES);
   const [todayExpenses, setTodayExpenses] = useState(MOCK_TODAY_EXPENSES);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const result = await window.db.transactions.list('2026-03');
-        if (cancelled) return;
-        if (result.length > 0) {
-          const expenses = result.filter((t: { type: string }) => t.type === 'expense');
-          const total = expenses.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
-          setMonthExpenses(total);
-          const today = new Date().toISOString().slice(0, 10);
-          const todayTotal = expenses
-            .filter((t: { date: string }) => t.date === today)
-            .reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
-          setTodayExpenses(todayTotal);
-        }
-      } catch {
-        // keep mock data
-      } finally {
-        if (!cancelled) setLoading(false);
+  const reload = useCallback(async () => {
+    try {
+      const result = await window.db.transactions.list('2026-03');
+      if (result.length > 0) {
+        const expenses = result.filter((t: { type: string }) => t.type === 'expense');
+        const total = expenses.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+        setMonthExpenses(total);
+        const today = new Date().toISOString().slice(0, 10);
+        const todayTotal = expenses
+          .filter((t: { date: string }) => t.date === today)
+          .reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+        setTodayExpenses(todayTotal);
       }
+    } catch {
+      // keep mock data
     }
-    load();
-    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    reload().finally(() => setLoading(false));
+  }, [reload]);
+
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('transactions') || entities.includes('tasks')) {
+        reload();
+      }
+    });
+  }, [reload]);
 
   if (loading) {
     return (

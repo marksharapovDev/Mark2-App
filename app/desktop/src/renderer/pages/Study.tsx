@@ -478,29 +478,35 @@ export function Study() {
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadData() {
-      try {
-        const dbTasks = await window.db.tasks.list('study');
-        if (cancelled) return;
-        if (dbTasks.length > 0) {
-          setStudyTasks(dbTasks.map((t) => mapDbTaskToStudy(t as unknown as Record<string, unknown>)));
-          setIsDemo(false);
-        } else {
-          setIsDemo(true);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+  // Load data from DB
+  const reloadData = useCallback(async () => {
+    try {
+      const dbTasks = await window.db.tasks.list('study');
+      if (dbTasks.length > 0) {
+        setStudyTasks(dbTasks.map((t) => mapDbTaskToStudy(t as unknown as Record<string, unknown>)));
+        setIsDemo(false);
+      } else {
         setIsDemo(true);
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+    } catch (err) {
+      setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+      setIsDemo(true);
     }
-    loadData();
-    return () => { cancelled = true; };
   }, []);
+
+  // Initial load
+  useEffect(() => {
+    reloadData().finally(() => setLoading(false));
+  }, [reloadData]);
+
+  // Reload on data-changed from AI
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('tasks') || entities.includes('subjects')) {
+        reloadData();
+      }
+    });
+  }, [reloadData]);
 
   const courseSubjects = SUBJECTS.filter((s) => s.courseId === selectedCourseId);
   const subject = selectedSubjectId ? SUBJECTS.find((s) => s.id === selectedSubjectId) : null;

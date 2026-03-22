@@ -492,39 +492,44 @@ export function Teaching() {
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
 
-  // Load data from DB on mount
-  useEffect(() => {
-    let cancelled = false;
-    async function loadData() {
-      try {
-        const [dbStudents, dbTasks] = await Promise.all([
-          window.db.students.list(),
-          window.db.tasks.list('teaching'),
-        ]);
-        if (cancelled) return;
-        if (dbStudents.length > 0 || dbTasks.length > 0) {
-          const mapped = dbStudents.map((s) => mapDbStudentToMock(s as unknown as Record<string, unknown>));
-          const mappedTasks = dbTasks.map((t) => mapDbTaskToTeaching(t as unknown as Record<string, unknown>));
-          setStudents(mapped);
-          setTeachingTasks(mappedTasks);
-          if (mapped.length > 0 && mapped[0]) {
-            setActiveStudentId(mapped[0].id);
-          }
-          setIsDemo(false);
-        } else {
-          setIsDemo(true);
+  // Load data from DB
+  const reloadData = useCallback(async () => {
+    try {
+      const [dbStudents, dbTasks] = await Promise.all([
+        window.db.students.list(),
+        window.db.tasks.list('teaching'),
+      ]);
+      if (dbStudents.length > 0 || dbTasks.length > 0) {
+        const mapped = dbStudents.map((s) => mapDbStudentToMock(s as unknown as Record<string, unknown>));
+        const mappedTasks = dbTasks.map((t) => mapDbTaskToTeaching(t as unknown as Record<string, unknown>));
+        setStudents(mapped);
+        setTeachingTasks(mappedTasks);
+        if (mapped.length > 0 && mapped[0]) {
+          setActiveStudentId(mapped[0].id);
         }
-      } catch (err) {
-        if (cancelled) return;
-        setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+        setIsDemo(false);
+      } else {
         setIsDemo(true);
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+    } catch (err) {
+      setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+      setIsDemo(true);
     }
-    loadData();
-    return () => { cancelled = true; };
   }, []);
+
+  // Initial load
+  useEffect(() => {
+    reloadData().finally(() => setLoading(false));
+  }, [reloadData]);
+
+  // Reload on data-changed from AI
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('tasks') || entities.includes('students')) {
+        reloadData();
+      }
+    });
+  }, [reloadData]);
 
   const student = students.find((s) => s.id === activeStudentId);
   const lessons = student ? getStudentLessons(student.id) : [];

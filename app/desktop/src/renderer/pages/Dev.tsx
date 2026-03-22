@@ -605,39 +605,44 @@ export function Dev() {
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
 
-  // Load data from DB on mount
-  useEffect(() => {
-    let cancelled = false;
-    async function loadData() {
-      try {
-        const [dbProjects, dbTasks] = await Promise.all([
-          window.db.projects.list(),
-          window.db.tasks.list('dev'),
-        ]);
-        if (cancelled) return;
-        if (dbProjects.length > 0 || dbTasks.length > 0) {
-          const mapped = dbProjects.map((p) => mapDbProjectToMock(p as unknown as Record<string, unknown>));
-          const mappedTasks = dbTasks.map((t) => mapDbTaskToMock(t as unknown as Record<string, unknown>));
-          setProjects(mapped);
-          setAllTasks(mappedTasks);
-          if (mapped.length > 0 && mapped[0]) {
-            setActiveProjectId(mapped[0].id);
-          }
-          setIsDemo(false);
-        } else {
-          setIsDemo(true);
+  // Load data from DB
+  const reloadData = useCallback(async () => {
+    try {
+      const [dbProjects, dbTasks] = await Promise.all([
+        window.db.projects.list(),
+        window.db.tasks.list('dev'),
+      ]);
+      if (dbProjects.length > 0 || dbTasks.length > 0) {
+        const mapped = dbProjects.map((p) => mapDbProjectToMock(p as unknown as Record<string, unknown>));
+        const mappedTasks = dbTasks.map((t) => mapDbTaskToMock(t as unknown as Record<string, unknown>));
+        setProjects(mapped);
+        setAllTasks(mappedTasks);
+        if (mapped.length > 0 && mapped[0]) {
+          setActiveProjectId(mapped[0].id);
         }
-      } catch (err) {
-        if (cancelled) return;
-        setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+        setIsDemo(false);
+      } else {
         setIsDemo(true);
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+    } catch (err) {
+      setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+      setIsDemo(true);
     }
-    loadData();
-    return () => { cancelled = true; };
   }, []);
+
+  // Initial load
+  useEffect(() => {
+    reloadData().finally(() => setLoading(false));
+  }, [reloadData]);
+
+  // Reload on data-changed from AI
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('tasks') || entities.includes('projects')) {
+        reloadData();
+      }
+    });
+  }, [reloadData]);
 
   const project = projects.find((p) => p.id === activeProjectId);
   const tasks = project ? getProjectTasks(project.id, allTasks) : [];

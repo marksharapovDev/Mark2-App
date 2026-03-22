@@ -405,33 +405,38 @@ export function Calendar() {
     localStorage.setItem(ZOOM_LS_KEY, String(hourHeight));
   }, [hourHeight]);
 
-  // Load events from DB on mount
-  useEffect(() => {
-    let cancelled = false;
-    async function loadData() {
-      try {
-        const dbEvents = await window.db.events.list('2026-01-01', '2026-12-31');
-        if (cancelled) return;
-        if (dbEvents.length > 0) {
-          setEvents(dbEvents.map((e) => mapDbEventToLocal(e as unknown as Record<string, unknown>)));
-          isDemoRef.current = false;
-          setIsDemo(false);
-        } else {
-          isDemoRef.current = true;
-          setIsDemo(true);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+  // Load events from DB
+  const reloadEvents = useCallback(async () => {
+    try {
+      const dbEvents = await window.db.events.list('2026-01-01', '2026-12-31');
+      if (dbEvents.length > 0) {
+        setEvents(dbEvents.map((e) => mapDbEventToLocal(e as unknown as Record<string, unknown>)));
+        isDemoRef.current = false;
+        setIsDemo(false);
+      } else {
         isDemoRef.current = true;
         setIsDemo(true);
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+    } catch (err) {
+      setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+      isDemoRef.current = true;
+      setIsDemo(true);
     }
-    loadData();
-    return () => { cancelled = true; };
   }, []);
+
+  // Initial load
+  useEffect(() => {
+    reloadEvents().finally(() => setLoading(false));
+  }, [reloadEvents]);
+
+  // Reload on data-changed from AI
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('events') || entities.includes('tasks')) {
+        reloadEvents();
+      }
+    });
+  }, [reloadEvents]);
 
   // Update current time every minute
   useEffect(() => {

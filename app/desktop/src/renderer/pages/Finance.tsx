@@ -247,37 +247,43 @@ export function Finance() {
     }
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadData() {
-      try {
-        const [dbTransactions, dbTasks] = await Promise.all([
-          window.db.transactions.list('2026-03'),
-          window.db.tasks.list('finance'),
-        ]);
-        if (cancelled) return;
-        if (dbTransactions.length > 0 || dbTasks.length > 0) {
-          if (dbTransactions.length > 0) {
-            setTransactions(dbTransactions.map((t) => mapDbTransactionToLocal(t as unknown as Record<string, unknown>)));
-          }
-          if (dbTasks.length > 0) {
-            setFinanceTasks(dbTasks.map((t) => mapDbTaskToFinance(t as unknown as Record<string, unknown>)));
-          }
-          setIsDemo(false);
-        } else {
-          setIsDemo(true);
+  // Load data from DB
+  const reloadData = useCallback(async () => {
+    try {
+      const [dbTransactions, dbTasks] = await Promise.all([
+        window.db.transactions.list('2026-03'),
+        window.db.tasks.list('finance'),
+      ]);
+      if (dbTransactions.length > 0 || dbTasks.length > 0) {
+        if (dbTransactions.length > 0) {
+          setTransactions(dbTransactions.map((t) => mapDbTransactionToLocal(t as unknown as Record<string, unknown>)));
         }
-      } catch (err) {
-        if (cancelled) return;
-        setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+        if (dbTasks.length > 0) {
+          setFinanceTasks(dbTasks.map((t) => mapDbTaskToFinance(t as unknown as Record<string, unknown>)));
+        }
+        setIsDemo(false);
+      } else {
         setIsDemo(true);
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+    } catch (err) {
+      setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+      setIsDemo(true);
     }
-    loadData();
-    return () => { cancelled = true; };
   }, []);
+
+  // Initial load
+  useEffect(() => {
+    reloadData().finally(() => setLoading(false));
+  }, [reloadData]);
+
+  // Reload on data-changed from AI
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('tasks') || entities.includes('transactions')) {
+        reloadData();
+      }
+    });
+  }, [reloadData]);
 
   const handleSidebarDragStart = useCallback(() => {
     isDraggingSidebar.current = true;

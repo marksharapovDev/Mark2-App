@@ -370,37 +370,43 @@ export function Health() {
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadData() {
-      try {
-        const [dbWorkouts, dbTasks] = await Promise.all([
-          window.db.workouts.list(),
-          window.db.tasks.list('health'),
-        ]);
-        if (cancelled) return;
-        if (dbWorkouts.length > 0 || dbTasks.length > 0) {
-          if (dbWorkouts.length > 0) {
-            setWorkouts(dbWorkouts.map((w) => mapDbWorkoutToLocal(w as unknown as Record<string, unknown>)));
-          }
-          if (dbTasks.length > 0) {
-            setHealthTasks(dbTasks.map((t) => mapDbTaskToHealth(t as unknown as Record<string, unknown>)));
-          }
-          setIsDemo(false);
-        } else {
-          setIsDemo(true);
+  // Load data from DB
+  const reloadData = useCallback(async () => {
+    try {
+      const [dbWorkouts, dbTasks] = await Promise.all([
+        window.db.workouts.list(),
+        window.db.tasks.list('health'),
+      ]);
+      if (dbWorkouts.length > 0 || dbTasks.length > 0) {
+        if (dbWorkouts.length > 0) {
+          setWorkouts(dbWorkouts.map((w) => mapDbWorkoutToLocal(w as unknown as Record<string, unknown>)));
         }
-      } catch (err) {
-        if (cancelled) return;
-        setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+        if (dbTasks.length > 0) {
+          setHealthTasks(dbTasks.map((t) => mapDbTaskToHealth(t as unknown as Record<string, unknown>)));
+        }
+        setIsDemo(false);
+      } else {
         setIsDemo(true);
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+    } catch (err) {
+      setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
+      setIsDemo(true);
     }
-    loadData();
-    return () => { cancelled = true; };
   }, []);
+
+  // Initial load
+  useEffect(() => {
+    reloadData().finally(() => setLoading(false));
+  }, [reloadData]);
+
+  // Reload on data-changed from AI
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('tasks') || entities.includes('workouts')) {
+        reloadData();
+      }
+    });
+  }, [reloadData]);
 
   const selectSection = useCallback((id: SectionId) => {
     setActiveSection(id);
