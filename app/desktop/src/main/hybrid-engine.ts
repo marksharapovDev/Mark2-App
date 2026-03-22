@@ -14,6 +14,7 @@ import {
   stripActions, getChangedEntities,
   type ActionExecution,
 } from './ai-tools';
+import * as db from './db-service';
 
 export type { AgentName };
 
@@ -128,6 +129,50 @@ function isConfirmation(message: string): boolean {
 const pendingTask = new Map<string, string>(); // sessionId -> prompt
 const pendingConfirmations = new Map<string, PendingConfirmation>(); // sessionId -> pending destructive action
 const activeMode = new Map<string, InteractionMode>(); // sessionId -> persisted mode across messages
+
+// --- Session context (per-session metadata from UI) ---
+
+export interface SessionContext {
+  studentId?: string;
+}
+
+const sessionContext = new Map<string, SessionContext>(); // sessionId -> context
+const agentContext = new Map<string, SessionContext>(); // agent -> context
+
+export function setSessionContext(sessionId: string, ctx: SessionContext): void {
+  sessionContext.set(sessionId, ctx);
+  console.log(`[HybridEngine] Session context set for ${sessionId}:`, ctx);
+}
+
+export function setAgentContext(agent: AgentName, ctx: SessionContext): void {
+  agentContext.set(agent, ctx);
+  console.log(`[HybridEngine] Agent context set for ${agent}:`, ctx);
+}
+
+async function buildTeachingContext(sessionId: string, agent: AgentName): Promise<string> {
+  // Session-level context takes priority, then agent-level
+  const ctx = sessionContext.get(sessionId) ?? agentContext.get(agent);
+  if (!ctx?.studentId) return '';
+
+  try {
+    const students = await db.getStudents();
+    const student = students.find((s) => s.id === ctx.studentId);
+    if (!student) return '';
+
+    const topics = await db.getLearningPath(ctx.studentId);
+    if (topics.length === 0) {
+      return `## Текущий ученик: ${student.name}\n\nПлан обучения пока не создан.\n`;
+    }
+
+    const lines = topics.map((t, i) =>
+      `${i + 1}. [id:${t.id}] ${t.title} — ${t.status}`,
+    );
+    return `## Текущий план обучения: ${student.name}\n\n${lines.join('\n')}\n`;
+  } catch (err) {
+    console.error('[HybridEngine] Failed to load teaching context:', err);
+    return '';
+  }
+}
 
 async function processActions(text: string): Promise<{
   cleanContent: string;
@@ -270,7 +315,18 @@ export async function sendMessage(
   await saveMessage(agent, sessionId, 'user', cleanMessage, 'api');
 
   // Build cross-context from other sessions/agents
-  const crossContext = await buildCrossContext(agent);
+  let crossContext = await buildCrossContext(agent);
+
+  // Inject teaching-specific context (learning path of selected student)
+  if (agent === 'teaching') {
+    const teachingCtx = await buildTeachingContext(sessionId, agent);
+    if (teachingCtx) {
+      crossContext = crossContext
+        ? `${teachingCtx}\n\n${crossContext}`
+        : teachingCtx;
+    }
+  }
+
   console.log(`[HybridEngine] crossContext for ${agent}: ${crossContext.length} chars`);
   if (crossContext.length > 0) {
     console.log(`[HybridEngine] crossContext preview:\n${crossContext.slice(0, 300)}`);
@@ -406,6 +462,7 @@ export async function handleGetSessions(agent: AgentName): Promise<ChatSessionRo
 export async function handleDeleteSession(sessionId: string): Promise<void> {
   pendingTask.delete(sessionId);
   activeMode.delete(sessionId);
+  sessionContext.delete(sessionId);
   await deleteSession(sessionId);
 }
 

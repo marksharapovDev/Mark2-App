@@ -479,6 +479,7 @@ export function Teaching() {
       setTeachingTasks(mappedTasks);
       if (mapped.length > 0 && mapped[0]) {
         setActiveStudentId(mapped[0].id);
+        window.chat.setAgentContext('teaching', { studentId: mapped[0].id });
       }
     } catch (err) {
       setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
@@ -602,6 +603,7 @@ export function Teaching() {
 
   const selectStudent = useCallback((id: string) => {
     setActiveStudentId(id);
+    window.chat.setAgentContext('teaching', { studentId: id });
     setSidebarTab('students');
     setMainView({ kind: 'overview' });
   }, []);
@@ -985,6 +987,7 @@ export function Teaching() {
                       key={lesson.id}
                       onClick={() => {
                         setActiveStudentId(lesson.studentId);
+                        window.chat.setAgentContext('teaching', { studentId: lesson.studentId });
                         setMainView({ kind: 'lesson-detail', lessonId: lesson.id });
                       }}
                       className="w-full text-left text-xs py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
@@ -1014,6 +1017,7 @@ export function Teaching() {
                       key={lesson.id}
                       onClick={() => {
                         setActiveStudentId(lesson.studentId);
+                        window.chat.setAgentContext('teaching', { studentId: lesson.studentId });
                         setMainView({ kind: 'lesson-detail', lessonId: lesson.id });
                       }}
                       className="w-full text-left text-xs py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
@@ -1126,6 +1130,7 @@ export function Teaching() {
                   const mapped = mapDbStudentToMock(created as unknown as Record<string, unknown>);
                   setStudents((prev) => [mapped, ...prev]);
                   setActiveStudentId(mapped.id);
+                  window.chat.setAgentContext('teaching', { studentId: mapped.id });
                 } catch {
                   // DB unavailable, skip
                 }

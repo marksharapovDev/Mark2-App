@@ -13,6 +13,8 @@ import {
   handleGetSessionMessages,
   handleAgentSwitch,
   handleBackfillSummaries,
+  setSessionContext,
+  setAgentContext,
 } from './hybrid-engine';
 import * as db from './db-service';
 import type { Sphere } from '@mark2/shared';
@@ -76,6 +78,15 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('chat:send', async (_event, agent: string, sessionId: string, message: string) => {
     if (!isValidAgent(agent)) throw new Error(`Invalid agent: ${agent}`);
     return sendMessage(agent, sessionId, message);
+  });
+
+  ipcMain.handle('chat:set-context', (_event, sessionId: string, ctx: Record<string, unknown>) => {
+    setSessionContext(sessionId, ctx);
+  });
+
+  ipcMain.handle('chat:set-agent-context', (_event, agent: string, ctx: Record<string, unknown>) => {
+    if (!isValidAgent(agent)) throw new Error(`Invalid agent: ${agent}`);
+    setAgentContext(agent, ctx);
   });
 
   // === Claude Code direct ===
