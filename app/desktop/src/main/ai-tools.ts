@@ -1,7 +1,11 @@
 import * as db from './db-service';
 import { mkdirSync, writeFileSync } from 'fs';
-import { resolve, dirname, basename } from 'path';
+import { resolve, dirname, basename, extname } from 'path';
 import os from 'os';
+import {
+  Document, Packer, Paragraph, TextRun,
+  HeadingLevel, AlignmentType,
+} from 'docx';
 
 function formatError(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -17,26 +21,215 @@ function isValidUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
+// --- Latin → Cyrillic transliteration for student name matching ---
+
+const LAT_TO_CYR: Record<string, string> = {
+  'shch': 'щ', 'sch': 'щ',
+  'yo': 'ё', 'zh': 'ж', 'ch': 'ч', 'sh': 'ш',
+  'yu': 'ю', 'ya': 'я', 'ts': 'ц', 'iy': 'ий', 'ey': 'ей',
+  'a': 'а', 'b': 'б', 'v': 'в', 'g': 'г', 'd': 'д',
+  'e': 'е', 'z': 'з', 'i': 'и', 'y': 'ы',
+  'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н', 'o': 'о',
+  'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
+  'f': 'ф', 'h': 'х', 'j': 'й', 'x': 'кс',
+};
+
+function transliterate(latin: string): string {
+  let result = '';
+  let i = 0;
+  const lower = latin.toLowerCase();
+  while (i < lower.length) {
+    // Try 4, 3, 2, 1 char sequences
+    let matched = false;
+    for (const len of [4, 3, 2, 1]) {
+      const chunk = lower.substring(i, i + len);
+      if (LAT_TO_CYR[chunk]) {
+        result += LAT_TO_CYR[chunk];
+        i += len;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      result += lower[i];
+      i++;
+    }
+  }
+  return result;
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 /**
  * Try to extract a student name from a filename like "dz_liza_morozova_drobi.md"
  * and look them up in the DB.
+ *
+ * Strategy:
+ * 1. Strip known prefixes (dz_, plan_, material_, test_) and extension
+ * 2. Split by _ into words
+ * 3. Try each consecutive pair as "firstName lastName"
+ * 4. Search DB with both Latin and Cyrillic transliteration
  */
 async function tryResolveStudentFromFilename(filename: string): Promise<{ id: string; name: string } | null> {
-  // Strip extension and split by underscores/hyphens
-  const base = filename.replace(/\.[^.]+$/, '');
-  const parts = base.split(/[_\-]+/);
+  // Strip extension
+  let base = filename.replace(/\.[^.]+$/, '');
+  // Strip common prefixes
+  base = base.replace(/^(dz|plan|material|test|homework|lesson|notes|solution)_/i, '');
+  const parts = base.split(/[_\-]+/).filter((p) => p.length >= 2);
 
-  // Try progressively longer substrings as potential names
-  // e.g. ["dz", "liza", "morozova", "drobi"] → try "liza", "liza morozova", etc.
-  for (let i = 0; i < parts.length; i++) {
-    for (let j = i + 1; j <= Math.min(i + 3, parts.length); j++) {
-      const candidate = parts.slice(i, j).join(' ');
-      if (candidate.length < 3) continue; // skip too short
-      const student = await db.findStudentByName(candidate);
-      if (student) return { id: student.id, name: student.name };
+  // Try consecutive pairs (most likely "firstname lastname")
+  for (let i = 0; i < parts.length - 1; i++) {
+    const latName = `${parts[i]} ${parts[i + 1]}`;
+    const cyrName = `${capitalize(transliterate(parts[i]!))} ${capitalize(transliterate(parts[i + 1]!))}`;
+
+    console.log(`[AI Tools] Trying student name: "${latName}" / "${cyrName}"`);
+
+    // Try cyrillic first (more likely in DB)
+    let student = await db.findStudentByName(cyrName);
+    if (student) return { id: student.id, name: student.name };
+
+    // Try latin (in case DB has latin names)
+    student = await db.findStudentByName(latName);
+    if (student) return { id: student.id, name: student.name };
+  }
+
+  // Fallback: try single words (maybe just first name is enough)
+  for (const part of parts) {
+    if (part.length < 3) continue;
+    const cyrWord = capitalize(transliterate(part));
+    console.log(`[AI Tools] Trying single name: "${cyrWord}"`);
+    const student = await db.findStudentByName(cyrWord);
+    if (student) return { id: student.id, name: student.name };
+  }
+
+  return null;
+}
+
+// --- Markdown to DOCX converter ---
+
+function markdownToDocxParagraphs(md: string): Paragraph[] {
+  const lines = md.split('\n');
+  const paragraphs: Paragraph[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Empty line → spacing
+    if (!trimmed) {
+      paragraphs.push(new Paragraph({ spacing: { after: 120 } }));
+      continue;
+    }
+
+    // Headings
+    if (trimmed.startsWith('### ')) {
+      paragraphs.push(new Paragraph({
+        heading: HeadingLevel.HEADING_3,
+        children: parseInlineFormatting(trimmed.slice(4)),
+      }));
+      continue;
+    }
+    if (trimmed.startsWith('## ')) {
+      paragraphs.push(new Paragraph({
+        heading: HeadingLevel.HEADING_2,
+        children: parseInlineFormatting(trimmed.slice(3)),
+      }));
+      continue;
+    }
+    if (trimmed.startsWith('# ')) {
+      paragraphs.push(new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        children: parseInlineFormatting(trimmed.slice(2)),
+        spacing: { after: 200 },
+      }));
+      continue;
+    }
+
+    // Numbered list (1. 2. 3.)
+    const numMatch = trimmed.match(/^(\d+)\.\s+(.+)/);
+    if (numMatch) {
+      paragraphs.push(new Paragraph({
+        children: [
+          new TextRun({ text: `${numMatch[1]!}. `, bold: true }),
+          ...parseInlineFormatting(numMatch[2]!),
+        ],
+        spacing: { after: 80 },
+        indent: { left: 360 },
+      }));
+      continue;
+    }
+
+    // Bullet list (- or *)
+    const bulletMatch = trimmed.match(/^[-*]\s+(.+)/);
+    if (bulletMatch) {
+      paragraphs.push(new Paragraph({
+        children: [
+          new TextRun({ text: '• ' }),
+          ...parseInlineFormatting(bulletMatch[1]!),
+        ],
+        spacing: { after: 80 },
+        indent: { left: 360 },
+      }));
+      continue;
+    }
+
+    // Horizontal rule
+    if (/^[-_*]{3,}$/.test(trimmed)) {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: '─'.repeat(50) })],
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 200, after: 200 },
+      }));
+      continue;
+    }
+
+    // Regular paragraph
+    paragraphs.push(new Paragraph({
+      children: parseInlineFormatting(trimmed),
+      spacing: { after: 120 },
+    }));
+  }
+
+  return paragraphs;
+}
+
+function parseInlineFormatting(text: string): TextRun[] {
+  const runs: TextRun[] = [];
+  // Match **bold**, *italic*, `code`, and plain text
+  const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|([^*`]+))/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match[2]) {
+      // **bold**
+      runs.push(new TextRun({ text: match[2], bold: true }));
+    } else if (match[3]) {
+      // *italic*
+      runs.push(new TextRun({ text: match[3], italics: true }));
+    } else if (match[4]) {
+      // `code`
+      runs.push(new TextRun({ text: match[4], font: 'Courier New', size: 20 }));
+    } else if (match[5]) {
+      // plain text
+      runs.push(new TextRun({ text: match[5] }));
     }
   }
-  return null;
+  if (runs.length === 0) {
+    runs.push(new TextRun({ text }));
+  }
+  return runs;
+}
+
+async function saveAsDocx(fullPath: string, markdownContent: string): Promise<void> {
+  const paragraphs = markdownToDocxParagraphs(markdownContent);
+  const doc = new Document({
+    sections: [{
+      properties: {},
+      children: paragraphs,
+    }],
+  });
+  const buffer = await Packer.toBuffer(doc);
+  writeFileSync(fullPath, buffer);
 }
 
 interface ActionResult {
@@ -144,11 +337,17 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     const filePath = String(params.path ?? '');
     const content = String(params.content ?? '');
     if (!filePath) throw new Error('path is required');
-    // Resolve relative to ~/mark2/
     const home = os.homedir();
     const fullPath = filePath.startsWith('/') ? filePath : resolve(home, 'mark2', filePath);
     mkdirSync(dirname(fullPath), { recursive: true });
-    writeFileSync(fullPath, content, 'utf-8');
+
+    if (extname(fullPath).toLowerCase() === '.docx') {
+      console.log('[AI Tools] Converting markdown to .docx:', basename(fullPath));
+      await saveAsDocx(fullPath, content);
+    } else {
+      writeFileSync(fullPath, content, 'utf-8');
+    }
+
     return { success: true, message: `Файл сохранён: ${basename(fullPath)}`, entity: 'files', data: { path: fullPath } };
   },
 

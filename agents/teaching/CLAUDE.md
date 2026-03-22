@@ -62,13 +62,16 @@
 После выполнения действия сообщи пользователю что сделано.
 
 Когда создаёшь ДЗ, план урока или материал:
-1. Сохрани файл (ВКЛЮЧИ ИМЯ УЧЕНИКА в название файла!):
-   `[ACTION:save_file]{"path":"agents/teaching/context/materials/dz_liza_morozova_drobi.md","content":"# ДЗ: Дроби\n\n1. ..."}[/ACTION]`
+1. Сохрани файл с расширением .docx (ВКЛЮЧИ ИМЯ УЧЕНИКА в название!):
+   `[ACTION:save_file]{"path":"agents/teaching/context/materials/dz_liza_morozova_drobi.docx","content":"# Домашнее задание: Дроби\n\n**Ученик:** Лиза Морозова\n**Дата:** 2026-03-25\n\n## Задания\n\n1. Первое задание...\n2. Второе задание..."}[/ACTION]`
 2. Прикрепи к ученику (entityId НЕ НУЖЕН — система найдёт по имени в файле):
-   `[ACTION:attach_file]{"entityType":"student","filename":"dz_liza_morozova_drobi.md","filepath":"agents/teaching/context/materials/dz_liza_morozova_drobi.md","fileType":"md","category":"homework"}[/ACTION]`
+   `[ACTION:attach_file]{"entityType":"student","filename":"dz_liza_morozova_drobi.docx","filepath":"agents/teaching/context/materials/dz_liza_morozova_drobi.docx","fileType":"docx","category":"homework"}[/ACTION]`
 
-ВАЖНО: всегда включай имя ученика в название файла через подчёркивания (liza_morozova).
-Система автоматически найдёт ученика по имени из файла.
+ВАЖНО:
+- Всегда используй расширение .docx — система автоматически конвертирует markdown в Word
+- Всегда включай имя ученика в название файла через подчёркивания (liza_morozova)
+- Content пиши в markdown-формате — конвертация в .docx происходит автоматически
+- Система найдёт ученика по имени из файла, entityId не нужен
 
 ## Автоматизация: новый ученик + расписание
 

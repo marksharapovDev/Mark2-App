@@ -1,6 +1,8 @@
 import { ipcMain, BrowserWindow, shell } from 'electron';
 import { ChildProcess } from 'child_process';
 import crypto from 'crypto';
+import path from 'path';
+import os from 'os';
 import { claude, AgentName } from './claude-bridge';
 import {
   sendMessage,
@@ -231,7 +233,11 @@ export function registerIpcHandlers(): void {
   // === File operations ===
 
   ipcMain.handle('file:open', async (_event, filePath: string) => {
-    return shell.openPath(filePath);
+    const resolved = path.isAbsolute(filePath)
+      ? filePath
+      : path.resolve(os.homedir(), 'mark2', filePath);
+    console.log('[File] Opening:', resolved, '(original:', filePath, ')');
+    return shell.openPath(resolved);
   });
 
   ipcMain.handle('claude:stop-session', (_event, sessionId: string) => {

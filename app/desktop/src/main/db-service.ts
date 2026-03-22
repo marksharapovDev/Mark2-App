@@ -1,4 +1,4 @@
-import { getSupabase, resetSupabase } from './supabase-client';
+import { getSupabase } from './supabase-client';
 import type {
   Task,
   CalendarEvent,
@@ -18,19 +18,22 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('fetch failed') || msg.includes('EPIPE') || msg.includes('ECONNRESET')) {
-      console.warn('[DB] Connection error, retrying in 1s:', msg);
-      await sleep(1000);
-      resetSupabase();
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
       return await fn();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isTransient = msg.includes('fetch failed') || msg.includes('EPIPE') || msg.includes('ECONNRESET') || msg.includes('ETIMEDOUT');
+      if (isTransient && attempt < maxAttempts) {
+        console.warn(`[DB] Connection error (attempt ${attempt}/${maxAttempts}), retrying in 2s:`, msg);
+        await sleep(2000);
+        continue;
+      }
+      throw err;
     }
-    throw err;
   }
+  throw new Error('withRetry: unreachable');
 }
 
 // --- Helpers: snake_case ↔ camelCase mapping ---

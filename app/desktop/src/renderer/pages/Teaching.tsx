@@ -491,6 +491,34 @@ export function Teaching() {
   const topics = student ? getStudentTopics(student.id) : [];
   const studentTasks = student ? teachingTasks.filter((t) => t.studentId === student.id) : [];
 
+  // DB attached homework files for sidebar
+  const [sidebarHomeworkFiles, setSidebarHomeworkFiles] = useState<Array<{id: string; filename: string; filepath: string; createdAt: string}>>([]);
+
+  useEffect(() => {
+    if (!student) { setSidebarHomeworkFiles([]); return; }
+    console.log('[Teaching] Loading homework files for sidebar, student:', student.id);
+    window.db.files.list('student', student.id).then((files) => {
+      const hwFiles = files
+        .filter((f) => f.category === 'homework')
+        .map((f) => ({ id: f.id, filename: f.filename, filepath: f.filepath, createdAt: f.createdAt ? String(f.createdAt) : '' }));
+      console.log('[Teaching] Sidebar homework files:', hwFiles);
+      setSidebarHomeworkFiles(hwFiles);
+    }).catch((err) => console.error('[Teaching] Failed to load sidebar files:', err));
+  }, [student?.id]);
+
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('files') && student) {
+        window.db.files.list('student', student.id).then((files) => {
+          setSidebarHomeworkFiles(
+            files.filter((f) => f.category === 'homework')
+              .map((f) => ({ id: f.id, filename: f.filename, filepath: f.filepath, createdAt: f.createdAt ? String(f.createdAt) : '' })),
+          );
+        }).catch(() => {});
+      }
+    });
+  }, [student?.id]);
+
   // All-students data for General tab
   const allUpcomingLessons = MOCK_LESSONS
     .filter((l) => l.status === 'planned')
@@ -709,12 +737,22 @@ export function Teaching() {
                       </>
                     )}
 
-                    {/* Homeworks */}
+                    {/* Homeworks — DB files */}
                     <div className="px-3 pt-3 pb-2">
                       <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
                         Домашки
                       </div>
                       <div className="space-y-1">
+                        {sidebarHomeworkFiles.map((file) => (
+                          <button
+                            key={file.id}
+                            onClick={() => window.electronAPI.openFile(file.filepath)}
+                            className="w-full text-left flex items-center gap-1.5 text-xs text-neutral-400 py-0.5 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
+                          >
+                            <span className="text-[11px] shrink-0">{FILE_ICON.docx}</span>
+                            <span className="truncate group-hover:text-neutral-200 transition-colors">{file.filename}</span>
+                          </button>
+                        ))}
                         {homeworks.slice(0, 4).map((hw) => (
                           <button
                             key={hw.id}
@@ -726,15 +764,10 @@ export function Teaching() {
                             <span className="text-neutral-600 text-[10px] shrink-0 ml-auto">{hw.dueDate.slice(5)}</span>
                           </button>
                         ))}
+                        {sidebarHomeworkFiles.length === 0 && homeworks.length === 0 && (
+                          <div className="text-[11px] text-neutral-600">Пока пусто</div>
+                        )}
                       </div>
-                      {homeworks.length > 4 && (
-                        <button
-                          onClick={() => setMainView({ kind: 'all-homeworks', filter: 'all' })}
-                          className="mt-2 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
-                        >
-                          ... Все домашки ({homeworks.length})
-                        </button>
-                      )}
                     </div>
 
                     <div className="mx-3 border-t border-neutral-800" />
