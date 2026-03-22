@@ -1,10 +1,18 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+export interface PendingConfirmation {
+  action: string;
+  params: Record<string, unknown>;
+  description: string;
+}
+
 export interface ChatResponse {
   content: string;
   engine: 'api' | 'claude-code';
   notification?: string;
   sessionTitle?: string;
+  changedEntities?: string[];
+  pendingConfirmation?: PendingConfirmation;
 }
 
 export interface ChatHistoryItem {
@@ -219,8 +227,22 @@ const dbApi = {
   },
 };
 
+const dataEvents = {
+  onDataChanged: (callback: (entities: string[]) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, entities: string[]) => {
+      callback(entities);
+    };
+    ipcRenderer.on('data-changed', handler);
+    return () => { ipcRenderer.removeListener('data-changed', handler); };
+  },
+  emitDataChanged: (entities: string[]) => {
+    ipcRenderer.send('data-changed', entities);
+  },
+};
+
 contextBridge.exposeInMainWorld('chat', chatApi);
 contextBridge.exposeInMainWorld('claude', claudeApi);
 contextBridge.exposeInMainWorld('calendar', calendarApi);
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
 contextBridge.exposeInMainWorld('db', dbApi);
+contextBridge.exposeInMainWorld('dataEvents', dataEvents);

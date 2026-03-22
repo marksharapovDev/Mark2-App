@@ -1,8 +1,16 @@
+interface PendingConfirmation {
+  action: string;
+  params: Record<string, unknown>;
+  description: string;
+}
+
 interface ChatResponse {
   content: string;
   engine: 'api' | 'claude-code';
   notification?: string;
   sessionTitle?: string;
+  changedEntities?: string[];
+  pendingConfirmation?: PendingConfirmation;
 }
 
 interface ChatHistoryItem {
@@ -98,9 +106,15 @@ interface DbAPI {
   };
 }
 
+interface DataEventsAPI {
+  onDataChanged: (callback: (entities: string[]) => void) => () => void;
+  emitDataChanged: (entities: string[]) => void;
+}
+
 interface Window {
   chat: ChatAPI;
   claude: ClaudeAPI;
   calendar: CalendarAPI;
   db: DbAPI;
+  dataEvents: DataEventsAPI;
 }

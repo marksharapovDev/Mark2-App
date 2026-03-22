@@ -9,6 +9,11 @@ import {
 } from './chat-client';
 import { claude } from './claude-bridge';
 import type { AgentName } from './claude-bridge';
+import {
+  parseActions, executeAction, executeConfirmedAction,
+  stripActions, getChangedEntities,
+  type ActionExecution,
+} from './ai-tools';
 
 export type { AgentName };
 
@@ -43,12 +48,66 @@ function isConfirmation(message: string): boolean {
 }
 
 const pendingTask = new Map<string, string>(); // sessionId -> prompt
+const pendingConfirmations = new Map<string, PendingConfirmation>(); // sessionId -> pending destructive action
+
+async function processActions(text: string): Promise<{
+  cleanContent: string;
+  actionSummary: string;
+  changedEntities: string[];
+  pendingConfirmation?: PendingConfirmation;
+}> {
+  const parsed = parseActions(text);
+  if (parsed.length === 0) {
+    return { cleanContent: text, actionSummary: '', changedEntities: [] };
+  }
+
+  const executions: ActionExecution[] = [];
+  const summaryParts: string[] = [];
+  let confirmation: PendingConfirmation | undefined;
+
+  for (const p of parsed) {
+    const exec = await executeAction(p);
+    executions.push(exec);
+
+    if (exec.needsConfirmation) {
+      // Build a human-readable description for the confirmation
+      const desc = p.action === 'delete_task' ? `задачу`
+        : p.action === 'delete_event' ? `событие`
+        : p.action === 'delete_student' ? `ученика`
+        : `объект`;
+      confirmation = {
+        action: p.action,
+        params: p.params,
+        description: `Удалить ${desc}?`,
+      };
+      summaryParts.push(`⏳ Требуется подтверждение: ${confirmation.description}`);
+    } else if (exec.result.success) {
+      summaryParts.push(`✅ ${exec.result.message}`);
+    } else {
+      summaryParts.push(`❌ ${exec.result.message}`);
+    }
+  }
+
+  const cleanContent = stripActions(text);
+  const actionSummary = summaryParts.join('\n');
+  const changedEntities = getChangedEntities(executions);
+
+  return { cleanContent, actionSummary, changedEntities, pendingConfirmation: confirmation };
+}
+
+export interface PendingConfirmation {
+  action: string;
+  params: Record<string, unknown>;
+  description: string;
+}
 
 export interface HybridResponse {
   content: string;
   engine: 'api' | 'claude-code';
   notification?: string;
   sessionTitle?: string;
+  changedEntities?: string[];
+  pendingConfirmation?: PendingConfirmation;
 }
 
 async function executeViaClaudeCode(
@@ -96,7 +155,27 @@ export async function sendMessage(
     console.log(`[HybridEngine] crossContext preview:\n${crossContext.slice(0, 300)}`);
   }
 
-  // Check confirmation
+  // Check if user is confirming a destructive action
+  const pendingConf = pendingConfirmations.get(sessionId);
+  if (pendingConf && isConfirmation(message)) {
+    pendingConfirmations.delete(sessionId);
+    const actionResult = await executeConfirmedAction(pendingConf.action, pendingConf.params);
+    const confirmContent = actionResult.success
+      ? `✅ ${actionResult.message}`
+      : `❌ ${actionResult.message}`;
+    await saveMessage(agent, sessionId, 'assistant', confirmContent, 'api');
+    return {
+      content: confirmContent,
+      engine: 'api',
+      changedEntities: actionResult.success && actionResult.entity ? [actionResult.entity] : [],
+    };
+  }
+  if (pendingConf) {
+    // User said something other than confirm — cancel the action
+    pendingConfirmations.delete(sessionId);
+  }
+
+  // Check task confirmation
   const pending = pendingTask.get(sessionId);
   if (pending && isConfirmation(message)) {
     pendingTask.delete(sessionId);
@@ -119,14 +198,33 @@ export async function sendMessage(
     return executeViaClaudeCode(agent, sessionId, taskDescription || message, crossContext);
   }
 
-  if (proposesTask(apiResponse)) {
+  // Process AI actions in the response
+  const { cleanContent, actionSummary, changedEntities, pendingConfirmation } =
+    await processActions(apiResponse);
+
+  // Store pending confirmation for next message
+  if (pendingConfirmation) {
+    pendingConfirmations.set(sessionId, pendingConfirmation);
+  }
+
+  // Build final content
+  const finalContent = actionSummary
+    ? `${cleanContent}\n\n${actionSummary}`
+    : cleanContent;
+
+  if (proposesTask(finalContent)) {
     pendingTask.set(sessionId, message);
   }
 
-  await saveMessage(agent, sessionId, 'assistant', apiResponse, 'api');
+  await saveMessage(agent, sessionId, 'assistant', finalContent, 'api');
 
   // Auto-title after 2nd message (4 rows = 2 user + 2 assistant)
-  const result: HybridResponse = { content: apiResponse, engine: 'api' };
+  const result: HybridResponse = {
+    content: finalContent,
+    engine: 'api',
+    changedEntities: changedEntities.length > 0 ? changedEntities : undefined,
+    pendingConfirmation,
+  };
   const msgs = await getSessionMessages(sessionId, 50);
   if (msgs.length === 4) {
     const title = await generateTitle(msgs);

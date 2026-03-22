@@ -171,6 +171,17 @@ ipcMain.handle('chat:popin', () => {
   return true;
 });
 
+// === Data change relay ===
+
+ipcMain.on('data-changed', (_event, entities: string[]) => {
+  // Broadcast to all windows
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('data-changed', entities);
+    }
+  }
+});
+
 // === App lifecycle ===
 
 app.on('ready', () => {

@@ -158,6 +158,11 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false }: Cha
           prev.map((s) => s.id === activeSessionId ? { ...s, title: response.sessionTitle ?? s.title } : s),
         );
       }
+
+      // Notify pages that data has changed so they can reload
+      if (response.changedEntities && response.changedEntities.length > 0) {
+        window.dataEvents.emitDataChanged(response.changedEntities);
+      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
       setMessages((prev) => [

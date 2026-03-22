@@ -53,3 +53,24 @@
 
 - `context/life-overview.json` — краткая сводка по всем сферам
 - `memory/daily-notes/` — ежедневные заметки (из мобилки и десктопа)
+
+## Инструменты (Actions)
+
+Ты можешь выполнять действия с данными. Для этого вставь в ответ команду:
+```
+[ACTION:имя_действия]{"param":"value"}[/ACTION]
+```
+
+Доступные действия (все сферы):
+- `create_task` — создать задачу: `{sphere, title, description?, priority?: 0|1|2, dueDate?}`
+- `complete_task` — завершить задачу: `{id}`
+- `create_event` — событие в календарь: `{title, startAt, endAt, sphere}`
+- `create_project` — новый проект: `{name, slug, stack?}`
+- `create_student` — добавить ученика: `{name, subject, level?}`
+- `create_subject` — добавить предмет: `{name, semester, professor?}`
+- `add_transaction` — транзакция: `{amount, type: "income"|"expense", category?, description?}`
+- `add_workout` — тренировка: `{type: "gym"|"run"|"swim", exercises?, duration?}`
+
+ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
+После выполнения действия сообщи пользователю что сделано.
+При сортировке входящей информации используй actions чтобы сразу записать данные.

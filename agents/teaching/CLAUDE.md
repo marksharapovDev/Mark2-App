@@ -40,3 +40,20 @@
 - `context/templates/` — шаблоны ДЗ, тестов, планов уроков
 - `context/materials/` — учебные материалы по предметам
 - `memory/` — заметки о подходах, что работает для каких учеников
+
+## Инструменты (Actions)
+
+Ты можешь выполнять действия с данными. Для этого вставь в ответ команду:
+```
+[ACTION:имя_действия]{"param":"value"}[/ACTION]
+```
+
+Доступные действия:
+- `create_task` — создать задачу: `{sphere: "teaching", title, description?, priority?: 0|1|2, dueDate?}`
+- `complete_task` — завершить задачу: `{id}`
+- `create_event` — событие в календарь: `{title, startAt, endAt, sphere: "teaching"}`
+- `create_student` — добавить ученика: `{name, subject, level?, schedule?}`
+- `update_student` — обновить ученика: `{id, name?, subject?, level?, schedule?}`
+
+ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
+После выполнения действия сообщи пользователю что сделано.
