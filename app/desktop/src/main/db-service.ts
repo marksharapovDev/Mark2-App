@@ -1,4 +1,4 @@
-import { getSupabase } from './supabase-client';
+import { getSupabase, resetSupabase } from './supabase-client';
 import type {
   Task,
   CalendarEvent,
@@ -28,8 +28,9 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
       const msg = err instanceof Error ? err.message : String(err);
       const isTransient = msg.includes('fetch failed') || msg.includes('EPIPE') || msg.includes('ECONNRESET') || msg.includes('ETIMEDOUT');
       if (isTransient && attempt < maxAttempts) {
-        console.warn(`[DB] Connection error (attempt ${attempt}/${maxAttempts}), retrying in 2s:`, msg);
-        await sleep(2000);
+        console.warn(`[DB] Retry attempt ${attempt}/${maxAttempts}: ${msg}`);
+        resetSupabase();
+        await sleep(2000 * attempt);
         continue;
       }
       throw err;
