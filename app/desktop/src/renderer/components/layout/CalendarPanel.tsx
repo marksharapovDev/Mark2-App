@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import { useCalendar } from '../../context/calendar-context';
@@ -118,6 +118,23 @@ function generateMockEvents(): CalendarEvent[] {
 
 const MOCK_EVENTS = generateMockEvents();
 
+function mapDbEventToPanel(e: Record<string, unknown>): CalendarEvent {
+  const startAt = new Date(e.startAt as string);
+  const endAt = e.endAt ? new Date(e.endAt as string) : new Date(startAt.getTime() + 60 * 60 * 1000);
+  const meta = (e.metadata ?? {}) as Record<string, unknown>;
+  return {
+    id: String(e.id),
+    title: String(e.title),
+    sphere: (e.sphere as Sphere) ?? 'personal',
+    date: `${startAt.getFullYear()}-${pad2(startAt.getMonth() + 1)}-${pad2(startAt.getDate())}`,
+    startHour: startAt.getHours(),
+    startMin: startAt.getMinutes(),
+    endHour: endAt.getHours(),
+    endMin: endAt.getMinutes(),
+    description: meta.description ? String(meta.description) : undefined,
+  };
+}
+
 // --- Utilities ---
 
 function fmtTime(h: number, m: number): string { return `${pad2(h)}:${pad2(m)}`; }
@@ -144,12 +161,12 @@ function getMonthGrid(year: number, month: number): string[][] {
   return weeks;
 }
 
-function eventsForDate(date: string): CalendarEvent[] {
-  return MOCK_EVENTS.filter((e) => e.date === date);
+function eventsForDate(date: string, events: CalendarEvent[]): CalendarEvent[] {
+  return events.filter((e) => e.date === date);
 }
 
-function getUpcomingEvents(fromDate: string, count: number): CalendarEvent[] {
-  return MOCK_EVENTS
+function getUpcomingEvents(fromDate: string, count: number, events: CalendarEvent[]): CalendarEvent[] {
+  return events
     .filter((e) => e.date >= fromDate)
     .sort((a, b) => {
       if (a.date !== b.date) return a.date < b.date ? -1 : 1;
@@ -172,14 +189,40 @@ export function CalendarPanel() {
 
   const [viewYear, setViewYear] = useState(2026);
   const [viewMonth, setViewMonth] = useState(2); // March = 2 (0-indexed)
+  const [events, setEvents] = useState<CalendarEvent[]>(MOCK_EVENTS);
+
+  // Load events from DB
+  const reloadEvents = useCallback(async () => {
+    try {
+      const dbEvents = await window.db.events.list('2026-01-01', '2026-12-31');
+      if (dbEvents.length > 0) {
+        setEvents(dbEvents.map((e) => mapDbEventToPanel(e as unknown as Record<string, unknown>)));
+      }
+    } catch {
+      // keep mock data
+    }
+  }, []);
+
+  useEffect(() => {
+    reloadEvents();
+  }, [reloadEvents]);
+
+  // Reload on data-changed from AI
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('events')) {
+        reloadEvents();
+      }
+    });
+  }, [reloadEvents]);
 
   const monthGrid = useMemo(() => getMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
 
-  const selectedDayEvents = useMemo(() => eventsForDate(selectedDate).sort((a, b) =>
+  const selectedDayEvents = useMemo(() => eventsForDate(selectedDate, events).sort((a, b) =>
     (a.allDay ? -1 : b.allDay ? 1 : (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin))
-  ), [selectedDate]);
+  ), [selectedDate, events]);
 
-  const upcomingEvents = useMemo(() => getUpcomingEvents(selectedDate, 3), [selectedDate]);
+  const upcomingEvents = useMemo(() => getUpcomingEvents(selectedDate, 3, events), [selectedDate, events]);
 
   const navigateMonth = useCallback((dir: -1 | 1) => {
     let m = viewMonth + dir;
@@ -253,7 +296,7 @@ export function CalendarPanel() {
               const d = new Date(date);
               const isToday = date === TODAY;
               const isSelected = date === selectedDate;
-              const hasEvents = eventsForDate(date).length > 0;
+              const hasEvents = eventsForDate(date, events).length > 0;
               return (
                 <button
                   key={date}

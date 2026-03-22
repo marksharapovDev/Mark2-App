@@ -21,14 +21,36 @@ const EXECUTE_MARKER = '[EXECUTE_TASK]';
 
 // --- Level 1: keyword check ---
 
+// Data mutation verbs → skip Level 2, go straight to Claude Code
+const DATA_ACTION_KEYWORDS = [
+  // CRUD verbs
+  'добавь', 'добавить', 'создай', 'создать',
+  'удали', 'удалить', 'убери', 'убрать',
+  'измени', 'изменить', 'обнови', 'обновить',
+  'отметь', 'отметить', 'выполни', 'выполнить',
+  'запланируй', 'запланировать',
+  'оплати', 'оплатить', 'переведи', 'перевести',
+  'запиши', 'записать', 'внеси', 'внести',
+  // Specific entity phrases
+  'добавь ученика', 'создай задачу', 'добавь событие',
+  'добавь тренировку', 'добавь транзакцию', 'добавь предмет',
+  'создай проект', 'создай событие', 'создай урок',
+];
+
+// Heavy tasks that need Level 2 classification
 const TASK_KEYWORDS = [
-  'создай', 'сделай', 'сгенерируй', 'напиши', 'построй',
+  'сделай', 'сгенерируй', 'напиши', 'построй',
   'разработай', 'верстай', 'деплой', 'реализуй', 'запусти',
   'настрой', 'установи', 'отрефактори', 'исправь',
   'презентация', 'документ', 'файл', 'таблица',
   'курсовая', 'эссе', 'домашка', 'расчёт', 'реферат',
   'лабораторная', 'план урока', 'тест для',
 ];
+
+function isDataAction(message: string): boolean {
+  const lower = message.toLowerCase();
+  return DATA_ACTION_KEYWORDS.some((kw) => lower.includes(kw));
+}
 
 function maybeHeavyTask(message: string): boolean {
   const lower = message.toLowerCase();
@@ -54,11 +76,12 @@ async function processActions(text: string): Promise<{
   cleanContent: string;
   actionSummary: string;
   changedEntities: string[];
+  actionsCount: number;
   pendingConfirmation?: PendingConfirmation;
 }> {
   const parsed = parseActions(text);
   if (parsed.length === 0) {
-    return { cleanContent: text, actionSummary: '', changedEntities: [] };
+    return { cleanContent: text, actionSummary: '', changedEntities: [], actionsCount: 0 };
   }
 
   const executions: ActionExecution[] = [];
@@ -92,7 +115,7 @@ async function processActions(text: string): Promise<{
   const actionSummary = summaryParts.join('\n');
   const changedEntities = getChangedEntities(executions);
 
-  return { cleanContent, actionSummary, changedEntities, pendingConfirmation: confirmation };
+  return { cleanContent, actionSummary, changedEntities, actionsCount: parsed.length, pendingConfirmation: confirmation };
 }
 
 export interface PendingConfirmation {
@@ -122,11 +145,26 @@ async function executeViaClaudeCode(
     : prompt;
   const result = await claude.run({ agent, prompt: fullPrompt });
   const content = result.trim();
-  await saveMessage(agent, sessionId, 'assistant', content, 'claude-code');
+
+  // Process any [ACTION:...] tags in Claude Code response
+  const { cleanContent, actionSummary, changedEntities, pendingConfirmation } =
+    await processActions(content);
+
+  if (pendingConfirmation) {
+    pendingConfirmations.set(sessionId, pendingConfirmation);
+  }
+
+  const finalContent = actionSummary
+    ? `${cleanContent}\n\n${actionSummary}`
+    : cleanContent;
+
+  await saveMessage(agent, sessionId, 'assistant', finalContent, 'claude-code');
   return {
-    content,
+    content: finalContent,
     engine: 'claude-code',
     notification: 'Executing via Claude Code...',
+    changedEntities: changedEntities.length > 0 ? changedEntities : undefined,
+    pendingConfirmation,
   };
 }
 
@@ -183,7 +221,13 @@ export async function sendMessage(
   }
   pendingTask.delete(sessionId);
 
-  // Level 1 + 2
+  // Data action → straight to Claude Code (no Level 2 classification)
+  if (isDataAction(message)) {
+    console.log('[HybridEngine] Data action detected, routing to Claude Code');
+    return executeViaClaudeCode(agent, sessionId, message, crossContext);
+  }
+
+  // Level 1 + 2: heavy tasks that need classification
   if (maybeHeavyTask(message)) {
     const classification = await classifyMessage(message);
     if (classification === 'TASK') {
@@ -193,14 +237,22 @@ export async function sendMessage(
 
   const apiResponse = await sendToApi(agent, sessionId, message, crossContext);
 
+  console.log('[HybridEngine] Raw API response:', apiResponse.substring(0, 500));
+  console.log('[HybridEngine] Contains ACTION tags:', apiResponse.includes('[ACTION:'));
+
   if (apiResponse.includes(EXECUTE_MARKER)) {
     const taskDescription = apiResponse.replace(EXECUTE_MARKER, '').trim();
     return executeViaClaudeCode(agent, sessionId, taskDescription || message, crossContext);
   }
 
   // Process AI actions in the response
-  const { cleanContent, actionSummary, changedEntities, pendingConfirmation } =
+  const { cleanContent, actionSummary, changedEntities, actionsCount, pendingConfirmation } =
     await processActions(apiResponse);
+
+  console.log('[HybridEngine] Actions found:', actionsCount);
+  if (changedEntities.length > 0) {
+    console.log('[HybridEngine] Changed entities:', changedEntities);
+  }
 
   // Store pending confirmation for next message
   if (pendingConfirmation) {

@@ -1,5 +1,15 @@
 import * as db from './db-service';
 
+function formatError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object' && err !== null) {
+    const obj = err as Record<string, unknown>;
+    if (typeof obj.message === 'string') return obj.message;
+    return JSON.stringify(err);
+  }
+  return String(err);
+}
+
 interface ActionResult {
   success: boolean;
   message: string;
@@ -143,8 +153,9 @@ export async function executeAction(parsed: ParsedAction): Promise<ActionExecuti
   try {
     const result = await handler(parsed.params);
     return { action: parsed.action, result, needsConfirmation: false };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  } catch (err: unknown) {
+    console.error('[AI Tools] Action failed:', parsed.action, err);
+    const msg = formatError(err);
     return {
       action: parsed.action,
       result: { success: false, message: `Ошибка: ${msg}`, entity: '' },
@@ -160,14 +171,19 @@ export async function executeConfirmedAction(action: string, params: Record<stri
   }
   try {
     return await handler(params);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  } catch (err: unknown) {
+    console.error('[AI Tools] Confirmed action failed:', action, err);
+    const msg = formatError(err);
     return { success: false, message: `Ошибка: ${msg}`, entity: '' };
   }
 }
 
 export function stripActions(text: string): string {
-  return text.replace(ACTION_REGEX, '').trim();
+  return text
+    .replace(ACTION_REGEX, '')
+    .replace(/```\s*```/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 export function getChangedEntities(executions: ActionExecution[]): string[] {

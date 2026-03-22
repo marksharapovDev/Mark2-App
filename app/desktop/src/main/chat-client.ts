@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { getSupabase } from './supabase-client';
+import { stripActions } from './ai-tools';
 
 export type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
 
@@ -279,7 +280,8 @@ export async function buildCrossContext(agent: AgentName): Promise<string> {
     const ownLines: string[] = [];
     for (const s of ownSessions) {
       const date = formatRelativeDate(s.updated_at);
-      const text = s.summary ?? await buildMessageFallback(s.id);
+      const raw = s.summary ?? await buildMessageFallback(s.id);
+      const text = raw ? stripActions(raw) : '';
       if (text) {
         ownLines.push(`- [${date}] ${text}`);
       }
@@ -306,7 +308,8 @@ export async function buildCrossContext(agent: AgentName): Promise<string> {
     if (otherSessions && otherSessions.length > 0) {
       for (const s of otherSessions) {
         const date = formatRelativeDate(s.updated_at);
-        const text = s.summary ?? await buildMessageFallback(s.id);
+        const raw = s.summary ?? await buildMessageFallback(s.id);
+        const text = raw ? stripActions(raw) : '';
         if (text) {
           otherParts.push(`- [${other}] [${date}] ${text}`);
         }
