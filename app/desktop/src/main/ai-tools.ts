@@ -505,17 +505,18 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     const resolved = await resolveStudentId(params);
     if (typeof resolved === 'string') return { success: false, message: resolved, entity: '' };
 
-    const topicsCovered = params.topicsCovered as string[] | undefined;
-    if (!topicsCovered || !Array.isArray(topicsCovered) || topicsCovered.length === 0) {
-      return { success: false, message: 'topicsCovered[] обязателен', entity: '' };
-    }
-    const topicsNotCovered = (params.topicsNotCovered as string[] | undefined) ?? [];
+    const topicsCovered = Array.isArray(params.topicsCovered) ? params.topicsCovered as string[] : [];
+    const topicsNotCovered = Array.isArray(params.topicsNotCovered) ? params.topicsNotCovered as string[] : [];
     const notes = params.notes ? String(params.notes) : '';
     const homeworkGiven = params.homeworkGiven ? String(params.homeworkGiven) : null;
     const date = params.date ? String(params.date) : new Date().toISOString().slice(0, 10);
+    const lessonTopic = params.topic ? String(params.topic) : topicsCovered.join(', ') || 'Урок';
 
     // 1. Load learning path
-    const lpTopics = await db.getLearningPath(resolved.id);
+    let lpTopics: Awaited<ReturnType<typeof db.getLearningPath>> = [];
+    try {
+      lpTopics = await db.getLearningPath(resolved.id);
+    } catch { /* no learning path yet — that's ok */ }
 
     // Helper: find matching LP topic by substring inclusion
     const findLpMatch = (name: string) => {
@@ -526,58 +527,70 @@ const AI_TOOLS: Record<string, ActionHandler> = {
       });
     };
 
-    // 2. Create lesson record
-    const coveredStr = topicsCovered.join(', ');
-    const firstMatch = findLpMatch(topicsCovered[0]!);
+    // 2. Try to match first covered topic to learning path for topic_id
+    let topicId: string | null = null;
+    if (topicsCovered.length > 0) {
+      const firstMatch = findLpMatch(topicsCovered[0]!);
+      if (firstMatch) {
+        topicId = firstMatch.id;
+      } else {
+        console.log('[AI Tools] Lesson topic not in learning path, creating without topic_id');
+      }
+    }
+
+    // 3. Create lesson record
     const lesson = await db.createLesson({
       studentId: resolved.id,
-      topic: coveredStr,
+      topic: lessonTopic,
       date,
       notes,
       status: 'completed',
       homeworkGiven,
-      ...(firstMatch ? { topicId: firstMatch.id } : {}),
+      ...(topicId ? { topicId } : {}),
     });
-    console.log('[AI Tools] Created lesson:', coveredStr, 'for', resolved.name);
+    console.log('[AI Tools] Created lesson:', lessonTopic, 'for', resolved.name);
 
-    // 3. Mark covered topics as 'completed'
+    // 4. Update learning path statuses (only if we have topics and a learning path)
     const updatedTopicIds: string[] = [];
-    for (const covered of topicsCovered) {
-      const match = findLpMatch(covered);
-      if (match && match.status !== 'completed') {
-        const dateNote = `Пройдено ${date}`;
-        const newNotes = match.notes ? `${match.notes}; ${dateNote}` : dateNote;
-        await db.updateLearningPathTopic(match.id, { status: 'completed', notes: newNotes });
-        updatedTopicIds.push(match.id);
+    if (lpTopics.length > 0) {
+      // Mark covered topics as 'completed'
+      for (const covered of topicsCovered) {
+        const match = findLpMatch(covered);
+        if (match && match.status !== 'completed') {
+          const dateNote = `Пройдено ${date}`;
+          const newNotes = match.notes ? `${match.notes}; ${dateNote}` : dateNote;
+          await db.updateLearningPathTopic(match.id, { status: 'completed', notes: newNotes });
+          updatedTopicIds.push(match.id);
+        }
       }
-    }
 
-    // 4. Mark first not-covered topic as 'in_progress'
-    if (topicsNotCovered.length > 0) {
-      const match = findLpMatch(topicsNotCovered[0]!);
-      if (match && match.status === 'planned') {
-        await db.updateLearningPathTopic(match.id, { status: 'in_progress' });
-        updatedTopicIds.push(match.id);
+      // Mark first not-covered topic as 'in_progress'
+      if (topicsNotCovered.length > 0) {
+        const match = findLpMatch(topicsNotCovered[0]!);
+        if (match && match.status === 'planned') {
+          await db.updateLearningPathTopic(match.id, { status: 'in_progress' });
+          updatedTopicIds.push(match.id);
+        }
       }
-    }
 
-    // 5. Set next planned topic after last completed as 'in_progress'
-    const refreshed = await db.getLearningPath(resolved.id);
-    const sorted = refreshed.sort((a, b) => a.orderIndex - b.orderIndex);
-    let lastCompletedIdx = -1;
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      if (sorted[i]!.status === 'completed') { lastCompletedIdx = i; break; }
-    }
-    if (lastCompletedIdx >= 0 && lastCompletedIdx < sorted.length - 1) {
-      const next = sorted[lastCompletedIdx + 1]!;
-      if (next.status === 'planned') {
-        await db.updateLearningPathTopic(next.id, { status: 'in_progress' });
-        updatedTopicIds.push(next.id);
+      // Set next planned topic after last completed as 'in_progress'
+      const refreshed = await db.getLearningPath(resolved.id);
+      const sorted = refreshed.sort((a, b) => a.orderIndex - b.orderIndex);
+      let lastCompletedIdx = -1;
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        if (sorted[i]!.status === 'completed') { lastCompletedIdx = i; break; }
+      }
+      if (lastCompletedIdx >= 0 && lastCompletedIdx < sorted.length - 1) {
+        const next = sorted[lastCompletedIdx + 1]!;
+        if (next.status === 'planned') {
+          await db.updateLearningPathTopic(next.id, { status: 'in_progress' });
+          updatedTopicIds.push(next.id);
+        }
       }
     }
 
     const summary = [
-      `Урок записан: ${coveredStr}`,
+      `Урок записан: ${lessonTopic}`,
       updatedTopicIds.length > 0 ? `Обновлено тем в плане: ${updatedTopicIds.length}` : null,
     ].filter(Boolean).join('. ');
 
