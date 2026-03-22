@@ -107,6 +107,47 @@ async function tryResolveStudentFromFilename(filename: string): Promise<{ id: st
   return null;
 }
 
+// --- Topic matching helper ---
+
+/** Match a lesson topic string to a learning path topic using multi-strategy matching */
+function findMatchingLpTopic(
+  lessonTopic: string,
+  lpTopics: Array<{ id: string; title: string }>,
+): { id: string; title: string } | undefined {
+  const lessonLower = lessonTopic.toLowerCase();
+
+  // 1. Exact match
+  const exact = lpTopics.find((t) => t.title.toLowerCase() === lessonLower);
+  if (exact) return exact;
+
+  // 2. Substring inclusion (either direction)
+  const substring = lpTopics.find((t) => {
+    const tLower = t.title.toLowerCase();
+    return tLower.includes(lessonLower) || lessonLower.includes(tLower);
+  });
+  if (substring) return substring;
+
+  // 3. Keyword overlap >= 50%
+  const lessonWords = lessonLower.split(/[\s,.:;—–\-/]+/).filter((w) => w.length > 2);
+  if (lessonWords.length === 0) return undefined;
+
+  let bestMatch: { id: string; title: string } | undefined;
+  let bestScore = 0;
+
+  for (const t of lpTopics) {
+    const tWords = t.title.toLowerCase().split(/[\s,.:;—–\-/]+/).filter((w) => w.length > 2);
+    if (tWords.length === 0) continue;
+    const overlap = lessonWords.filter((w) => tWords.some((tw) => tw.includes(w) || w.includes(tw))).length;
+    const score = overlap / Math.min(lessonWords.length, tWords.length);
+    if (score > bestScore && score >= 0.5) {
+      bestScore = score;
+      bestMatch = t;
+    }
+  }
+
+  return bestMatch;
+}
+
 // --- Student resolution helper ---
 
 async function resolveStudentId(params: Record<string, unknown>): Promise<{ id: string; name: string } | string> {
@@ -474,12 +515,11 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     let topicId: string | null = null;
     try {
       const lpTopics = await db.getLearningPath(resolved.id);
-      const topicLower = topic.toLowerCase();
-      const match = lpTopics.find((t) => {
-        const tLower = t.title.toLowerCase();
-        return tLower.includes(topicLower) || topicLower.includes(tLower);
-      });
-      if (match) topicId = match.id;
+      const match = findMatchingLpTopic(topic, lpTopics);
+      if (match) {
+        topicId = match.id;
+        console.log(`[AI Tools] Matched lesson topic "${topic}" to learning path topic "${match.title}" (id: ${match.id})`);
+      }
     } catch { /* ignore */ }
 
     const lesson = await db.createLesson({
@@ -518,14 +558,7 @@ const AI_TOOLS: Record<string, ActionHandler> = {
       lpTopics = await db.getLearningPath(resolved.id);
     } catch { /* no learning path yet — that's ok */ }
 
-    // Helper: find matching LP topic by substring inclusion
-    const findLpMatch = (name: string) => {
-      const lower = name.toLowerCase();
-      return lpTopics.find((t) => {
-        const tLower = t.title.toLowerCase();
-        return tLower.includes(lower) || lower.includes(tLower);
-      });
-    };
+    const findLpMatch = (name: string) => findMatchingLpTopic(name, lpTopics);
 
     // 2. Try to match first covered topic to learning path for topic_id
     let topicId: string | null = null;
@@ -606,16 +639,34 @@ const AI_TOOLS: Record<string, ActionHandler> = {
   attach_file: async (params) => {
     console.log('[AI Tools] attach_file params:', JSON.stringify(params));
     // Auto-resolve student ID from filename if missing
+    let studentId = '';
     if (params.entityType === 'student' && (!params.entityId || !isValidUuid(String(params.entityId)))) {
       const filename = String(params.filename ?? '');
       const resolved = await tryResolveStudentFromFilename(filename);
       if (resolved) {
         console.log('[AI Tools] Auto-resolved student:', resolved.name, resolved.id);
         params.entityId = resolved.id;
+        studentId = resolved.id;
       } else {
         console.warn('[AI Tools] Could not auto-resolve student from filename:', filename);
       }
+    } else if (params.entityType === 'student' && params.entityId) {
+      studentId = String(params.entityId);
     }
+
+    // For homework files, try to match topic_id from learning path
+    if (params.category === 'homework' && studentId && !params.topicId) {
+      try {
+        const lpTopics = await db.getLearningPath(studentId);
+        const filename = String(params.filename ?? '').toLowerCase();
+        const match = findMatchingLpTopic(filename, lpTopics);
+        if (match) {
+          params.topicId = match.id;
+          console.log(`[AI Tools] Matched homework to learning path topic "${match.title}" (id: ${match.id})`);
+        }
+      } catch { /* ignore */ }
+    }
+
     const result = await db.createAttachedFile(params);
     return { success: true, message: `Файл прикреплён: ${params.filename}`, entity: 'files', data: result as unknown as Record<string, unknown> };
   },

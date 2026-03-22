@@ -13,5 +13,6 @@ export interface AttachedFile {
   fileType: AttachedFileType;
   category: AttachedFileCategory;
   status: AttachedFileStatus;
+  topicId: string | null;
   createdAt: Date;
 }

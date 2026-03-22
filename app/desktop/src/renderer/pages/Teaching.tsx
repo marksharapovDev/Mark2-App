@@ -442,7 +442,9 @@ type MainView =
   | { kind: 'task-detail'; taskId: string }
   | { kind: 'add-student' }
   | { kind: 'learning-path' }
-  | { kind: 'learning-path-topic'; topicId: string };
+  | { kind: 'learning-path-topic'; topicId: string }
+  | { kind: 'lessons-history' }
+  | { kind: 'homework-files'; filter: 'pending' | 'completed' | 'all' };
 
 // --- Component ---
 
@@ -509,13 +511,13 @@ export function Teaching() {
   const studentTasks = student ? teachingTasks.filter((t) => t.studentId === student.id) : [];
 
   // DB attached homework files for sidebar
-  const [sidebarHomeworkFiles, setSidebarHomeworkFiles] = useState<Array<{id: string; filename: string; filepath: string; status: string; createdAt: string}>>([]);
+  const [sidebarHomeworkFiles, setSidebarHomeworkFiles] = useState<Array<{id: string; filename: string; filepath: string; status: string; topicId: string | null; createdAt: string}>>([]);
 
   const loadHomeworkFiles = useCallback((studentId: string) => {
     window.db.files.list('student', studentId).then((files) => {
       const hwFiles = files
         .filter((f) => f.category === 'homework')
-        .map((f) => ({ id: f.id, filename: f.filename, filepath: f.filepath, status: (f as Record<string, unknown>).status as string ?? 'pending', createdAt: f.createdAt ? String(f.createdAt) : '' }));
+        .map((f) => ({ id: f.id, filename: f.filename, filepath: f.filepath, status: (f as Record<string, unknown>).status as string ?? 'pending', topicId: f.topicId ?? null, createdAt: f.createdAt ? String(f.createdAt) : '' }));
       setSidebarHomeworkFiles(hwFiles);
     }).catch((err) => console.error('[Teaching] Failed to load sidebar files:', err));
   }, []);
@@ -1082,6 +1084,8 @@ export function Teaching() {
               onTaskClick={(id) => setMainView({ kind: 'task-detail', taskId: id })}
               onLearningPathClick={() => setMainView({ kind: 'learning-path' })}
               onLearningPathTopicClick={(id) => setMainView({ kind: 'learning-path-topic', topicId: id })}
+              onLessonsHistoryClick={() => setMainView({ kind: 'lessons-history' })}
+              onHomeworkFilesClick={(f) => setMainView({ kind: 'homework-files', filter: f })}
               getEffectiveStatus={getEffectiveStatus}
             />
           )}
@@ -1124,6 +1128,23 @@ export function Teaching() {
               dbLearningPath={dbLearningPath}
               onBack={() => setMainView({ kind: 'overview' })}
               onTopicClick={(id) => setMainView({ kind: 'learning-path-topic', topicId: id })}
+            />
+          )}
+          {!loading && student && mainView.kind === 'lessons-history' && (
+            <LessonsHistoryView
+              student={student}
+              dbLessons={dbLessons}
+              dbLearningPath={dbLearningPath}
+              onBack={() => setMainView({ kind: 'overview' })}
+            />
+          )}
+          {!loading && student && mainView.kind === 'homework-files' && (
+            <HomeworkFilesView
+              student={student}
+              files={sidebarHomeworkFiles}
+              filter={mainView.filter}
+              onFilterChange={(f) => setMainView({ kind: 'homework-files', filter: f })}
+              onBack={() => setMainView({ kind: 'overview' })}
             />
           )}
           {!loading && student && mainView.kind === 'learning-path-topic' && (
@@ -1189,6 +1210,8 @@ function StudentOverview({
   onTaskClick,
   onLearningPathClick,
   onLearningPathTopicClick,
+  onLessonsHistoryClick,
+  onHomeworkFilesClick,
   getEffectiveStatus,
 }: {
   student: MockStudent;
@@ -1205,6 +1228,8 @@ function StudentOverview({
   onTaskClick: (id: string) => void;
   onLearningPathClick: () => void;
   onLearningPathTopicClick: (id: string) => void;
+  onLessonsHistoryClick: () => void;
+  onHomeworkFilesClick: (filter: 'pending' | 'completed') => void;
   getEffectiveStatus: (task: TeachingTask) => TaskStatus;
 }) {
   const stats = hwStats(homeworks);
@@ -1279,9 +1304,9 @@ function StudentOverview({
 
       {/* Stats */}
       <div className="flex gap-3 mb-6">
-        <StatBadge label="Уроков" count={realLessonCount} color="text-blue-400 bg-blue-400/10" />
-        <StatBadge label="ДЗ выполнено" count={realHwDone} color="text-emerald-400 bg-emerald-400/10" />
-        <StatBadge label="ДЗ предстоит" count={realHwPending} color="text-yellow-400 bg-yellow-400/10" />
+        <StatBadge label="Уроков" count={realLessonCount} color="text-blue-400 bg-blue-400/10" onClick={onLessonsHistoryClick} />
+        <StatBadge label="ДЗ выполнено" count={realHwDone} color="text-emerald-400 bg-emerald-400/10" onClick={() => onHomeworkFilesClick('completed')} />
+        <StatBadge label="ДЗ предстоит" count={realHwPending} color="text-yellow-400 bg-yellow-400/10" onClick={() => onHomeworkFilesClick('pending')} />
         {(stats.overdue ?? 0) > 0 && (
           <StatBadge label="Просрочено" count={stats.overdue ?? 0} color="text-red-400 bg-red-400/10" />
         )}
@@ -1487,12 +1512,16 @@ function StudentOverview({
   );
 }
 
-function StatBadge({ label, count, color }: { label: string; count: number; color: string }) {
+function StatBadge({ label, count, color, onClick }: { label: string; count: number; color: string; onClick?: () => void }) {
+  const Tag = onClick ? 'button' : 'div';
   return (
-    <div className={`px-3 py-2 rounded-lg shadow-sm shadow-black/10 ${color}`}>
+    <Tag
+      onClick={onClick}
+      className={`px-3 py-2 rounded-lg shadow-sm shadow-black/10 text-left ${color} ${onClick ? 'hover:brightness-125 transition cursor-pointer' : ''}`}
+    >
       <div className="text-lg font-bold">{count}</div>
       <div className="text-[10px] uppercase tracking-wider opacity-70">{label}</div>
-    </div>
+    </Tag>
   );
 }
 
@@ -1922,7 +1951,7 @@ function LearningPathTopicView({
   topic: LearningPathTopic | undefined;
   topicIndex: number;
   dbLessons: Array<{ id: string; studentId: string; date: string; topic: string; status: string; notes: string; homeworkGiven: string | null; topicId: string | null }>;
-  sidebarHomeworkFiles: Array<{ id: string; filename: string; filepath: string; status: string; createdAt: string }>;
+  sidebarHomeworkFiles: Array<{ id: string; filename: string; filepath: string; status: string; topicId: string | null; createdAt: string }>;
   onBack: () => void;
   onReload: () => void;
 }) {
@@ -1982,8 +2011,9 @@ function LearningPathTopicView({
     return titleWords.some((w) => lt.includes(w));
   });
 
-  // Related homework files
+  // Related homework files: prefer topic_id match, fallback to keyword search
   const relatedHomework = sidebarHomeworkFiles.filter((f) => {
+    if (f.topicId === topic.id) return true;
     const fn = f.filename.toLowerCase();
     return titleWords.some((w) => fn.includes(w));
   });
@@ -2108,6 +2138,180 @@ function LearningPathTopicView({
           Связанных уроков и домашних заданий пока нет.
         </div>
       )}
+    </div>
+  );
+}
+
+function LessonsHistoryView({
+  student,
+  dbLessons,
+  dbLearningPath,
+  onBack,
+}: {
+  student: MockStudent;
+  dbLessons: Array<{ id: string; studentId: string; date: string; topic: string; status: string; notes: string; homeworkGiven: string | null; topicId: string | null }>;
+  dbLearningPath: LearningPathTopic[];
+  onBack: () => void;
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const topicMap = new Map(dbLearningPath.map((t) => [t.id, t]));
+
+  return (
+    <div className="max-w-2xl">
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
+        &larr; Назад к ученику
+      </button>
+
+      <h1 className="text-2xl font-bold mb-1">{student.name}</h1>
+      <h2 className="text-neutral-500 text-sm mb-6">История уроков ({dbLessons.length})</h2>
+
+      {dbLessons.length === 0 && (
+        <div className="text-neutral-600 text-sm py-8 text-center">Уроков пока нет</div>
+      )}
+
+      <div className="space-y-2">
+        {dbLessons.map((lesson) => {
+          const expanded = expandedId === lesson.id;
+          const lpTopic = lesson.topicId ? topicMap.get(lesson.topicId) : undefined;
+          return (
+            <button
+              key={lesson.id}
+              onClick={() => setExpandedId(expanded ? null : lesson.id)}
+              className="w-full text-left bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-3 hover:bg-neutral-800/50 transition-colors shadow-sm shadow-black/10"
+            >
+              <div className="flex items-center gap-3">
+                <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
+                  lesson.status === 'completed' ? 'bg-emerald-900/40 text-emerald-300' : 'bg-blue-900/40 text-blue-300'
+                }`}>
+                  {lesson.status === 'completed' ? 'Проведён' : 'Запланирован'}
+                </span>
+                <span className="text-neutral-500 text-xs shrink-0">{formatDate(lesson.date)}</span>
+                <span className="text-sm text-neutral-300 truncate flex-1">{lesson.topic}</span>
+              </div>
+              {lpTopic && (
+                <div className="mt-1 flex items-center gap-1.5">
+                  <span className="text-[10px] shrink-0">{LP_STATUS_ICON[lpTopic.status]}</span>
+                  <span className="text-[10px] text-neutral-600 truncate">План: {lpTopic.title}</span>
+                </div>
+              )}
+              {expanded && (
+                <div className="mt-3 pt-3 border-t border-neutral-800 space-y-2" onClick={(e) => e.stopPropagation()}>
+                  {lesson.notes && (
+                    <div>
+                      <div className="text-[10px] text-neutral-600 uppercase mb-0.5">Заметки</div>
+                      <p className="text-xs text-neutral-400 leading-relaxed">{lesson.notes}</p>
+                    </div>
+                  )}
+                  {lesson.homeworkGiven && (
+                    <div>
+                      <div className="text-[10px] text-neutral-600 uppercase mb-0.5">Заданное ДЗ</div>
+                      <p className="text-xs text-neutral-400">{lesson.homeworkGiven}</p>
+                    </div>
+                  )}
+                  {!lesson.notes && !lesson.homeworkGiven && (
+                    <p className="text-xs text-neutral-600">Нет дополнительной информации</p>
+                  )}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function HomeworkFilesView({
+  student,
+  files,
+  filter,
+  onFilterChange,
+  onBack,
+}: {
+  student: MockStudent;
+  files: Array<{ id: string; filename: string; filepath: string; status: string; createdAt: string }>;
+  filter: 'pending' | 'completed' | 'all';
+  onFilterChange: (f: 'pending' | 'completed' | 'all') => void;
+  onBack: () => void;
+}) {
+  const filtered = filter === 'all' ? files : files.filter((f) => f.status === filter);
+  const filters: Array<{ value: 'pending' | 'completed' | 'all'; label: string }> = [
+    { value: 'all', label: 'Все' },
+    { value: 'completed', label: 'Выполнено' },
+    { value: 'pending', label: 'Предстоит' },
+  ];
+
+  const toggleStatus = async (file: { id: string; status: string }) => {
+    const newStatus = file.status === 'completed' ? 'pending' : 'completed';
+    try {
+      await window.db.files.update(file.id, { status: newStatus });
+      window.dataEvents.emitDataChanged(['files']);
+    } catch (err) {
+      console.error('[HomeworkFilesView] Failed to update status:', err);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl">
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
+        &larr; Назад к ученику
+      </button>
+
+      <h1 className="text-2xl font-bold mb-1">{student.name}</h1>
+      <h2 className="text-neutral-500 text-sm mb-6">Домашние задания</h2>
+
+      <div className="flex gap-1 mb-6">
+        {filters.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => onFilterChange(f.value)}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+              filter === f.value
+                ? 'bg-neutral-700 text-white'
+                : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 && (
+        <div className="text-neutral-600 text-sm py-8 text-center">Нет домашек с таким статусом</div>
+      )}
+
+      <div className="space-y-2">
+        {filtered.map((file) => (
+          <div
+            key={file.id}
+            className="flex items-center gap-3 bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-3 shadow-sm shadow-black/10"
+          >
+            <button
+              onClick={() => toggleStatus(file)}
+              className={`w-4 h-4 rounded border shrink-0 flex items-center justify-center transition-colors ${
+                file.status === 'completed' ? 'bg-emerald-600 border-emerald-600' : 'border-neutral-600 hover:border-neutral-400'
+              }`}
+            >
+              {file.status === 'completed' && (
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+            <span className="text-sm shrink-0">{FILE_ICON.docx}</span>
+            <button
+              onClick={() => window.electronAPI.openFile(file.filepath)}
+              className="text-sm text-neutral-300 truncate flex-1 text-left hover:text-neutral-100 transition-colors"
+            >
+              {file.filename}
+            </button>
+            <span className="text-[10px] text-neutral-600 shrink-0">
+              {file.createdAt ? formatDate(file.createdAt.slice(0, 10)) : ''}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
