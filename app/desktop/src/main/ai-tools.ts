@@ -490,7 +490,7 @@ export function parseActions(text: string): ParsedAction[] {
   return actions;
 }
 
-export async function executeAction(parsed: ParsedAction): Promise<ActionExecution> {
+export async function executeAction(parsed: ParsedAction, opts?: { skipConfirmation?: boolean }): Promise<ActionExecution> {
   const handler = AI_TOOLS[parsed.action];
   if (!handler) {
     return {
@@ -500,7 +500,7 @@ export async function executeAction(parsed: ParsedAction): Promise<ActionExecuti
     };
   }
 
-  if (isDestructive(parsed.action)) {
+  if (isDestructive(parsed.action) && !opts?.skipConfirmation) {
     return {
       action: parsed.action,
       result: { success: false, message: '', entity: '' },

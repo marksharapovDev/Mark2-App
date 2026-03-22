@@ -132,9 +132,15 @@ const CONFIRM_WORDS = new Set([
   'го', 'поехали', 'выполняй', 'начинай', 'да, делай',
 ]);
 
+const CONFIRM_PREFIXES = [
+  'да,', 'да ', 'ок,', 'ок ', 'давай,', 'давай ',
+];
+
 function isConfirmation(message: string): boolean {
   const trimmed = message.trim().toLowerCase().replace(/[.!,?]+$/, '');
-  return CONFIRM_WORDS.has(trimmed);
+  if (CONFIRM_WORDS.has(trimmed)) return true;
+  // Match phrases like "да, удали", "да удаляй", "ок, делай"
+  return CONFIRM_PREFIXES.some((p) => trimmed.startsWith(p));
 }
 
 const pendingTask = new Map<string, string>(); // sessionId -> prompt
@@ -189,7 +195,7 @@ async function buildTeachingContext(sessionId: string, agent: AgentName): Promis
   }
 }
 
-async function processActions(text: string): Promise<{
+async function processActions(text: string, opts?: { mode?: InteractionMode }): Promise<{
   cleanContent: string;
   actionSummary: string;
   changedEntities: string[];
@@ -201,12 +207,13 @@ async function processActions(text: string): Promise<{
     return { cleanContent: text, actionSummary: '', changedEntities: [], actionsCount: 0 };
   }
 
+  const skipConfirmation = opts?.mode === 'execute';
   const executions: ActionExecution[] = [];
   const summaryParts: string[] = [];
   let confirmation: PendingConfirmation | undefined;
 
   for (const p of parsed) {
-    const exec = await executeAction(p);
+    const exec = await executeAction(p, { skipConfirmation });
     executions.push(exec);
 
     if (exec.needsConfirmation) {
@@ -214,6 +221,7 @@ async function processActions(text: string): Promise<{
       const desc = p.action === 'delete_task' ? `задачу`
         : p.action === 'delete_event' ? `событие`
         : p.action === 'delete_student' ? `ученика`
+        : p.action === 'delete_learning_path_topic' ? `тему из плана обучения`
         : `объект`;
       confirmation = {
         action: p.action,
@@ -272,7 +280,7 @@ async function executeViaClaudeCode(
   const { cleanContent, actionSummary, changedEntities, pendingConfirmation } =
     skipActions
       ? { cleanContent: stripActions(content), actionSummary: '', changedEntities: [] as string[], pendingConfirmation: undefined }
-      : await processActions(content);
+      : await processActions(content, { mode });
 
   if (pendingConfirmation) {
     pendingConfirmations.set(sessionId, pendingConfirmation);
@@ -418,7 +426,7 @@ export async function sendMessage(
 
   // Process AI actions in the response
   const { cleanContent, actionSummary, changedEntities, actionsCount, pendingConfirmation } =
-    await processActions(apiResponse);
+    await processActions(apiResponse, { mode });
 
   console.log('[HybridEngine] Actions found:', actionsCount);
   if (changedEntities.length > 0) {
