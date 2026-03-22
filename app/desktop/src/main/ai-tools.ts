@@ -241,7 +241,7 @@ interface ActionResult {
 
 type ActionHandler = (params: Record<string, unknown>) => Promise<ActionResult>;
 
-const DESTRUCTIVE_ACTIONS = new Set(['delete_task', 'delete_event', 'delete_student']);
+const DESTRUCTIVE_ACTIONS = new Set(['delete_task', 'delete_event', 'delete_student', 'delete_learning_path_topic']);
 
 function isDestructive(action: string): boolean {
   return DESTRUCTIVE_ACTIONS.has(action);
@@ -411,6 +411,34 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     if (!studentId || !topicIds) return { success: false, message: 'studentId и topicIds обязательны', entity: '' };
     await db.reorderLearningPathTopics(studentId, topicIds);
     return { success: true, message: 'Порядок тем обновлён', entity: 'learning-path' };
+  },
+
+  delete_learning_path_topic: async (params) => {
+    const topicId = String(params.topicId ?? '');
+    if (!topicId) return { success: false, message: 'topicId обязателен', entity: '' };
+
+    // Get topic to know studentId before deleting
+    const allStudents = await db.getStudents();
+    let studentId = '';
+    for (const s of allStudents) {
+      const topics = await db.getLearningPath(s.id);
+      if (topics.some((t) => t.id === topicId)) {
+        studentId = s.id;
+        break;
+      }
+    }
+
+    await db.deleteLearningPathTopic(topicId);
+    console.log('[AI Tools] Deleted learning path topic:', topicId);
+
+    // Reorder remaining topics to keep order_index sequential
+    if (studentId) {
+      const remaining = await db.getLearningPath(studentId);
+      const orderedIds = remaining.sort((a, b) => a.orderIndex - b.orderIndex).map((t) => t.id);
+      await db.reorderLearningPathTopics(studentId, orderedIds);
+    }
+
+    return { success: true, message: `Тема удалена: ${topicId}`, entity: 'learning-path' };
   },
 
   attach_file: async (params) => {

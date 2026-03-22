@@ -61,6 +61,7 @@
 - `create_learning_path` — создать путь обучения: `{studentName: "Имя", topics: [{title, description?}]}`
   Если studentName не найден — ошибка. Можно также передать studentId вместо studentName.
 - `update_learning_path_topic` — обновить тему: `{topicId, status?, notes?, title?, description?}`
+- `delete_learning_path_topic` — удалить тему: `{topicId}`
 - `reorder_learning_path` — изменить порядок тем: `{studentId, topicIds[]}`
 
 ### Путь обучения
@@ -69,6 +70,8 @@
 - Создавай топики в логичном порядке от простого к сложному
 - Учитывай уровень ученика (Начальный → больше базовых тем, Продвинутый → можно пропускать основы)
 - Каждая тема должна иметь понятное description с кратким описанием содержания
+- При объединении тем: обнови одну тему через update (новый title/description) и УДАЛИ вторую через delete_learning_path_topic. НЕ помечай как skipped — удаляй.
+  Пример удаления: `[ACTION:delete_learning_path_topic]{"topicId":"uuid-here"}[/ACTION]`
 - Пример:
   `[ACTION:create_learning_path]{"studentName":"Лиза Морозова","topics":[{"title":"Дроби: основы","description":"Что такое дробь, числитель и знаменатель"},{"title":"Сравнение дробей","description":"Приведение к общему знаменателю"},{"title":"Сложение и вычитание дробей","description":"Операции с обыкновенными дробями"}]}[/ACTION]`
 
