@@ -258,72 +258,6 @@ f'(x₀) = lim[Δx→0] (f(x₀+Δx) - f(x₀)) / Δx
   { id: 'h2', subjectId: 'history', title: 'Средневековье — реферат', category: 'report', status: 'done', date: '2025-10-20' },
 ];
 
-const MOCK_STUDY_TASKS: StudyTask[] = [
-  {
-    id: 'st1',
-    subjectId: 'matan',
-    title: 'Доделать ДЗ по производным',
-    status: 'in_progress',
-    priority: 'high',
-    context: 'Осталось 8 задач из 20. Сложные — цепное правило с тригонометрией.',
-    deadline: '2026-03-25',
-  },
-  {
-    id: 'st2',
-    subjectId: 'matan',
-    title: 'Типовой расчёт — задачи 15-30',
-    status: 'todo',
-    priority: 'high',
-    context: 'Вторая половина типового. Интегрирование по частям, подстановка.',
-    deadline: '2026-04-01',
-  },
-  {
-    id: 'st3',
-    subjectId: 'physics',
-    title: 'Оформить лабораторную по теплоёмкости',
-    status: 'todo',
-    priority: 'medium',
-    context: 'Данные собраны, нужно оформить отчёт и построить графики.',
-    deadline: '2026-03-27',
-  },
-  {
-    id: 'st4',
-    subjectId: 'physics',
-    title: 'Начать курсовую — план и литература',
-    status: 'todo',
-    priority: 'medium',
-    context: 'Составить план курсовой по волновой оптике, найти 10 источников.',
-    deadline: '2026-04-01',
-  },
-  {
-    id: 'st5',
-    subjectId: 'informatics',
-    title: 'Реализовать BFS и DFS',
-    status: 'in_progress',
-    priority: 'medium',
-    context: 'BFS готов, нужен DFS + минимальное остовное дерево (Краскал или Прим).',
-    deadline: '2026-03-28',
-  },
-  {
-    id: 'st6',
-    subjectId: 'physics',
-    title: 'Подготовить доклад по квантовой механике',
-    status: 'in_progress',
-    priority: 'low',
-    context: 'Слайды наполовину готовы. Нужно добавить примеры и формулы.',
-    deadline: '2026-04-03',
-  },
-  {
-    id: 'st7',
-    subjectId: 'matan',
-    title: 'Написать конспект по интегралам',
-    status: 'todo',
-    priority: 'low',
-    context: 'Лекция была, но конспект пустой. Восстановить по учебнику.',
-    deadline: null,
-  },
-];
-
 // --- Helpers ---
 
 const PRIORITY_FROM_INT: Record<number, Priority> = { 0: 'low', 1: 'medium', 2: 'high' };
@@ -468,10 +402,9 @@ export function Study() {
     deadline: '',
   });
   // DB state
-  const [studyTasks, setStudyTasks] = useState<StudyTask[]>(MOCK_STUDY_TASKS);
+  const [studyTasks, setStudyTasks] = useState<StudyTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
-  const [isDemo, setIsDemo] = useState(false);
 
   const isDraggingSidebar = useRef(false);
 
@@ -482,15 +415,9 @@ export function Study() {
   const reloadData = useCallback(async () => {
     try {
       const dbTasks = await window.db.tasks.list('study');
-      if (dbTasks.length > 0) {
-        setStudyTasks(dbTasks.map((t) => mapDbTaskToStudy(t as unknown as Record<string, unknown>)));
-        setIsDemo(false);
-      } else {
-        setIsDemo(true);
-      }
+      setStudyTasks(dbTasks.map((t) => mapDbTaskToStudy(t as unknown as Record<string, unknown>)));
     } catch (err) {
       setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
-      setIsDemo(true);
     }
   }, []);
 
@@ -561,13 +488,11 @@ export function Study() {
   const toggleTaskChecked = useCallback((taskId: string) => {
     setTaskChecked((prev) => {
       const newChecked = !prev[taskId];
-      if (!isDemo) {
-        const newStatus = newChecked ? 'done' : 'todo';
-        window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
-      }
+      const newStatus = newChecked ? 'done' : 'todo';
+      window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
       return { ...prev, [taskId]: newChecked };
     });
-  }, [isDemo]);
+  }, []);
 
   const getEffectiveStatus = useCallback((task: StudyTask): TaskStatus => {
     if (taskChecked[task.id]) return 'done';
@@ -944,11 +869,6 @@ export function Study() {
           {dbError && (
             <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
               {dbError}
-            </div>
-          )}
-          {isDemo && !loading && (
-            <div className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
-              Demo data — БД недоступна или пуста
             </div>
           )}
           {!loading && !subject && mainView.kind !== 'add-material' && (

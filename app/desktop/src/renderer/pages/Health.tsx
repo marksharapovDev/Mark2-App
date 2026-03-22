@@ -254,33 +254,6 @@ const PAST_DAYS_NUTRITION: Array<{ date: string; calories: number; status: strin
   { date: '2026-03-15', calories: 2100, status: 'Дефицит' },
 ];
 
-const MOCK_HEALTH_TASKS: HealthTask[] = [
-  {
-    id: 'ht1',
-    title: 'Сходить в зал — грудь+трицепс',
-    status: 'todo',
-    priority: 'high',
-    context: 'Тренировка на грудь и трицепс, увеличить вес в жиме',
-    deadline: '2026-03-22',
-  },
-  {
-    id: 'ht2',
-    title: 'Пробежать 7км',
-    status: 'todo',
-    priority: 'medium',
-    context: 'Длинный бег в парке, целевой темп 5:30',
-    deadline: '2026-03-24',
-  },
-  {
-    id: 'ht3',
-    title: 'Купить протеин',
-    status: 'todo',
-    priority: 'low',
-    context: 'Заказать сывороточный протеин, шоколадный вкус',
-    deadline: null,
-  },
-];
-
 const WEEKLY_WORKOUTS = [3, 4, 3, 2]; // workouts per week
 const WEEKLY_WORKOUT_LABELS = ['1-7 мар', '8-14 мар', '15-21 мар', '22-28 мар'];
 const WEIGHT_PROGRESS = [
@@ -361,11 +334,10 @@ export function Health() {
   const [taskChecked, setTaskChecked] = useState<Record<string, boolean>>({});
 
   // DB state
-  const [workouts, setWorkouts] = useState<Workout[]>(MOCK_WORKOUTS);
-  const [healthTasks, setHealthTasks] = useState<HealthTask[]>(MOCK_HEALTH_TASKS);
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [healthTasks, setHealthTasks] = useState<HealthTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
-  const [isDemo, setIsDemo] = useState(false);
 
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
@@ -377,20 +349,14 @@ export function Health() {
         window.db.workouts.list(),
         window.db.tasks.list('health'),
       ]);
-      if (dbWorkouts.length > 0 || dbTasks.length > 0) {
-        if (dbWorkouts.length > 0) {
-          setWorkouts(dbWorkouts.map((w) => mapDbWorkoutToLocal(w as unknown as Record<string, unknown>)));
-        }
-        if (dbTasks.length > 0) {
-          setHealthTasks(dbTasks.map((t) => mapDbTaskToHealth(t as unknown as Record<string, unknown>)));
-        }
-        setIsDemo(false);
-      } else {
-        setIsDemo(true);
+      if (dbWorkouts.length > 0) {
+        setWorkouts(dbWorkouts.map((w) => mapDbWorkoutToLocal(w as unknown as Record<string, unknown>)));
+      }
+      if (dbTasks.length > 0) {
+        setHealthTasks(dbTasks.map((t) => mapDbTaskToHealth(t as unknown as Record<string, unknown>)));
       }
     } catch (err) {
       setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
-      setIsDemo(true);
     }
   }, []);
 
@@ -421,13 +387,11 @@ export function Health() {
   const toggleTaskChecked = useCallback((taskId: string) => {
     setTaskChecked((prev) => {
       const newChecked = !prev[taskId];
-      if (!isDemo) {
-        const newStatus = newChecked ? 'done' : 'todo';
-        window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
-      }
+      const newStatus = newChecked ? 'done' : 'todo';
+      window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
       return { ...prev, [taskId]: newChecked };
     });
-  }, [isDemo]);
+  }, []);
 
   const getEffectiveStatus = useCallback((task: HealthTask): TaskStatus => {
     if (taskChecked[task.id]) return 'done';
@@ -589,11 +553,6 @@ export function Health() {
           {dbError && (
             <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
               {dbError}
-            </div>
-          )}
-          {isDemo && !loading && (
-            <div className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
-              Demo data — БД недоступна или пуста
             </div>
           )}
           {!loading && mainView.kind === 'workouts-overview' && (

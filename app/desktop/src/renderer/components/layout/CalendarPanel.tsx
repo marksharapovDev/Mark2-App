@@ -7,6 +7,14 @@ import { useCalendar } from '../../context/calendar-context';
 
 type Sphere = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'personal';
 
+interface RecurrenceRule {
+  pattern: string;
+  days?: number[];
+  dayTimes?: Record<number, { startHour: number; startMin: number; endHour: number; endMin: number }>;
+  endDate?: string;
+  exceptions?: string[];
+}
+
 interface CalendarEvent {
   id: string;
   title: string;
@@ -19,6 +27,10 @@ interface CalendarEvent {
   allDay?: boolean;
   description?: string;
   isReminder?: boolean;
+  isRecurring?: boolean;
+  recurrenceRule?: RecurrenceRule;
+  isException?: boolean;
+  recurringParentId?: string;
 }
 
 // --- Constants (shared with Calendar.tsx — later extract to shared module) ---
@@ -37,86 +49,7 @@ const MONTH_NAMES = ['Январь', 'Февраль', 'Март', 'Апрель
 
 const TODAY = '2026-03-21';
 
-// --- Mock Events (same as Calendar.tsx) ---
-
-function addDays(d: Date, n: number): Date {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
-}
-
 function pad2(n: number): string { return String(n).padStart(2, '0'); }
-
-function dateToStr(d: Date): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-function generateMockEvents(): CalendarEvent[] {
-  const events: CalendarEvent[] = [];
-  let id = 1;
-
-  const weekStarts = [
-    new Date(2026, 2, 9),
-    new Date(2026, 2, 16),
-    new Date(2026, 2, 23),
-  ];
-
-  const recurring: Array<{
-    title: string; sphere: Sphere; dayOfWeek: number;
-    startHour: number; startMin: number; endHour: number; endMin: number;
-    description?: string;
-  }> = [
-    { title: 'Матанализ (лекция)', sphere: 'study', dayOfWeek: 0, startHour: 10, startMin: 0, endHour: 11, endMin: 30, description: 'Интегралы' },
-    { title: 'Зал (грудь + трицепс)', sphere: 'health', dayOfWeek: 0, startHour: 18, startMin: 0, endHour: 19, endMin: 0 },
-    { title: 'Физика (лекция)', sphere: 'study', dayOfWeek: 1, startHour: 14, startMin: 0, endHour: 15, endMin: 30, description: 'Термодинамика' },
-    { title: 'Урок Миша (ЕГЭ Информатика)', sphere: 'teaching', dayOfWeek: 1, startHour: 17, startMin: 0, endHour: 18, endMin: 0, description: 'Подготовка к ЕГЭ' },
-    { title: 'Матанализ (семинар)', sphere: 'study', dayOfWeek: 2, startHour: 12, startMin: 0, endHour: 13, endMin: 30, description: 'Задачи' },
-    { title: 'Урок Аня (Python)', sphere: 'teaching', dayOfWeek: 2, startHour: 15, startMin: 0, endHour: 16, endMin: 0, description: 'Основы Python' },
-    { title: 'Физика (лаб.)', sphere: 'study', dayOfWeek: 3, startHour: 16, startMin: 0, endHour: 17, endMin: 30, description: 'Лабораторная работа' },
-    { title: 'Зал (спина + бицепс)', sphere: 'health', dayOfWeek: 3, startHour: 18, startMin: 0, endHour: 19, endMin: 0 },
-    { title: 'Информатика (лекция)', sphere: 'study', dayOfWeek: 4, startHour: 10, startMin: 0, endHour: 11, endMin: 30, description: 'Графы и деревья' },
-    { title: 'Бег 5км', sphere: 'health', dayOfWeek: 5, startHour: 9, startMin: 0, endHour: 9, endMin: 45 },
-    { title: 'Урок Миша (ЕГЭ Информатика)', sphere: 'teaching', dayOfWeek: 5, startHour: 11, startMin: 0, endHour: 12, endMin: 0, description: 'Рекурсия' },
-  ];
-
-  for (const ws of weekStarts) {
-    for (const r of recurring) {
-      const date = addDays(ws, r.dayOfWeek);
-      events.push({
-        id: `ev${id++}`,
-        title: r.title,
-        sphere: r.sphere,
-        date: dateToStr(date),
-        startHour: r.startHour,
-        startMin: r.startMin,
-        endHour: r.endHour,
-        endMin: r.endMin,
-        description: r.description,
-      });
-    }
-  }
-
-  const oneOffs: Array<Omit<CalendarEvent, 'id'>> = [
-    { title: 'Работа над LI Group', sphere: 'dev', date: '2026-03-18', startHour: 20, startMin: 0, endHour: 22, endMin: 0, description: 'Интеграция CRM API' },
-    { title: 'Оплата VPS', sphere: 'finance', date: '2026-03-20', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true },
-    { title: 'Mark2 разработка', sphere: 'dev', date: '2026-03-20', startHour: 19, startMin: 0, endHour: 21, endMin: 0, description: 'Calendar view' },
-    { title: 'Встреча с друзьями', sphere: 'personal', date: '2026-03-21', startHour: 16, startMin: 0, endHour: 18, endMin: 0 },
-    { title: 'Стрижка', sphere: 'personal', date: '2026-03-22', startHour: 12, startMin: 0, endHour: 13, endMin: 0 },
-    { title: 'Дедлайн курсовая', sphere: 'study', date: '2026-03-23', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true },
-    { title: 'Созвон с заказчиком', sphere: 'dev', date: '2026-03-25', startHour: 10, startMin: 0, endHour: 10, endMin: 30, description: 'Обсуждение ТЗ' },
-    { title: 'Mark2 разработка', sphere: 'dev', date: '2026-03-27', startHour: 19, startMin: 0, endHour: 21, endMin: 0, description: 'Agent system' },
-    { title: 'Оплата за обучение', sphere: 'finance', date: '2026-03-10', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true },
-    { title: 'Работа над LI Group', sphere: 'dev', date: '2026-03-11', startHour: 20, startMin: 0, endHour: 22, endMin: 0, description: 'Frontend рефакторинг' },
-  ];
-
-  for (const o of oneOffs) {
-    events.push({ ...o, id: `ev${id++}` });
-  }
-
-  return events;
-}
-
-const MOCK_EVENTS = generateMockEvents();
 
 function mapDbEventToPanel(e: Record<string, unknown>): CalendarEvent {
   const startAt = new Date(e.startAt as string);
@@ -132,6 +65,10 @@ function mapDbEventToPanel(e: Record<string, unknown>): CalendarEvent {
     endHour: endAt.getHours(),
     endMin: endAt.getMinutes(),
     description: meta.description ? String(meta.description) : undefined,
+    isRecurring: (e.isRecurring as boolean) ?? false,
+    recurrenceRule: e.recurrenceRule ? (e.recurrenceRule as RecurrenceRule) : undefined,
+    isException: (e.isException as boolean) ?? false,
+    recurringParentId: e.recurringParentId ? String(e.recurringParentId) : undefined,
   };
 }
 
@@ -159,6 +96,77 @@ function getMonthGrid(year: number, month: number): string[][] {
     weeks.push(week);
   }
   return weeks;
+}
+
+function dateToStr(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function getDayOfWeek(dateStr: string): number {
+  const d = new Date(dateStr);
+  const day = d.getDay();
+  return day === 0 ? 6 : day - 1;
+}
+
+function expandRecurringForPanel(
+  dbEvents: CalendarEvent[],
+  rangeStart: string,
+  rangeEnd: string,
+): CalendarEvent[] {
+  const result: CalendarEvent[] = [];
+  const exceptionDates = new Map<string, Set<string>>();
+  const exceptionEventDates = new Map<string, Set<string>>();
+
+  for (const e of dbEvents) {
+    if (e.isRecurring && e.recurrenceRule?.exceptions) {
+      exceptionDates.set(e.id, new Set(e.recurrenceRule.exceptions));
+    }
+    if (e.isException && e.recurringParentId) {
+      if (!exceptionEventDates.has(e.recurringParentId)) exceptionEventDates.set(e.recurringParentId, new Set());
+      exceptionEventDates.get(e.recurringParentId)!.add(e.date);
+    }
+  }
+
+  for (const e of dbEvents) {
+    if (!e.isRecurring || !e.recurrenceRule) {
+      result.push(e);
+      continue;
+    }
+    const rule = e.recurrenceRule;
+    const exceptions = exceptionDates.get(e.id) ?? new Set<string>();
+    const exceptionEvts = exceptionEventDates.get(e.id) ?? new Set<string>();
+    const ruleEnd = rule.endDate ?? rangeEnd;
+    const originDate = new Date(e.date);
+    const cursor = new Date(Math.max(originDate.getTime(), new Date(rangeStart).getTime()));
+    const end = new Date(Math.min(new Date(ruleEnd).getTime(), new Date(rangeEnd).getTime()));
+
+    while (cursor <= end) {
+      const curStr = dateToStr(cursor);
+      const curDow = getDayOfWeek(curStr);
+      let matches = false;
+      if (rule.pattern === 'daily') matches = cursor >= originDate;
+      else if (rule.pattern === 'weekly') matches = (rule.days ?? [getDayOfWeek(e.date)]).includes(curDow) && cursor >= originDate;
+      else if (rule.pattern === 'biweekly') {
+        const weeksDiff = Math.floor((cursor.getTime() - originDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
+        matches = (rule.days ?? [getDayOfWeek(e.date)]).includes(curDow) && weeksDiff % 2 === 0 && cursor >= originDate;
+      } else if (rule.pattern === 'custom') matches = (rule.days ?? []).includes(curDow) && cursor >= originDate;
+
+      if (matches && !exceptions.has(curStr) && !exceptionEvts.has(curStr)) {
+        const dayTime = rule.dayTimes?.[curDow];
+        result.push({
+          ...e,
+          id: curStr === e.date ? e.id : `${e.id}__${curStr}`,
+          date: curStr,
+          startHour: dayTime?.startHour ?? e.startHour,
+          startMin: dayTime?.startMin ?? e.startMin,
+          endHour: dayTime?.endHour ?? e.endHour,
+          endMin: dayTime?.endMin ?? e.endMin,
+        });
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
+  return result;
 }
 
 function eventsForDate(date: string, events: CalendarEvent[]): CalendarEvent[] {
@@ -189,17 +197,15 @@ export function CalendarPanel() {
 
   const [viewYear, setViewYear] = useState(2026);
   const [viewMonth, setViewMonth] = useState(2); // March = 2 (0-indexed)
-  const [events, setEvents] = useState<CalendarEvent[]>(MOCK_EVENTS);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
 
   // Load events from DB
   const reloadEvents = useCallback(async () => {
     try {
       const dbEvents = await window.db.events.list('2026-01-01', '2026-12-31');
-      if (dbEvents.length > 0) {
-        setEvents(dbEvents.map((e) => mapDbEventToPanel(e as unknown as Record<string, unknown>)));
-      }
+      setEvents(dbEvents.map((e) => mapDbEventToPanel(e as unknown as Record<string, unknown>)));
     } catch {
-      // keep mock data
+      // keep empty state
     }
   }, []);
 
@@ -218,11 +224,16 @@ export function CalendarPanel() {
 
   const monthGrid = useMemo(() => getMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
 
-  const selectedDayEvents = useMemo(() => eventsForDate(selectedDate, events).sort((a, b) =>
-    (a.allDay ? -1 : b.allDay ? 1 : (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin))
-  ), [selectedDate, events]);
+  const expandedEvents = useMemo(
+    () => expandRecurringForPanel(events, '2026-01-01', '2026-12-31'),
+    [events],
+  );
 
-  const upcomingEvents = useMemo(() => getUpcomingEvents(selectedDate, 3, events), [selectedDate, events]);
+  const selectedDayEvents = useMemo(() => eventsForDate(selectedDate, expandedEvents).sort((a, b) =>
+    (a.allDay ? -1 : b.allDay ? 1 : (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin))
+  ), [selectedDate, expandedEvents]);
+
+  const upcomingEvents = useMemo(() => getUpcomingEvents(selectedDate, 3, expandedEvents), [selectedDate, expandedEvents]);
 
   const navigateMonth = useCallback((dir: -1 | 1) => {
     let m = viewMonth + dir;
@@ -296,7 +307,7 @@ export function CalendarPanel() {
               const d = new Date(date);
               const isToday = date === TODAY;
               const isSelected = date === selectedDate;
-              const hasEvents = eventsForDate(date, events).length > 0;
+              const hasEvents = eventsForDate(date, expandedEvents).length > 0;
               return (
                 <button
                   key={date}

@@ -3,30 +3,26 @@ import { useNavigate } from 'react-router-dom';
 import { Wallet } from 'lucide-react';
 
 const MONTH_INCOME = 48000;
-const MOCK_MONTH_EXPENSES = 31989;
-const MOCK_TODAY_EXPENSES = 850;
 
 export function FinanceWidget() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [monthExpenses, setMonthExpenses] = useState(MOCK_MONTH_EXPENSES);
-  const [todayExpenses, setTodayExpenses] = useState(MOCK_TODAY_EXPENSES);
+  const [monthExpenses, setMonthExpenses] = useState(0);
+  const [todayExpenses, setTodayExpenses] = useState(0);
 
   const reload = useCallback(async () => {
     try {
       const result = await window.db.transactions.list('2026-03');
-      if (result.length > 0) {
-        const expenses = result.filter((t: { type: string }) => t.type === 'expense');
-        const total = expenses.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
-        setMonthExpenses(total);
-        const today = new Date().toISOString().slice(0, 10);
-        const todayTotal = expenses
-          .filter((t: { date: string }) => t.date === today)
-          .reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
-        setTodayExpenses(todayTotal);
-      }
+      const expenses = result.filter((t: { type: string }) => t.type === 'expense');
+      const total = expenses.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+      setMonthExpenses(total);
+      const today = new Date().toISOString().slice(0, 10);
+      const todayTotal = expenses
+        .filter((t: { date: string }) => t.date === today)
+        .reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+      setTodayExpenses(todayTotal);
     } catch {
-      // keep mock data
+      // keep empty state
     }
   }, []);
 

@@ -2,14 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen } from 'lucide-react';
 
-const MOCK_NEXT_DEADLINE = { title: 'Производные (ДЗ)', subject: 'Мат. анализ', deadline: '2026-03-25' };
-const MOCK_IN_PROGRESS_COUNT = 6;
-
 export function StudyWidget() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [inProgressCount, setInProgressCount] = useState(MOCK_IN_PROGRESS_COUNT);
-  const [nextDeadline, setNextDeadline] = useState<{ title: string; subject: string; deadline: string } | null>(MOCK_NEXT_DEADLINE);
+  const [inProgressCount, setInProgressCount] = useState(0);
+  const [nextDeadline, setNextDeadline] = useState<{ title: string; subject: string; deadline: string } | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -17,6 +14,7 @@ export function StudyWidget() {
       if (result.length > 0) {
         const inProgress = result.filter((t: { status: string }) => t.status === 'in_progress');
         setInProgressCount(inProgress.length);
+
         const withDeadline = result
           .filter((t) => t.dueDate != null)
           .sort((a, b) => {
@@ -36,7 +34,7 @@ export function StudyWidget() {
         }
       }
     } catch {
-      // keep mock data
+      // keep empty state
     }
   }, []);
 

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Bell, Loader2 } from 'lucide-react';
+import { Bell, Loader2, Repeat } from 'lucide-react';
 import { useCalendar } from '../context/calendar-context';
 
 // --- Types ---
@@ -11,6 +11,23 @@ type EventType = 'event' | 'task' | 'reminder';
 interface Subtask {
   title: string;
   done: boolean;
+}
+
+type RecurrencePattern = 'daily' | 'weekly' | 'biweekly' | 'custom';
+
+interface DayTime {
+  startHour: number;
+  startMin: number;
+  endHour: number;
+  endMin: number;
+}
+
+interface RecurrenceRule {
+  pattern: RecurrencePattern;
+  days?: number[]; // 0=Mon, 6=Sun
+  dayTimes?: Record<number, DayTime>; // per-day time overrides
+  endDate?: string;
+  exceptions?: string[]; // dates to skip
 }
 
 interface CalendarEvent {
@@ -27,6 +44,14 @@ interface CalendarEvent {
   type: EventType;
   done: boolean;
   subtasks: Subtask[];
+  // Recurrence
+  isRecurring?: boolean;
+  recurrenceRule?: RecurrenceRule;
+  recurringParentId?: string;
+  isException?: boolean;
+  // Virtual instance (not in DB)
+  isVirtual?: boolean;
+  virtualDate?: string; // the date this instance represents
 }
 
 interface CreateModalData {
@@ -139,6 +164,10 @@ function getMonthGrid(year: number, month: number): string[][] {
   return weeks;
 }
 
+function isRecurringEvent(e: CalendarEvent): boolean {
+  return !!(e.isRecurring || e.isVirtual || e.isException);
+}
+
 function eventDuration(e: CalendarEvent): number {
   return (e.endHour * 60 + e.endMin) - (e.startHour * 60 + e.startMin);
 }
@@ -146,82 +175,6 @@ function eventDuration(e: CalendarEvent): number {
 function yToMinutes(y: number, hh: number): number {
   const raw = (y / hh) * 60;
   return Math.max(0, Math.min(23 * 60 + 45, Math.round(raw / 15) * 15));
-}
-
-// --- Mock Events ---
-
-function generateMockEvents(): CalendarEvent[] {
-  const events: CalendarEvent[] = [];
-  let id = 1;
-
-  const weekStarts = [
-    new Date(2026, 2, 9),
-    new Date(2026, 2, 16),
-    new Date(2026, 2, 23),
-  ];
-
-  interface RecurringDef {
-    title: string; sphere: Sphere; dayOfWeek: number;
-    startHour: number; startMin: number; endHour: number; endMin: number;
-    description?: string; type: EventType; subtasks?: Subtask[];
-  }
-
-  const recurring: RecurringDef[] = [
-    { title: 'Матанализ (лекция)', sphere: 'study', dayOfWeek: 0, startHour: 10, startMin: 0, endHour: 11, endMin: 30, description: 'Интегралы', type: 'event', subtasks: [{ title: 'Подготовить задание', done: false }] },
-    { title: 'Зал (грудь + трицепс)', sphere: 'health', dayOfWeek: 0, startHour: 18, startMin: 0, endHour: 19, endMin: 0, type: 'task' },
-    { title: 'Физика (лекция)', sphere: 'study', dayOfWeek: 1, startHour: 14, startMin: 0, endHour: 15, endMin: 30, description: 'Термодинамика', type: 'event' },
-    { title: 'Урок Миша (ЕГЭ Информатика)', sphere: 'teaching', dayOfWeek: 1, startHour: 17, startMin: 0, endHour: 18, endMin: 0, description: 'Подготовка к ЕГЭ', type: 'event', subtasks: [{ title: 'Подготовить урок', done: true }, { title: 'Оплата получена', done: false }, { title: 'Отправить ДЗ', done: false }] },
-    { title: 'Матанализ (семинар)', sphere: 'study', dayOfWeek: 2, startHour: 12, startMin: 0, endHour: 13, endMin: 30, description: 'Задачи', type: 'event' },
-    { title: 'Урок Аня (Python)', sphere: 'teaching', dayOfWeek: 2, startHour: 15, startMin: 0, endHour: 16, endMin: 0, description: 'Основы Python', type: 'event', subtasks: [{ title: 'Подготовить урок', done: true }, { title: 'Оплата получена', done: true }, { title: 'Отправить ДЗ', done: false }] },
-    { title: 'Физика (лаб.)', sphere: 'study', dayOfWeek: 3, startHour: 16, startMin: 0, endHour: 17, endMin: 30, description: 'Лабораторная работа', type: 'event', subtasks: [{ title: 'Написать отчёт', done: false }, { title: 'Подготовить данные', done: false }] },
-    { title: 'Зал (спина + бицепс)', sphere: 'health', dayOfWeek: 3, startHour: 18, startMin: 0, endHour: 19, endMin: 0, type: 'task' },
-    { title: 'Информатика (лекция)', sphere: 'study', dayOfWeek: 4, startHour: 10, startMin: 0, endHour: 11, endMin: 30, description: 'Графы и деревья', type: 'event' },
-    { title: 'Бег 5км', sphere: 'health', dayOfWeek: 5, startHour: 9, startMin: 0, endHour: 9, endMin: 45, type: 'task' },
-    { title: 'Урок Миша (ЕГЭ Информатика)', sphere: 'teaching', dayOfWeek: 5, startHour: 11, startMin: 0, endHour: 12, endMin: 0, description: 'Рекурсия', type: 'event', subtasks: [{ title: 'Подготовить урок', done: true }, { title: 'Оплата получена', done: false }, { title: 'Отправить ДЗ', done: false }] },
-  ];
-
-  for (const ws of weekStarts) {
-    for (const r of recurring) {
-      const date = addDays(ws, r.dayOfWeek);
-      events.push({
-        id: `ev${id++}`,
-        title: r.title,
-        sphere: r.sphere,
-        date: dateToStr(date),
-        startHour: r.startHour,
-        startMin: r.startMin,
-        endHour: r.endHour,
-        endMin: r.endMin,
-        description: r.description,
-        type: r.type,
-        done: false,
-        subtasks: r.subtasks ? r.subtasks.map((s) => ({ ...s })) : [],
-      });
-    }
-  }
-
-  const ev = (o: Omit<CalendarEvent, 'id' | 'type' | 'done' | 'subtasks'> & { type?: EventType; done?: boolean; subtasks?: Subtask[] }): Omit<CalendarEvent, 'id'> => ({
-    ...o, type: o.type ?? 'event', done: o.done ?? false, subtasks: o.subtasks ?? [],
-  });
-
-  const oneOffs = [
-    ev({ title: 'Работа над LI Group', sphere: 'dev', date: '2026-03-18', startHour: 20, startMin: 0, endHour: 22, endMin: 0, description: 'Интеграция CRM API', subtasks: [{ title: 'Доделать header', done: false }, { title: 'Responsive главная', done: false }, { title: 'Тестирование', done: false }] }),
-    ev({ title: 'Оплата VPS', sphere: 'finance', date: '2026-03-20', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true, type: 'task' }),
-    ev({ title: 'Mark2 разработка', sphere: 'dev', date: '2026-03-20', startHour: 19, startMin: 0, endHour: 21, endMin: 0, description: 'Calendar view' }),
-    ev({ title: 'Встреча с друзьями', sphere: 'personal', date: '2026-03-21', startHour: 16, startMin: 0, endHour: 18, endMin: 0 }),
-    ev({ title: 'Стрижка', sphere: 'personal', date: '2026-03-22', startHour: 12, startMin: 0, endHour: 13, endMin: 0 }),
-    ev({ title: 'Дедлайн курсовая', sphere: 'study', date: '2026-03-23', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true, type: 'task' }),
-    ev({ title: 'Созвон с заказчиком', sphere: 'dev', date: '2026-03-25', startHour: 10, startMin: 0, endHour: 10, endMin: 30, description: 'Обсуждение ТЗ', type: 'reminder' }),
-    ev({ title: 'Mark2 разработка', sphere: 'dev', date: '2026-03-27', startHour: 19, startMin: 0, endHour: 21, endMin: 0, description: 'Agent system' }),
-    ev({ title: 'Оплата за обучение', sphere: 'finance', date: '2026-03-10', startHour: 0, startMin: 0, endHour: 0, endMin: 0, allDay: true, type: 'task', done: true }),
-    ev({ title: 'Работа над LI Group', sphere: 'dev', date: '2026-03-11', startHour: 20, startMin: 0, endHour: 22, endMin: 0, description: 'Frontend рефакторинг', subtasks: [{ title: 'Доделать header', done: true }, { title: 'Responsive главная', done: true }, { title: 'Тестирование', done: false }] }),
-  ];
-
-  for (const o of oneOffs) {
-    events.push({ ...o, id: `ev${id++}` });
-  }
-
-  return events;
 }
 
 // --- DB ↔ Local mapping ---
@@ -243,13 +196,17 @@ function mapDbEventToLocal(e: Record<string, unknown>): CalendarEvent {
     done: (meta.done as boolean) ?? false,
     subtasks: Array.isArray(meta.subtasks) ? (meta.subtasks as Subtask[]) : [],
     description: meta.description ? String(meta.description) : undefined,
+    isRecurring: (e.isRecurring as boolean) ?? false,
+    recurrenceRule: e.recurrenceRule ? (e.recurrenceRule as RecurrenceRule) : undefined,
+    recurringParentId: e.recurringParentId ? String(e.recurringParentId) : undefined,
+    isException: (e.isException as boolean) ?? false,
   };
 }
 
 function localEventToDb(e: CalendarEvent): Record<string, unknown> {
   const startAt = new Date(`${e.date}T${pad2(e.startHour)}:${pad2(e.startMin)}:00`);
   const endAt = new Date(`${e.date}T${pad2(e.endHour)}:${pad2(e.endMin)}:00`);
-  return {
+  const result: Record<string, unknown> = {
     sphere: e.sphere,
     title: e.title,
     startAt: startAt.toISOString(),
@@ -261,6 +218,113 @@ function localEventToDb(e: CalendarEvent): Record<string, unknown> {
       description: e.description,
     },
   };
+  if (e.isRecurring) {
+    result.isRecurring = true;
+    result.recurrenceRule = e.recurrenceRule;
+  }
+  if (e.recurringParentId) {
+    result.recurringParentId = e.recurringParentId;
+  }
+  if (e.isException) {
+    result.isException = true;
+  }
+  return result;
+}
+
+// --- Recurrence expansion ---
+
+function getDayOfWeek(dateStr: string): number {
+  const d = new Date(dateStr);
+  const day = d.getDay();
+  return day === 0 ? 6 : day - 1; // 0=Mon, 6=Sun
+}
+
+function expandRecurringEvents(
+  dbEvents: CalendarEvent[],
+  rangeStart: string,
+  rangeEnd: string,
+): CalendarEvent[] {
+  const result: CalendarEvent[] = [];
+  const exceptionDates = new Map<string, Set<string>>(); // parentId -> set of exception dates
+
+  // Collect exception dates from parent's recurrence rules
+  for (const e of dbEvents) {
+    if (e.isRecurring && e.recurrenceRule?.exceptions) {
+      exceptionDates.set(e.id, new Set(e.recurrenceRule.exceptions));
+    }
+  }
+
+  // Collect dates covered by exception events (is_exception=true)
+  const exceptionEventDates = new Map<string, Set<string>>(); // parentId -> dates
+  for (const e of dbEvents) {
+    if (e.isException && e.recurringParentId) {
+      if (!exceptionEventDates.has(e.recurringParentId)) {
+        exceptionEventDates.set(e.recurringParentId, new Set());
+      }
+      exceptionEventDates.get(e.recurringParentId)!.add(e.date);
+    }
+  }
+
+  for (const e of dbEvents) {
+    if (!e.isRecurring || !e.recurrenceRule) {
+      // Non-recurring event or exception — add directly
+      result.push(e);
+      continue;
+    }
+
+    const rule = e.recurrenceRule;
+    const exceptions = exceptionDates.get(e.id) ?? new Set<string>();
+    const exceptionEvts = exceptionEventDates.get(e.id) ?? new Set<string>();
+    const ruleEnd = rule.endDate ?? rangeEnd;
+    const originDate = new Date(e.date);
+
+    // Generate dates based on pattern
+    const cursor = new Date(Math.max(originDate.getTime(), new Date(rangeStart).getTime()));
+    const end = new Date(Math.min(new Date(ruleEnd).getTime(), new Date(rangeEnd).getTime()));
+
+    while (cursor <= end) {
+      const curStr = dateToStr(cursor);
+      const curDow = getDayOfWeek(curStr);
+      let matches = false;
+
+      if (rule.pattern === 'daily') {
+        matches = cursor >= originDate;
+      } else if (rule.pattern === 'weekly') {
+        const targetDays = rule.days ?? [getDayOfWeek(e.date)];
+        matches = targetDays.includes(curDow) && cursor >= originDate;
+      } else if (rule.pattern === 'biweekly') {
+        const targetDays = rule.days ?? [getDayOfWeek(e.date)];
+        const weeksDiff = Math.floor((cursor.getTime() - originDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
+        matches = targetDays.includes(curDow) && weeksDiff % 2 === 0 && cursor >= originDate;
+      } else if (rule.pattern === 'custom') {
+        const targetDays = rule.days ?? [];
+        matches = targetDays.includes(curDow) && cursor >= originDate;
+      }
+
+      if (matches && !exceptions.has(curStr) && !exceptionEvts.has(curStr)) {
+        // Apply per-day time overrides if available
+        const dayTime = rule.dayTimes?.[curDow];
+        const instance: CalendarEvent = {
+          ...e,
+          id: curStr === e.date ? e.id : `${e.id}__${curStr}`,
+          date: curStr,
+          startHour: dayTime?.startHour ?? e.startHour,
+          startMin: dayTime?.startMin ?? e.startMin,
+          endHour: dayTime?.endHour ?? e.endHour,
+          endMin: dayTime?.endMin ?? e.endMin,
+          isVirtual: curStr !== e.date,
+          virtualDate: curStr,
+          done: curStr === e.date ? e.done : false,
+          subtasks: curStr === e.date ? e.subtasks : e.subtasks.map((s) => ({ ...s, done: false })),
+        };
+        result.push(instance);
+      }
+
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
+
+  return result;
 }
 
 // --- Overlapping event positioning ---
@@ -331,14 +395,17 @@ export function Calendar() {
   const [view, setView] = useState<ViewMode>('week');
   const [viewYear, setViewYear] = useState(() => new Date(selectedDate).getFullYear());
   const [viewMonth, setViewMonth] = useState(() => new Date(selectedDate).getMonth());
-  const [events, setEvents] = useState<CalendarEvent[]>(generateMockEvents);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
-  const [isDemo, setIsDemo] = useState(false);
-  const isDemoRef = useRef(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [createModal, setCreateModal] = useState<CreateModalData | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [recurringChoice, setRecurringChoice] = useState<{
+    event: CalendarEvent;
+    updates: { date: string; startHour: number; startMin: number; endHour: number; endMin: number };
+  } | null>(null);
+  const [recurringDeleteChoice, setRecurringDeleteChoice] = useState<CalendarEvent | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [hourHeight, setHourHeight] = useState(() => {
     const stored = localStorage.getItem(ZOOM_LS_KEY);
@@ -411,16 +478,9 @@ export function Calendar() {
       const dbEvents = await window.db.events.list('2026-01-01', '2026-12-31');
       if (dbEvents.length > 0) {
         setEvents(dbEvents.map((e) => mapDbEventToLocal(e as unknown as Record<string, unknown>)));
-        isDemoRef.current = false;
-        setIsDemo(false);
-      } else {
-        isDemoRef.current = true;
-        setIsDemo(true);
       }
     } catch (err) {
       setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
-      isDemoRef.current = true;
-      setIsDemo(true);
     }
   }, []);
 
@@ -447,9 +507,16 @@ export function Calendar() {
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
   const monthGrid = useMemo(() => getMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
 
-  const getEventsForDate = useCallback((date: string) => {
-    return events.filter((e) => e.date === date);
+  // Expand recurring events into virtual instances for the visible range
+  const expandedEvents = useMemo(() => {
+    const rangeStart = '2026-01-01';
+    const rangeEnd = '2026-12-31';
+    return expandRecurringEvents(events, rangeStart, rangeEnd);
   }, [events]);
+
+  const getEventsForDate = useCallback((date: string) => {
+    return expandedEvents.filter((e) => e.date === date);
+  }, [expandedEvents]);
 
   const navigateMonth = useCallback((dir: -1 | 1) => {
     let m = viewMonth + dir;
@@ -558,49 +625,107 @@ export function Calendar() {
   const addEvent = useCallback((event: CalendarEvent) => {
     commitEvents((prev) => [...prev, event]);
     setCreateModal(null);
-    if (!isDemoRef.current) {
-      window.db.events.create(localEventToDb(event)).catch(() => {});
-    }
+    window.db.events.create(localEventToDb(event)).catch(() => {});
   }, [commitEvents]);
 
   const updateEvent = useCallback((updated: CalendarEvent) => {
     commitEvents((prev) => prev.map((e) => e.id === updated.id ? updated : e));
     setCreateModal(null);
-    if (!isDemoRef.current) {
-      window.db.events.update(updated.id, localEventToDb(updated)).catch(() => {});
-    }
+    window.db.events.update(updated.id, localEventToDb(updated)).catch(() => {});
   }, [commitEvents]);
 
   const deleteEvent = useCallback((id: string) => {
+    const target = expandedEvents.find((e) => e.id === id);
+    if (target && (target.isVirtual || target.isRecurring)) {
+      setRecurringDeleteChoice(target);
+      return;
+    }
     commitEvents((prev) => prev.filter((e) => e.id !== id));
     setSelectedEvent(null);
-    if (!isDemoRef.current) {
-      window.db.events.delete(id).catch(() => {});
-    }
+    window.db.events.delete(id).catch(() => {});
+  }, [commitEvents, expandedEvents]);
+
+  // Delete ALL instances of a recurring event
+  const deleteRecurringAll = useCallback((event: CalendarEvent) => {
+    const parentId = event.isVirtual ? event.id.split('__')[0]! : event.id;
+    commitEvents((prev) => prev.filter((e) => e.id !== parentId && e.recurringParentId !== parentId));
+    window.db.events.delete(parentId).catch(() => {});
+    setRecurringDeleteChoice(null);
+    setSelectedEvent(null);
   }, [commitEvents]);
 
   const moveEvent = useCallback((id: string, updates: { date: string; startHour: number; startMin: number; endHour: number; endMin: number }) => {
+    // Find the event being moved
+    const target = expandedEvents.find((e) => e.id === id);
+    if (target && (target.isVirtual || target.isRecurring)) {
+      // Recurring event — ask user what to do
+      setRecurringChoice({ event: target, updates });
+      return;
+    }
+
     commitEvents((prev) => prev.map((e) => {
       if (e.id !== id) return e;
       const moved = { ...e, ...updates };
-      if (!isDemoRef.current) {
-        const startAt = new Date(`${moved.date}T${pad2(moved.startHour)}:${pad2(moved.startMin)}:00`);
-        const endAt = new Date(`${moved.date}T${pad2(moved.endHour)}:${pad2(moved.endMin)}:00`);
-        window.db.events.update(id, { startAt: startAt.toISOString(), endAt: endAt.toISOString() }).catch(() => {});
-      }
+      const startAt = new Date(`${moved.date}T${pad2(moved.startHour)}:${pad2(moved.startMin)}:00`);
+      const endAt = new Date(`${moved.date}T${pad2(moved.endHour)}:${pad2(moved.endMin)}:00`);
+      window.db.events.update(id, { startAt: startAt.toISOString(), endAt: endAt.toISOString() }).catch(() => {});
       return moved;
     }));
+  }, [commitEvents, expandedEvents]);
+
+  // Handle recurring move: "only this"
+  const moveRecurringSingle = useCallback((parentEvent: CalendarEvent, originalDate: string, updates: { date: string; startHour: number; startMin: number; endHour: number; endMin: number }) => {
+    const parentId = parentEvent.isVirtual ? parentEvent.id.split('__')[0]! : parentEvent.id;
+
+    // Add exception to parent's rule
+    commitEvents((prev) => prev.map((e) => {
+      if (e.id !== parentId) return e;
+      const rule = { ...e.recurrenceRule! };
+      rule.exceptions = [...(rule.exceptions ?? []), originalDate];
+      const updated = { ...e, recurrenceRule: rule };
+      window.db.events.update(parentId, { recurrenceRule: rule }).catch(() => {});
+      return updated;
+    }));
+
+    // Create exception event
+    const exception: CalendarEvent = {
+      ...parentEvent,
+      id: `ev-${Date.now()}`,
+      ...updates,
+      isRecurring: false,
+      recurrenceRule: undefined,
+      recurringParentId: parentId,
+      isException: true,
+      isVirtual: false,
+    };
+    commitEvents((prev) => [...prev, exception]);
+    window.db.events.create(localEventToDb(exception)).catch(() => {});
+    setRecurringChoice(null);
+  }, [commitEvents]);
+
+  // Handle recurring delete: "only this"
+  const deleteRecurringSingle = useCallback((event: CalendarEvent) => {
+    const parentId = event.isVirtual ? event.id.split('__')[0]! : event.id;
+    const dateToExclude = event.virtualDate ?? event.date;
+
+    commitEvents((prev) => prev.map((e) => {
+      if (e.id !== parentId) return e;
+      const rule = { ...e.recurrenceRule! };
+      rule.exceptions = [...(rule.exceptions ?? []), dateToExclude];
+      window.db.events.update(parentId, { recurrenceRule: rule }).catch(() => {});
+      return { ...e, recurrenceRule: rule };
+    }));
+    setRecurringDeleteChoice(null);
+    setSelectedEvent(null);
   }, [commitEvents]);
 
   const toggleEventDone = useCallback((id: string) => {
     commitEvents((prev) => prev.map((e) => {
       if (e.id !== id) return e;
       const updated = { ...e, done: !e.done };
-      if (!isDemoRef.current) {
-        const existing = events.find((ev) => ev.id === id);
-        const meta = existing ? { type: existing.type, done: updated.done, subtasks: existing.subtasks, description: existing.description } : { done: updated.done };
-        window.db.events.update(id, { metadata: meta }).catch(() => {});
-      }
+      const existing = events.find((ev) => ev.id === id);
+      const meta = existing ? { type: existing.type, done: updated.done, subtasks: existing.subtasks, description: existing.description } : { done: updated.done };
+      window.db.events.update(id, { metadata: meta }).catch(() => {});
       return updated;
     }));
   }, [commitEvents, events]);
@@ -610,9 +735,7 @@ export function Calendar() {
       if (e.id !== eventId) return e;
       const subtasks = e.subtasks.map((s, i) => i === subtaskIdx ? { ...s, done: !s.done } : s);
       const updated = { ...e, subtasks };
-      if (!isDemoRef.current) {
-        window.db.events.update(eventId, { metadata: { type: updated.type, done: updated.done, subtasks, description: updated.description } }).catch(() => {});
-      }
+      window.db.events.update(eventId, { metadata: { type: updated.type, done: updated.done, subtasks, description: updated.description } }).catch(() => {});
       return updated;
     }));
   }, [commitEvents]);
@@ -721,11 +844,6 @@ export function Calendar() {
           {dbError}
         </div>
       )}
-      {isDemo && !loading && (
-        <div className="shrink-0 mx-6 mt-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
-          Demo data — БД недоступна или пуста
-        </div>
-      )}
       <div className="flex flex-1 overflow-hidden" ref={bodyRef}>
         <div className="flex-1 overflow-hidden">
           {view === 'week' && (
@@ -817,17 +935,13 @@ export function Calendar() {
             const newSubtasks = [...selectedEvent.subtasks, { title, done: false }];
             commitEvents((prev) => prev.map((e) => e.id === selectedEvent.id ? { ...e, subtasks: newSubtasks } : e));
             setSelectedEvent((prev) => prev ? { ...prev, subtasks: newSubtasks } : null);
-            if (!isDemoRef.current) {
-              window.db.events.update(selectedEvent.id, { metadata: { type: selectedEvent.type, done: selectedEvent.done, subtasks: newSubtasks, description: selectedEvent.description } }).catch(() => {});
-            }
+            window.db.events.update(selectedEvent.id, { metadata: { type: selectedEvent.type, done: selectedEvent.done, subtasks: newSubtasks, description: selectedEvent.description } }).catch(() => {});
           }}
           onDeleteSubtask={(idx) => {
             const newSubtasks = selectedEvent.subtasks.filter((_, i) => i !== idx);
             commitEvents((prev) => prev.map((e) => e.id === selectedEvent.id ? { ...e, subtasks: newSubtasks } : e));
             setSelectedEvent((prev) => prev ? { ...prev, subtasks: newSubtasks } : null);
-            if (!isDemoRef.current) {
-              window.db.events.update(selectedEvent.id, { metadata: { type: selectedEvent.type, done: selectedEvent.done, subtasks: newSubtasks, description: selectedEvent.description } }).catch(() => {});
-            }
+            window.db.events.update(selectedEvent.id, { metadata: { type: selectedEvent.type, done: selectedEvent.done, subtasks: newSubtasks, description: selectedEvent.description } }).catch(() => {});
           }}
         />
       )}
@@ -879,6 +993,66 @@ export function Calendar() {
             setContextMenu(null);
           }}
         />
+      )}
+
+      {/* Recurring move choice */}
+      {recurringChoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setRecurringChoice(null)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative bg-neutral-900 border border-neutral-700 rounded-xl p-5 w-[340px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-neutral-100 mb-2">Повторяющееся событие</h3>
+            <p className="text-sm text-neutral-400 mb-4">Как изменить &laquo;{recurringChoice.event.title}&raquo;?</p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  const ev = recurringChoice.event;
+                  const origDate = ev.virtualDate ?? ev.date;
+                  moveRecurringSingle(ev, origDate, recurringChoice.updates);
+                }}
+                className="px-3 py-2 bg-blue-600/20 border border-blue-500/30 rounded-lg text-sm text-blue-300 hover:bg-blue-600/30 transition-colors"
+              >
+                Только это событие
+              </button>
+              <button
+                onClick={() => setRecurringChoice(null)}
+                className="px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-sm text-neutral-300 hover:bg-neutral-700 transition-colors"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recurring delete choice */}
+      {recurringDeleteChoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setRecurringDeleteChoice(null)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative bg-neutral-900 border border-neutral-700 rounded-xl p-5 w-[340px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-neutral-100 mb-2">Удалить повторяющееся событие</h3>
+            <p className="text-sm text-neutral-400 mb-4">&laquo;{recurringDeleteChoice.title}&raquo;</p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => deleteRecurringSingle(recurringDeleteChoice)}
+                className="px-3 py-2 bg-yellow-600/20 border border-yellow-500/30 rounded-lg text-sm text-yellow-300 hover:bg-yellow-600/30 transition-colors"
+              >
+                Отменить только этот
+              </button>
+              <button
+                onClick={() => deleteRecurringAll(recurringDeleteChoice)}
+                className="px-3 py-2 bg-red-600/20 border border-red-500/30 rounded-lg text-sm text-red-300 hover:bg-red-600/30 transition-colors"
+              >
+                Удалить все
+              </button>
+              <button
+                onClick={() => setRecurringDeleteChoice(null)}
+                className="px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-sm text-neutral-300 hover:bg-neutral-700 transition-colors"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1173,7 +1347,8 @@ function WeekView({
                             : <svg className={`w-2.5 h-2.5 shrink-0 ${SPHERE_META[ev.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
                         )}
                         {isRem && <Bell size={10} strokeWidth={1.5} className="inline" />}
-                        <span className={`${SPHERE_META[ev.sphere].color} ${ev.done ? 'line-through' : ''}`}>{ev.title}</span>
+                        {isRecurringEvent(ev) && <Repeat size={9} strokeWidth={1.5} className="shrink-0 opacity-50" />}
+                        <span className={`${SPHERE_META[ev.sphere].color} ${ev.done ? 'line-through' : ''} ${ev.isException ? 'italic' : ''}`}>{ev.title}</span>
                       </div>
                     );
                   })}
@@ -2250,6 +2425,12 @@ function EventDetailModal({
           <span className={`w-2.5 h-2.5 rounded-full ${SPHERE_META[event.sphere].dot}`} />
           <span className={`text-xs ${SPHERE_META[event.sphere].color}`}>{SPHERE_META[event.sphere].label}</span>
           <span className="text-[10px] text-neutral-600 px-1.5 py-0.5 rounded bg-neutral-800">{typeLabel}</span>
+          {isRecurringEvent(event) && (
+            <span className="text-[10px] text-neutral-500 px-1.5 py-0.5 rounded bg-neutral-800 flex items-center gap-1">
+              <Repeat size={10} strokeWidth={1.5} />
+              {event.isException ? 'Перенос' : 'Повторяется'}
+            </span>
+          )}
         </div>
 
         {/* Title with optional checkbox */}
@@ -2400,9 +2581,19 @@ function CreateEventModal({
   const [eventType, setEventType] = useState<EventType>(data.editEvent?.type ?? data.defaultType ?? 'event');
   const [subtasks, setSubtasks] = useState<Subtask[]>(data.editEvent?.subtasks ?? []);
   const [newSubtask, setNewSubtask] = useState('');
+  const [recurrence, setRecurrence] = useState<RecurrencePattern | 'none'>(
+    data.editEvent?.recurrenceRule?.pattern ?? 'none',
+  );
+  const [recurrenceDays, setRecurrenceDays] = useState<number[]>(
+    data.editEvent?.recurrenceRule?.days ?? [],
+  );
+  const [recurrenceEnd, setRecurrenceEnd] = useState(
+    data.editEvent?.recurrenceRule?.endDate ?? '',
+  );
 
   const handleSubmit = () => {
     if (!title.trim()) return;
+    const isRec = recurrence !== 'none';
     const event: CalendarEvent = {
       id: data.editEvent?.id ?? `ev-${Date.now()}`,
       title: title.trim(),
@@ -2417,6 +2608,15 @@ function CreateEventModal({
       type: eventType,
       done: data.editEvent?.done ?? false,
       subtasks,
+      isRecurring: isRec,
+      recurrenceRule: isRec
+        ? {
+            pattern: recurrence as RecurrencePattern,
+            days: recurrence === 'custom' ? recurrenceDays : recurrence === 'weekly' || recurrence === 'biweekly' ? [getDayOfWeek(date)] : undefined,
+            endDate: recurrenceEnd || undefined,
+            exceptions: data.editEvent?.recurrenceRule?.exceptions,
+          }
+        : undefined,
     };
     if (isEdit) {
       onUpdate(event);
@@ -2512,6 +2712,58 @@ function CreateEventModal({
             />
             Весь день
           </label>
+        </div>
+
+        {/* Recurrence */}
+        <div className="mb-3">
+          <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Повторение</div>
+          <div className="flex gap-1.5 flex-wrap">
+            {([['none', 'Нет'], ['daily', 'Каждый день'], ['weekly', 'Каждую неделю'], ['biweekly', 'Раз в 2 нед'], ['custom', 'Свой']] as const).map(([val, label]) => (
+              <button
+                key={val}
+                onClick={() => setRecurrence(val)}
+                className={`px-2.5 py-1 rounded-lg text-xs transition-colors border ${
+                  recurrence === val
+                    ? 'bg-neutral-700 text-white border-neutral-600'
+                    : 'border-neutral-700 text-neutral-500 hover:text-neutral-300'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {recurrence === 'custom' && (
+            <div className="flex gap-1.5 mt-2">
+              {(['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const).map((label, idx) => (
+                <button
+                  key={idx}
+                  onClick={() =>
+                    setRecurrenceDays((prev) =>
+                      prev.includes(idx) ? prev.filter((d) => d !== idx) : [...prev, idx].sort(),
+                    )
+                  }
+                  className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors border ${
+                    recurrenceDays.includes(idx)
+                      ? 'bg-blue-600/30 text-blue-300 border-blue-500/40'
+                      : 'border-neutral-700 text-neutral-500 hover:text-neutral-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {recurrence !== 'none' && (
+            <div className="mt-2">
+              <div className="text-[10px] text-neutral-600 mb-1">До (необязательно)</div>
+              <input
+                type="date"
+                value={recurrenceEnd}
+                onChange={(e) => setRecurrenceEnd(e.target.value)}
+                className="px-2 py-1 bg-neutral-800 border border-neutral-700 rounded text-xs text-neutral-300 outline-none focus:border-blue-500/50"
+              />
+            </div>
+          )}
         </div>
 
         {!allDay && (

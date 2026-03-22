@@ -54,202 +54,6 @@ interface MockChange {
 
 // --- Mock Data ---
 
-const MOCK_PROJECTS: MockProject[] = [
-  {
-    id: 'li-group',
-    name: 'LI Group',
-    slug: 'li-group',
-    status: 'active',
-    description: 'Сайт для компании LI GROUP — VR-решения для образования. Лендинг + личный кабинет с аналитикой для школ.',
-    stack: ['Next.js', 'Tailwind', 'Supabase'],
-    repoUrl: 'https://github.com/mark/li-group-site',
-    deployUrl: 'https://li-group.vercel.app',
-  },
-  {
-    id: 'my-site',
-    name: 'Personal Site',
-    slug: 'my-site',
-    status: 'active',
-    description: 'Персональный сайт-портфолио. Минималистичный дизайн.',
-    stack: ['Next.js', 'Tailwind'],
-    repoUrl: 'https://github.com/mark/my-site',
-    deployUrl: 'https://marksarapov.dev',
-  },
-  {
-    id: 'mark2',
-    name: 'Mark2',
-    slug: 'mark2',
-    status: 'active',
-    description: 'Персональный хаб управления жизнью. Electron + React Native.',
-    stack: ['Electron', 'React', 'Supabase'],
-    repoUrl: 'https://github.com/mark/mark2',
-    deployUrl: null,
-  },
-];
-
-const MOCK_TASKS: MockTask[] = [
-  // LI Group
-  {
-    id: 't1',
-    projectId: 'li-group',
-    title: 'Дизайн главной страницы',
-    status: 'done',
-    priority: 'high',
-    description: 'Hero секция с 3D VR демо, секция преимуществ, отзывы школ, CTA на демо-доступ',
-    subtasks: [
-      { id: 'st1-1', title: 'Hero секция', done: true },
-      { id: 'st1-2', title: 'Преимущества', done: true },
-      { id: 'st1-3', title: 'Отзывы', done: true },
-      { id: 'st1-4', title: 'CTA', done: true },
-    ],
-    createdAt: '2026-03-05',
-    deadline: '2026-03-15',
-  },
-  {
-    id: 't2',
-    projectId: 'li-group',
-    title: 'Вёрстка главной',
-    status: 'in_progress',
-    priority: 'high',
-    description: 'На основе одобренного дизайна, responsive, анимации при скролле',
-    subtasks: [
-      { id: 'st2-1', title: 'Header', done: true },
-      { id: 'st2-2', title: 'Hero', done: true },
-      { id: 'st2-3', title: 'Секции', done: false },
-      { id: 'st2-4', title: 'Footer', done: false },
-    ],
-    createdAt: '2026-03-10',
-    deadline: '2026-03-25',
-  },
-  {
-    id: 't3',
-    projectId: 'li-group',
-    title: 'Личный кабинет — авторизация',
-    status: 'todo',
-    priority: 'medium',
-    description: 'Supabase Auth, вход по email + Google, роли: школа, учитель, админ',
-    subtasks: [
-      { id: 'st3-1', title: 'Supabase Auth настройка', done: false },
-      { id: 'st3-2', title: 'Email вход', done: false },
-      { id: 'st3-3', title: 'Google OAuth', done: false },
-      { id: 'st3-4', title: 'Система ролей', done: false },
-    ],
-    createdAt: '2026-03-12',
-    deadline: '2026-03-30',
-  },
-  {
-    id: 't4',
-    projectId: 'li-group',
-    title: 'API аналитики',
-    status: 'todo',
-    priority: 'medium',
-    description: 'Эндпоинты для дашборда школы: количество учеников, время в VR, прогресс',
-    subtasks: [
-      { id: 'st4-1', title: 'GET /api/analytics/students', done: false },
-      { id: 'st4-2', title: 'GET /api/analytics/vr-time', done: false },
-      { id: 'st4-3', title: 'GET /api/analytics/progress', done: false },
-    ],
-    createdAt: '2026-03-14',
-    deadline: null,
-  },
-  {
-    id: 't5',
-    projectId: 'li-group',
-    title: 'Деплой на Vercel',
-    status: 'todo',
-    priority: 'low',
-    description: 'Preview из веток, production из main',
-    subtasks: [
-      { id: 'st5-1', title: 'Vercel project setup', done: false },
-      { id: 'st5-2', title: 'Preview deployments', done: false },
-      { id: 'st5-3', title: 'Production deploy', done: false },
-    ],
-    createdAt: '2026-03-15',
-    deadline: null,
-  },
-  // Personal Site
-  {
-    id: 't9',
-    projectId: 'my-site',
-    title: 'Редизайн портфолио',
-    status: 'in_progress',
-    priority: 'high',
-    description: 'Новый дизайн с акцентом на проекты и кейсы',
-    subtasks: [
-      { id: 'st9-1', title: 'Макет в Figma', done: true },
-      { id: 'st9-2', title: 'Вёрстка', done: false },
-    ],
-    createdAt: '2026-03-08',
-    deadline: '2026-03-28',
-  },
-  {
-    id: 't10',
-    projectId: 'my-site',
-    title: 'Блог на MDX',
-    status: 'todo',
-    priority: 'medium',
-    description: 'Система блога с MDX, теги, пагинация',
-    subtasks: [],
-    createdAt: '2026-03-10',
-    deadline: null,
-  },
-  {
-    id: 't11',
-    projectId: 'my-site',
-    title: 'Тёмная тема',
-    status: 'done',
-    priority: 'low',
-    description: 'Переключатель light/dark, сохранение в localStorage',
-    subtasks: [
-      { id: 'st11-1', title: 'CSS variables', done: true },
-      { id: 'st11-2', title: 'Toggle UI', done: true },
-    ],
-    createdAt: '2026-03-05',
-    deadline: null,
-  },
-  // Mark2
-  {
-    id: 't14',
-    projectId: 'mark2',
-    title: 'Claude Bridge: streaming',
-    status: 'in_progress',
-    priority: 'high',
-    description: 'Потоковый вывод от Claude Code CLI в реальном времени',
-    subtasks: [
-      { id: 'st14-1', title: 'Базовый spawn', done: true },
-      { id: 'st14-2', title: 'Streaming парсер', done: false },
-    ],
-    createdAt: '2026-03-12',
-    deadline: '2026-03-22',
-  },
-  {
-    id: 't15',
-    projectId: 'mark2',
-    title: 'UI: раздел Dev',
-    status: 'in_progress',
-    priority: 'high',
-    description: 'Полноценный раздел разработки с задачами и документацией',
-    subtasks: [
-      { id: 'st15-1', title: 'Sidebar', done: true },
-      { id: 'st15-2', title: 'Main content', done: false },
-      { id: 'st15-3', title: 'Task system', done: false },
-    ],
-    createdAt: '2026-03-14',
-    deadline: '2026-03-25',
-  },
-  {
-    id: 't16',
-    projectId: 'mark2',
-    title: 'Supabase миграции',
-    status: 'done',
-    priority: 'medium',
-    description: 'Все таблицы: users, sessions, tasks, documents',
-    subtasks: [],
-    createdAt: '2026-03-08',
-    deadline: null,
-  },
-];
-
 const MOCK_DOCS: DocFile[] = [
   // LI Group
   {
@@ -577,7 +381,7 @@ type MainView =
 // --- Component ---
 
 export function Dev() {
-  const [activeProjectId, setActiveProjectId] = useState<string>('li-group');
+  const [activeProjectId, setActiveProjectId] = useState<string>('');
   const [mainView, setMainView] = useState<MainView>({ kind: 'overview' });
   const [visibleChanges, setVisibleChanges] = useState(10);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -593,11 +397,10 @@ export function Dev() {
   const [taskEdits, setTaskEdits] = useState<{ title: string; description: string } | null>(null);
 
   // DB state
-  const [projects, setProjects] = useState<MockProject[]>(MOCK_PROJECTS);
-  const [allTasks, setAllTasks] = useState<MockTask[]>(MOCK_TASKS);
+  const [projects, setProjects] = useState<MockProject[]>([]);
+  const [allTasks, setAllTasks] = useState<MockTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
-  const [isDemo, setIsDemo] = useState(false);
 
   const changesEndRef = useRef<HTMLDivElement>(null);
   const isDraggingSidebar = useRef(false);
@@ -612,21 +415,15 @@ export function Dev() {
         window.db.projects.list(),
         window.db.tasks.list('dev'),
       ]);
-      if (dbProjects.length > 0 || dbTasks.length > 0) {
-        const mapped = dbProjects.map((p) => mapDbProjectToMock(p as unknown as Record<string, unknown>));
-        const mappedTasks = dbTasks.map((t) => mapDbTaskToMock(t as unknown as Record<string, unknown>));
-        setProjects(mapped);
-        setAllTasks(mappedTasks);
-        if (mapped.length > 0 && mapped[0]) {
-          setActiveProjectId(mapped[0].id);
-        }
-        setIsDemo(false);
-      } else {
-        setIsDemo(true);
+      const mapped = dbProjects.map((p) => mapDbProjectToMock(p as unknown as Record<string, unknown>));
+      const mappedTasks = dbTasks.map((t) => mapDbTaskToMock(t as unknown as Record<string, unknown>));
+      setProjects(mapped);
+      setAllTasks(mappedTasks);
+      if (mapped.length > 0 && mapped[0]) {
+        setActiveProjectId(mapped[0].id);
       }
     } catch (err) {
       setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
-      setIsDemo(true);
     }
   }, []);
 
@@ -698,13 +495,11 @@ export function Dev() {
     setTaskChecked((prev) => {
       const newChecked = !prev[taskId];
       // Persist to DB (fire-and-forget)
-      if (!isDemo) {
-        const newStatus = newChecked ? 'done' : 'todo';
-        window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
-      }
+      const newStatus = newChecked ? 'done' : 'todo';
+      window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
       return { ...prev, [taskId]: newChecked };
     });
-  }, [isDemo]);
+  }, []);
 
   const toggleSubtaskChecked = useCallback((subtaskId: string) => {
     setSubtaskChecked((prev) => ({ ...prev, [subtaskId]: !prev[subtaskId] }));
@@ -893,11 +688,6 @@ export function Dev() {
           {dbError && (
             <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
               {dbError}
-            </div>
-          )}
-          {isDemo && !loading && (
-            <div className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
-              Demo data — БД недоступна или пуста
             </div>
           )}
           {!loading && projects.length === 0 && (

@@ -82,29 +82,6 @@ const PRIORITY_COLORS: Record<Priority, { border: string; badge: string; label: 
 
 // --- Mock Data ---
 
-const MOCK_TRANSACTIONS: Transaction[] = [
-  { id: 'e1', date: '2026-03-21', amount: 850, description: 'Продукты в Пятёрочке', category: 'food' },
-  { id: 'e2', date: '2026-03-20', amount: 350, description: 'Яндекс.Еда — пицца', category: 'food' },
-  { id: 'e3', date: '2026-03-20', amount: 200, description: 'Метро + автобус', category: 'transport' },
-  { id: 'e4', date: '2026-03-19', amount: 1200, description: 'Кино + попкорн', category: 'entertainment' },
-  { id: 'e5', date: '2026-03-19', amount: 450, description: 'Обед в кафе', category: 'food' },
-  { id: 'e6', date: '2026-03-18', amount: 199, description: 'Spotify Premium', category: 'subscriptions' },
-  { id: 'e7', date: '2026-03-18', amount: 650, description: 'Продукты на неделю', category: 'food' },
-  { id: 'e8', date: '2026-03-17', amount: 300, description: 'Такси', category: 'transport' },
-  { id: 'e9', date: '2026-03-16', amount: 2500, description: 'Абонемент в зал', category: 'entertainment' },
-  { id: 'e10', date: '2026-03-15', amount: 15000, description: 'Аренда комнаты', category: 'housing' },
-  { id: 'e11', date: '2026-03-14', amount: 550, description: 'Продукты', category: 'food' },
-  { id: 'e12', date: '2026-03-13', amount: 890, description: 'Claude Max подписка', category: 'subscriptions' },
-  { id: 'e13', date: '2026-03-12', amount: 180, description: 'Автобус', category: 'transport' },
-  { id: 'e14', date: '2026-03-11', amount: 1500, description: 'Настольные игры + бар', category: 'entertainment' },
-  { id: 'e15', date: '2026-03-10', amount: 420, description: 'Продукты', category: 'food' },
-  { id: 'e16', date: '2026-03-08', amount: 250, description: 'Такси ночью', category: 'transport' },
-  { id: 'e17', date: '2026-03-06', amount: 399, description: 'iCloud+ 200GB', category: 'subscriptions' },
-  { id: 'e18', date: '2026-03-05', amount: 700, description: 'Продукты', category: 'food' },
-  { id: 'e19', date: '2026-03-03', amount: 350, description: 'Канцелярия для учёбы', category: 'other' },
-  { id: 'e20', date: '2026-03-01', amount: 5000, description: 'Коммунальные услуги', category: 'housing' },
-];
-
 const MOCK_INCOMES: Income[] = [
   { id: 'i1', date: '2026-03-20', amount: 2000, description: 'Урок с Мишей (ЕГЭ)', source: 'tutoring' },
   { id: 'i2', date: '2026-03-18', amount: 2000, description: 'Урок с Аней (Python)', source: 'tutoring' },
@@ -126,12 +103,6 @@ const MOCK_GOALS: FinanceGoal[] = [
   { id: 'g1', title: 'Накопить на MacBook Pro', target: 200000, current: 85000, icon: <Laptop size={16} strokeWidth={1.5} /> },
   { id: 'g2', title: 'Повысить доход до 150000₽/мес', target: 150000, current: 95000, icon: <TrendingUp size={16} strokeWidth={1.5} /> },
   { id: 'g3', title: 'Подушка безопасности (3 мес)', target: 285000, current: 120000, icon: <Shield size={16} strokeWidth={1.5} /> },
-];
-
-const MOCK_FINANCE_TASKS: FinanceTask[] = [
-  { id: 'ft1', title: 'Оплатить коммуналку', status: 'todo', priority: 'high', context: 'Коммунальные платежи за март', deadline: '2026-03-25' },
-  { id: 'ft2', title: 'Пересмотреть подписки', status: 'todo', priority: 'medium', context: 'Проверить все подписки, отменить неиспользуемые', deadline: '2026-03-28' },
-  { id: 'ft3', title: 'Перевести на накопительный счёт', status: 'todo', priority: 'low', context: 'Перевести остаток на накопительный счёт', deadline: null },
 ];
 
 const MONTHLY_INCOME_EXPENSE = [
@@ -228,11 +199,10 @@ export function Finance() {
   const isDraggingSidebar = useRef(false);
 
   // DB state
-  const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
-  const [financeTasks, setFinanceTasks] = useState<FinanceTask[]>(MOCK_FINANCE_TASKS);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [financeTasks, setFinanceTasks] = useState<FinanceTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
-  const [isDemo, setIsDemo] = useState(false);
 
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
@@ -254,20 +224,14 @@ export function Finance() {
         window.db.transactions.list('2026-03'),
         window.db.tasks.list('finance'),
       ]);
-      if (dbTransactions.length > 0 || dbTasks.length > 0) {
-        if (dbTransactions.length > 0) {
-          setTransactions(dbTransactions.map((t) => mapDbTransactionToLocal(t as unknown as Record<string, unknown>)));
-        }
-        if (dbTasks.length > 0) {
-          setFinanceTasks(dbTasks.map((t) => mapDbTaskToFinance(t as unknown as Record<string, unknown>)));
-        }
-        setIsDemo(false);
-      } else {
-        setIsDemo(true);
+      if (dbTransactions.length > 0) {
+        setTransactions(dbTransactions.map((t) => mapDbTransactionToLocal(t as unknown as Record<string, unknown>)));
+      }
+      if (dbTasks.length > 0) {
+        setFinanceTasks(dbTasks.map((t) => mapDbTaskToFinance(t as unknown as Record<string, unknown>)));
       }
     } catch (err) {
       setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
-      setIsDemo(true);
     }
   }, []);
 
@@ -311,13 +275,11 @@ export function Finance() {
     setTaskChecked((prev) => {
       const newChecked = !prev[taskId];
       // Persist to DB (fire-and-forget)
-      if (!isDemo) {
-        const newStatus = newChecked ? 'done' : 'todo';
-        window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
-      }
+      const newStatus = newChecked ? 'done' : 'todo';
+      window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
       return { ...prev, [taskId]: newChecked };
     });
-  }, [isDemo]);
+  }, []);
 
   const getEffectiveStatus = useCallback((task: FinanceTask): TaskStatus => {
     if (taskChecked[task.id]) return 'done';
@@ -488,11 +450,6 @@ export function Finance() {
           {dbError && (
             <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
               {dbError}
-            </div>
-          )}
-          {isDemo && !loading && (
-            <div className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
-              Demo data — БД недоступна или пуста
             </div>
           )}
           {!loading && mainView.kind === 'expenses' && (

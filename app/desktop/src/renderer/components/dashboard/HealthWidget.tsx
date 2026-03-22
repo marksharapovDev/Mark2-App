@@ -2,14 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dumbbell } from 'lucide-react';
 
-const MOCK_LAST_WORKOUT = { date: '2026-03-20', type: 'Зал', label: 'Грудь + трицепс', duration: 65 };
 const TODAY_CALORIES = 1400;
 const TARGET_CALORIES = 2500;
 
 export function HealthWidget() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [lastWorkout, setLastWorkout] = useState<{ date: string; type: string; label: string; duration: number }>(MOCK_LAST_WORKOUT);
+  const [lastWorkout, setLastWorkout] = useState<{ date: string; type: string; label: string; duration: number } | null>(null);
   const pct = Math.round((TODAY_CALORIES / TARGET_CALORIES) * 100);
 
   const reload = useCallback(async () => {
@@ -28,7 +27,7 @@ export function HealthWidget() {
         }
       }
     } catch {
-      // keep mock data
+      // keep empty state
     }
   }, []);
 
@@ -62,12 +61,18 @@ export function HealthWidget() {
       <div className="space-y-2 flex-1">
         <div>
           <span className="text-xs text-neutral-500">Последняя тренировка</span>
-          <div className="text-xs text-neutral-300 mt-0.5">
-            {lastWorkout.type} &mdash; {lastWorkout.label}
-          </div>
-          <div className="text-[11px] text-neutral-500">
-            {formatDate(lastWorkout.date)} &middot; {lastWorkout.duration} мин
-          </div>
+          {lastWorkout ? (
+            <>
+              <div className="text-xs text-neutral-300 mt-0.5">
+                {lastWorkout.type} &mdash; {lastWorkout.label}
+              </div>
+              <div className="text-[11px] text-neutral-500">
+                {formatDate(lastWorkout.date)} &middot; {lastWorkout.duration} мин
+              </div>
+            </>
+          ) : (
+            <div className="text-xs text-neutral-500 mt-0.5">Нет тренировок</div>
+          )}
         </div>
 
         <div>

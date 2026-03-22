@@ -43,6 +43,21 @@ function toDbFields(data: Record<string, unknown>): Record<string, unknown> {
   return camelToSnake(data);
 }
 
+/**
+ * Ensure a datetime string is a proper ISO with timezone offset.
+ * Naive strings like "2026-03-28T20:00:00" are treated as LOCAL time
+ * and get the local timezone offset appended.
+ */
+function ensureLocalTimezone(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  // Already has timezone info (+XX:XX, -XX:XX, or Z)
+  if (/[Zz]$/.test(value) || /[+-]\d{2}:\d{2}$/.test(value)) return value;
+  // Naive datetime — interpret as local, convert to ISO with offset
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  return d.toISOString();
+}
+
 // --- Tasks ---
 
 export async function getTasks(sphere?: Sphere): Promise<Task[]> {
@@ -101,14 +116,20 @@ export async function getCalendarEvents(startDate: string, endDate: string): Pro
 
 export async function createCalendarEvent(input: Record<string, unknown>): Promise<CalendarEvent> {
   const sb = getSupabase();
-  const { data, error } = await sb.from('calendar_events').insert(toDbFields(input)).select().single();
+  const fixed = { ...input };
+  if (fixed.startAt) fixed.startAt = ensureLocalTimezone(fixed.startAt);
+  if (fixed.endAt) fixed.endAt = ensureLocalTimezone(fixed.endAt);
+  const { data, error } = await sb.from('calendar_events').insert(toDbFields(fixed)).select().single();
   if (error) throw error;
   return mapRow<CalendarEvent>(data);
 }
 
 export async function updateCalendarEvent(id: string, input: Record<string, unknown>): Promise<CalendarEvent> {
   const sb = getSupabase();
-  const { data, error } = await sb.from('calendar_events').update(toDbFields(input)).eq('id', id).select().single();
+  const fixed = { ...input };
+  if (fixed.startAt) fixed.startAt = ensureLocalTimezone(fixed.startAt);
+  if (fixed.endAt) fixed.endAt = ensureLocalTimezone(fixed.endAt);
+  const { data, error } = await sb.from('calendar_events').update(toDbFields(fixed)).eq('id', id).select().single();
   if (error) throw error;
   return mapRow<CalendarEvent>(data);
 }

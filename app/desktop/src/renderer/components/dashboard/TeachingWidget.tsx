@@ -5,21 +5,18 @@ import { GraduationCap } from 'lucide-react';
 const NEXT_LESSON = { student: 'Миша Козлов', subject: 'Информатика (ЕГЭ)', date: '2026-03-25', topic: 'Рекурсия' };
 const OVERDUE_HW = 1;
 const UPCOMING_HW = 2;
-const MOCK_STUDENT_COUNT = 3;
 
 export function TeachingWidget() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [studentCount, setStudentCount] = useState(MOCK_STUDENT_COUNT);
+  const [studentCount, setStudentCount] = useState(0);
 
   const reload = useCallback(async () => {
     try {
       const result = await window.db.students.list();
-      if (result.length > 0) {
-        setStudentCount(result.length);
-      }
+      setStudentCount(result.length);
     } catch {
-      // keep mock data
+      // keep empty state
     }
   }, []);
 

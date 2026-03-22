@@ -2,14 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Code, CheckCircle2, RefreshCw, Clock } from 'lucide-react';
 
-const MOCK_PROJECTS = [
-  { name: 'LI Group', status: 'active' },
-  { name: 'Personal Site', status: 'active' },
-  { name: 'Mark2', status: 'active' },
-];
-
-const MOCK_LAST_TASK = { title: 'Claude Bridge: streaming', status: 'in_progress' as const };
-
 const STATUS_ICON: Record<string, React.ReactNode> = {
   done: <CheckCircle2 size={14} strokeWidth={1.5} className="text-emerald-400" />,
   in_progress: <RefreshCw size={14} strokeWidth={1.5} className="text-blue-400" />,
@@ -20,8 +12,8 @@ const STATUS_LABEL: Record<string, string> = { done: 'Готово', in_progress
 export function DevWidget() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [projects, setProjects] = useState(MOCK_PROJECTS);
-  const [lastTask, setLastTask] = useState<{ title: string; status: string } | null>(MOCK_LAST_TASK);
+  const [projects, setProjects] = useState<Array<{ name: string; status: string }>>([]);
+  const [lastTask, setLastTask] = useState<{ title: string; status: string } | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -29,18 +21,18 @@ export function DevWidget() {
         window.db.projects.list(),
         window.db.tasks.list('dev'),
       ]);
-      if (projectsResult.length > 0) {
-        setProjects(projectsResult.map((p: { name: string; status: string }) => ({ name: p.name, status: p.status })));
-      }
+      setProjects(projectsResult.map((p: { name: string; status: string }) => ({ name: p.name, status: p.status })));
       if (tasksResult.length > 0) {
         const inProgress = tasksResult.find((t: { status: string }) => t.status === 'in_progress');
         const task = inProgress ?? tasksResult[0];
         if (task) {
           setLastTask({ title: task.title, status: task.status });
         }
+      } else {
+        setLastTask(null);
       }
     } catch {
-      // keep mock data
+      // keep empty state
     }
   }, []);
 
