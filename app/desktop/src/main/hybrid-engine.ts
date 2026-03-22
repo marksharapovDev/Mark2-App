@@ -127,6 +127,7 @@ function isConfirmation(message: string): boolean {
 
 const pendingTask = new Map<string, string>(); // sessionId -> prompt
 const pendingConfirmations = new Map<string, PendingConfirmation>(); // sessionId -> pending destructive action
+const activeMode = new Map<string, InteractionMode>(); // sessionId -> persisted mode across messages
 
 async function processActions(text: string): Promise<{
   cleanContent: string;
@@ -212,6 +213,12 @@ async function executeViaClaudeCode(
     pendingConfirmations.set(sessionId, pendingConfirmation);
   }
 
+  // Reset persisted mode after task completion (actions were executed)
+  if (changedEntities.length > 0) {
+    activeMode.delete(sessionId);
+    console.log('[HybridEngine] Active mode reset after task completion');
+  }
+
   const finalContent = actionSummary
     ? `${cleanContent}\n\n${actionSummary}`
     : cleanContent;
@@ -243,8 +250,22 @@ export async function sendMessage(
   message: string,
 ): Promise<HybridResponse> {
   // Detect interaction mode before anything else
-  const mode = detectInteractionMode(message);
+  const detectedMode = detectInteractionMode(message);
   const cleanMessage = stripInteractionMarkers(message);
+
+  // Resolve effective mode: explicit marker overrides, otherwise persist from previous message
+  let mode: InteractionMode;
+  if (detectedMode !== 'auto') {
+    // Explicit marker in this message → set/overwrite active mode
+    mode = detectedMode;
+    activeMode.set(sessionId, mode);
+  } else if (activeMode.has(sessionId)) {
+    // No marker, but we have a persisted mode from a previous message in this chain
+    mode = activeMode.get(sessionId)!;
+    console.log(`[HybridEngine] Active mode persisted: ${mode} (from previous message)`);
+  } else {
+    mode = 'auto';
+  }
 
   await saveMessage(agent, sessionId, 'user', cleanMessage, 'api');
 
@@ -384,6 +405,7 @@ export async function handleGetSessions(agent: AgentName): Promise<ChatSessionRo
 
 export async function handleDeleteSession(sessionId: string): Promise<void> {
   pendingTask.delete(sessionId);
+  activeMode.delete(sessionId);
   await deleteSession(sessionId);
 }
 
