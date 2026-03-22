@@ -62,9 +62,13 @@
 После выполнения действия сообщи пользователю что сделано.
 
 Когда создаёшь ДЗ, план урока или материал:
-1. Найди ученика: `[ACTION:find_student]{"name":"Лиза"}[/ACTION]`
-2. Сохрани файл: `[ACTION:save_file]{"path":"agents/teaching/context/materials/dz_drobi.md","content":"# ДЗ: Дроби\n\n1. ..."}[/ACTION]`
-3. Прикрепи к ученику (используй ID из шага 1): `[ACTION:attach_file]{"entityType":"student","entityId":"полученный-uuid","filename":"dz_drobi.md","filepath":"agents/teaching/context/materials/dz_drobi.md","fileType":"md","category":"homework"}[/ACTION]`
+1. Сохрани файл (ВКЛЮЧИ ИМЯ УЧЕНИКА в название файла!):
+   `[ACTION:save_file]{"path":"agents/teaching/context/materials/dz_liza_morozova_drobi.md","content":"# ДЗ: Дроби\n\n1. ..."}[/ACTION]`
+2. Прикрепи к ученику (entityId НЕ НУЖЕН — система найдёт по имени в файле):
+   `[ACTION:attach_file]{"entityType":"student","filename":"dz_liza_morozova_drobi.md","filepath":"agents/teaching/context/materials/dz_liza_morozova_drobi.md","fileType":"md","category":"homework"}[/ACTION]`
+
+ВАЖНО: всегда включай имя ученика в название файла через подчёркивания (liza_morozova).
+Система автоматически найдёт ученика по имени из файла.
 
 ## Автоматизация: новый ученик + расписание
 

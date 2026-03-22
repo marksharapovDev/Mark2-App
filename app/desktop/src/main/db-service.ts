@@ -1,4 +1,4 @@
-import { getSupabase } from './supabase-client';
+import { getSupabase, resetSupabase } from './supabase-client';
 import type {
   Task,
   CalendarEvent,
@@ -11,6 +11,27 @@ import type {
   Sphere,
   AttachedFile,
 } from '@mark2/shared';
+
+// --- Retry wrapper for EPIPE/fetch errors ---
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('fetch failed') || msg.includes('EPIPE') || msg.includes('ECONNRESET')) {
+      console.warn('[DB] Connection error, retrying in 1s:', msg);
+      await sleep(1000);
+      resetSupabase();
+      return await fn();
+    }
+    throw err;
+  }
+}
 
 // --- Helpers: snake_case ↔ camelCase mapping ---
 
@@ -80,10 +101,12 @@ export async function getTask(id: string): Promise<Task> {
 }
 
 export async function createTask(input: Record<string, unknown>): Promise<Task> {
-  const sb = getSupabase();
-  const { data, error } = await sb.from('tasks').insert(toDbFields(input)).select().single();
-  if (error) throw error;
-  return mapRow<Task>(data);
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('tasks').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<Task>(data);
+  });
 }
 
 export async function updateTask(id: string, input: Record<string, unknown>): Promise<Task> {
@@ -116,13 +139,15 @@ export async function getCalendarEvents(startDate: string, endDate: string): Pro
 }
 
 export async function createCalendarEvent(input: Record<string, unknown>): Promise<CalendarEvent> {
-  const sb = getSupabase();
-  const fixed = { ...input };
-  if (fixed.startAt) fixed.startAt = ensureLocalTimezone(fixed.startAt);
-  if (fixed.endAt) fixed.endAt = ensureLocalTimezone(fixed.endAt);
-  const { data, error } = await sb.from('calendar_events').insert(toDbFields(fixed)).select().single();
-  if (error) throw error;
-  return mapRow<CalendarEvent>(data);
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const fixed = { ...input };
+    if (fixed.startAt) fixed.startAt = ensureLocalTimezone(fixed.startAt);
+    if (fixed.endAt) fixed.endAt = ensureLocalTimezone(fixed.endAt);
+    const { data, error } = await sb.from('calendar_events').insert(toDbFields(fixed)).select().single();
+    if (error) throw error;
+    return mapRow<CalendarEvent>(data);
+  });
 }
 
 export async function updateCalendarEvent(id: string, input: Record<string, unknown>): Promise<CalendarEvent> {
@@ -176,17 +201,21 @@ export async function getStudents(): Promise<Student[]> {
 }
 
 export async function findStudentByName(name: string): Promise<Student | null> {
-  const sb = getSupabase();
-  const { data, error } = await sb.from('students').select('*').ilike('name', `%${name}%`).limit(1).maybeSingle();
-  if (error) throw error;
-  return data ? mapRow<Student>(data) : null;
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('students').select('*').ilike('name', `%${name}%`).limit(1).maybeSingle();
+    if (error) throw error;
+    return data ? mapRow<Student>(data) : null;
+  });
 }
 
 export async function createStudent(input: Record<string, unknown>): Promise<Student> {
-  const sb = getSupabase();
-  const { data, error } = await sb.from('students').insert(toDbFields(input)).select().single();
-  if (error) throw error;
-  return mapRow<Student>(data);
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('students').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<Student>(data);
+  });
 }
 
 export async function updateStudent(id: string, input: Record<string, unknown>): Promise<Student> {
@@ -294,20 +323,21 @@ export async function getAttachedFiles(entityType: string, entityId?: string): P
 }
 
 export async function createAttachedFile(input: Record<string, unknown>): Promise<AttachedFile> {
-  const sb = getSupabase();
-  // Remove fields that aren't in the DB table
-  const clean: Record<string, unknown> = { ...input };
-  // entity_id must be a valid UUID or null
-  if (clean.entityId && typeof clean.entityId === 'string' && !/^[0-9a-f-]{36}$/i.test(clean.entityId)) {
-    console.warn('[DB] Invalid entityId (not UUID), setting to null:', clean.entityId);
-    clean.entityId = null;
-  }
-  const dbFields = toDbFields(clean);
-  console.log('[DB] Creating attached file:', JSON.stringify(dbFields));
-  const { data, error } = await sb.from('attached_files').insert(dbFields).select().single();
-  if (error) {
-    console.error('[DB] createAttachedFile error:', JSON.stringify(error));
-    throw error;
-  }
-  return mapRow<AttachedFile>(data);
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const clean: Record<string, unknown> = { ...input };
+    // entity_id must be a valid UUID or null
+    if (clean.entityId && typeof clean.entityId === 'string' && !/^[0-9a-f-]{36}$/i.test(clean.entityId)) {
+      console.warn('[DB] Invalid entityId (not UUID), setting to null:', clean.entityId);
+      clean.entityId = null;
+    }
+    const dbFields = toDbFields(clean);
+    console.log('[DB] Creating attached file:', JSON.stringify(dbFields));
+    const { data, error } = await sb.from('attached_files').insert(dbFields).select().single();
+    if (error) {
+      console.error('[DB] createAttachedFile error:', JSON.stringify(error));
+      throw error;
+    }
+    return mapRow<AttachedFile>(data);
+  });
 }

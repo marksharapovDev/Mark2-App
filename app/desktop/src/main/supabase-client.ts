@@ -15,3 +15,7 @@ export function getSupabase(): SupabaseClient {
   client = createClient(url, key);
   return client;
 }
+
+export function resetSupabase(): void {
+  client = null;
+}

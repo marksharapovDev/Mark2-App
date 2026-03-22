@@ -13,6 +13,32 @@ function formatError(err: unknown): string {
   return String(err);
 }
 
+function isValidUuid(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+}
+
+/**
+ * Try to extract a student name from a filename like "dz_liza_morozova_drobi.md"
+ * and look them up in the DB.
+ */
+async function tryResolveStudentFromFilename(filename: string): Promise<{ id: string; name: string } | null> {
+  // Strip extension and split by underscores/hyphens
+  const base = filename.replace(/\.[^.]+$/, '');
+  const parts = base.split(/[_\-]+/);
+
+  // Try progressively longer substrings as potential names
+  // e.g. ["dz", "liza", "morozova", "drobi"] → try "liza", "liza morozova", etc.
+  for (let i = 0; i < parts.length; i++) {
+    for (let j = i + 1; j <= Math.min(i + 3, parts.length); j++) {
+      const candidate = parts.slice(i, j).join(' ');
+      if (candidate.length < 3) continue; // skip too short
+      const student = await db.findStudentByName(candidate);
+      if (student) return { id: student.id, name: student.name };
+    }
+  }
+  return null;
+}
+
 interface ActionResult {
   success: boolean;
   message: string;
@@ -128,6 +154,17 @@ const AI_TOOLS: Record<string, ActionHandler> = {
 
   attach_file: async (params) => {
     console.log('[AI Tools] attach_file params:', JSON.stringify(params));
+    // Auto-resolve student ID from filename if missing
+    if (params.entityType === 'student' && (!params.entityId || !isValidUuid(String(params.entityId)))) {
+      const filename = String(params.filename ?? '');
+      const resolved = await tryResolveStudentFromFilename(filename);
+      if (resolved) {
+        console.log('[AI Tools] Auto-resolved student:', resolved.name, resolved.id);
+        params.entityId = resolved.id;
+      } else {
+        console.warn('[AI Tools] Could not auto-resolve student from filename:', filename);
+      }
+    }
     const result = await db.createAttachedFile(params);
     return { success: true, message: `Файл прикреплён: ${params.filename}`, entity: 'files', data: result as unknown as Record<string, unknown> };
   },
