@@ -65,7 +65,7 @@ const MODE_PROMPTS: Record<InteractionMode, string> = {
   execute:
     'РЕЖИМ: Выполняй задачу сразу. Не задавай уточняющих вопросов. Если чего-то не хватает — прими разумное решение сам и сообщи что решил.',
   consult:
-    'РЕЖИМ УТОЧНЕНИЯ: Задай уточняющие вопросы ОДИН раз. После того как пользователь ответил на твои вопросы — СРАЗУ выполняй задачу, больше не спрашивай. Максимум один раунд вопросов.',
+    'РЕЖИМ УТОЧНЕНИЯ: ТЫ ОБЯЗАН задать уточняющие вопросы перед выполнением. НЕ ВЫПОЛНЯЙ задачу в этом сообщении. Сначала задай 2-3 вопроса чтобы уточнить детали. НЕ используй ACTION теги в этом ответе. Только вопросы.',
   auto:
     'РЕЖИМ: Оцени задачу сам. Если задача простая и понятная — выполняй сразу. Если не хватает важной информации или задача сложная и неоднозначная — задай уточняющие вопросы перед выполнением.',
 };
@@ -266,9 +266,13 @@ async function executeViaClaudeCode(
   const result = await claude.run({ agent, prompt: fullPrompt });
   const content = result.trim();
 
-  // Process any [ACTION:...] tags in Claude Code response
+  // In consult round 0: ignore any ACTION tags — this is the questions-only phase
+  const skipActions = mode === 'consult' && questionRound === 0;
+
   const { cleanContent, actionSummary, changedEntities, pendingConfirmation } =
-    await processActions(content);
+    skipActions
+      ? { cleanContent: stripActions(content), actionSummary: '', changedEntities: [] as string[], pendingConfirmation: undefined }
+      : await processActions(content);
 
   if (pendingConfirmation) {
     pendingConfirmations.set(sessionId, pendingConfirmation);
