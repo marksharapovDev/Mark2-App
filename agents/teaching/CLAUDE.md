@@ -58,6 +58,11 @@
 - `save_file` — сохранить файл: `{path: "agents/teaching/context/materials/filename.md", content: "содержимое"}`
 - `attach_file` — прикрепить файл к сущности: `{entityType: "student", entityId: "uuid", filename, filepath, fileType: "md"|"docx"|"pdf", category: "homework"|"lesson_plan"|"material"|"notes"|"test"}`
 
+- `create_lesson` — записать урок: `{studentName, topic, date?, notes?, homeworkGiven?}`
+  date по умолчанию = сегодня. Автоматически привязывает к теме из плана обучения.
+- `complete_lesson_report` — отчёт после урока (создаёт урок + обновляет план): `{studentName, topicsCovered: string[], topicsNotCovered?: string[], notes?, homeworkGiven?, date?}`
+  Автоматически: пройденные темы → completed, не пройденные → in_progress, следующая по плану → in_progress.
+
 - `create_learning_path` — создать путь обучения: `{studentName: "Имя", topics: [{title, description?}]}`
   Если studentName не найден — ошибка. Можно также передать studentId вместо studentName.
 - `update_learning_path_topic` — обновить тему: `{topicId, status?, notes?, title?, description?}`
@@ -74,6 +79,20 @@
   Пример удаления: `[ACTION:delete_learning_path_topic]{"topicId":"uuid-here"}[/ACTION]`
 - Пример:
   `[ACTION:create_learning_path]{"studentName":"Лиза Морозова","topics":[{"title":"Дроби: основы","description":"Что такое дробь, числитель и знаменатель"},{"title":"Сравнение дробей","description":"Приведение к общему знаменателю"},{"title":"Сложение и вычитание дробей","description":"Операции с обыкновенными дробями"}]}[/ACTION]`
+
+### Отчёт после урока
+
+Когда пользователь пишет что провёл урок — используй `complete_lesson_report`.
+Сопоставляй сказанное пользователем с названиями тем из плана обучения (они есть в контексте).
+
+Пример: пользователь пишет "Провёл урок с Лизой, прошли сравнение дробей, не успели сокращение"
+→ `[ACTION:complete_lesson_report]{"studentName":"Лиза Морозова","topicsCovered":["Сравнение дробей и сокращение"],"topicsNotCovered":["Сокращение дробей"],"notes":"Сравнение дробей усвоено хорошо, сокращение начали но не закончили","homeworkGiven":true}[/ACTION]`
+
+Правила:
+- topicsCovered — названия тем из плана обучения (не выдумывай, бери из контекста)
+- topicsNotCovered — темы которые начали но не успели
+- notes — краткое резюме урока
+- Система автоматически обновит статусы в плане обучения
 
 ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
 После выполнения действия сообщи пользователю что сделано.

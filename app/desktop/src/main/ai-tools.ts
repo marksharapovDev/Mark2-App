@@ -107,6 +107,22 @@ async function tryResolveStudentFromFilename(filename: string): Promise<{ id: st
   return null;
 }
 
+// --- Student resolution helper ---
+
+async function resolveStudentId(params: Record<string, unknown>): Promise<{ id: string; name: string } | string> {
+  const studentId = params.studentId ? String(params.studentId) : '';
+  if (studentId && isValidUuid(studentId)) {
+    const students = await db.getStudents();
+    const s = students.find((st) => st.id === studentId);
+    return s ? { id: s.id, name: s.name } : 'Ученик не найден по ID';
+  }
+  const studentName = String(params.studentName ?? '');
+  if (!studentName) return 'Нужен studentId или studentName';
+  const found = await db.findStudentByName(studentName);
+  if (!found) return `Ученик "${studentName}" не найден`;
+  return { id: found.id, name: found.name };
+}
+
 // --- Markdown to DOCX converter ---
 
 function markdownToDocxParagraphs(md: string): Paragraph[] {
@@ -236,6 +252,7 @@ interface ActionResult {
   success: boolean;
   message: string;
   entity: string;
+  entities?: string[];
   data?: Record<string, unknown>;
 }
 
@@ -441,6 +458,138 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     return { success: true, message: `Тема удалена: ${topicId}`, entity: 'learning-path' };
   },
 
+  // Lessons
+  create_lesson: async (params) => {
+    const resolved = await resolveStudentId(params);
+    if (typeof resolved === 'string') return { success: false, message: resolved, entity: '' };
+
+    const topic = String(params.topic ?? '');
+    if (!topic) return { success: false, message: 'topic обязателен', entity: '' };
+
+    const date = params.date ? String(params.date) : new Date().toISOString().slice(0, 10);
+    const notes = params.notes ? String(params.notes) : '';
+    const homeworkGiven = params.homeworkGiven ? String(params.homeworkGiven) : null;
+
+    // Try to find matching learning path topic
+    let topicId: string | null = null;
+    try {
+      const lpTopics = await db.getLearningPath(resolved.id);
+      const topicLower = topic.toLowerCase();
+      const match = lpTopics.find((t) => {
+        const tLower = t.title.toLowerCase();
+        return tLower.includes(topicLower) || topicLower.includes(tLower);
+      });
+      if (match) topicId = match.id;
+    } catch { /* ignore */ }
+
+    const lesson = await db.createLesson({
+      studentId: resolved.id,
+      topic,
+      date,
+      notes,
+      status: 'completed',
+      homeworkGiven,
+      ...(topicId ? { topicId } : {}),
+    });
+
+    console.log('[AI Tools] Created lesson:', topic, 'for', resolved.name);
+    return {
+      success: true,
+      message: `Урок записан: ${topic} (${resolved.name})`,
+      entity: 'lessons',
+      data: lesson as unknown as Record<string, unknown>,
+    };
+  },
+
+  complete_lesson_report: async (params) => {
+    const resolved = await resolveStudentId(params);
+    if (typeof resolved === 'string') return { success: false, message: resolved, entity: '' };
+
+    const topicsCovered = params.topicsCovered as string[] | undefined;
+    if (!topicsCovered || !Array.isArray(topicsCovered) || topicsCovered.length === 0) {
+      return { success: false, message: 'topicsCovered[] обязателен', entity: '' };
+    }
+    const topicsNotCovered = (params.topicsNotCovered as string[] | undefined) ?? [];
+    const notes = params.notes ? String(params.notes) : '';
+    const homeworkGiven = params.homeworkGiven ? String(params.homeworkGiven) : null;
+    const date = params.date ? String(params.date) : new Date().toISOString().slice(0, 10);
+
+    // 1. Load learning path
+    const lpTopics = await db.getLearningPath(resolved.id);
+
+    // Helper: find matching LP topic by substring inclusion
+    const findLpMatch = (name: string) => {
+      const lower = name.toLowerCase();
+      return lpTopics.find((t) => {
+        const tLower = t.title.toLowerCase();
+        return tLower.includes(lower) || lower.includes(tLower);
+      });
+    };
+
+    // 2. Create lesson record
+    const coveredStr = topicsCovered.join(', ');
+    const firstMatch = findLpMatch(topicsCovered[0]!);
+    const lesson = await db.createLesson({
+      studentId: resolved.id,
+      topic: coveredStr,
+      date,
+      notes,
+      status: 'completed',
+      homeworkGiven,
+      ...(firstMatch ? { topicId: firstMatch.id } : {}),
+    });
+    console.log('[AI Tools] Created lesson:', coveredStr, 'for', resolved.name);
+
+    // 3. Mark covered topics as 'completed'
+    const updatedTopicIds: string[] = [];
+    for (const covered of topicsCovered) {
+      const match = findLpMatch(covered);
+      if (match && match.status !== 'completed') {
+        const dateNote = `Пройдено ${date}`;
+        const newNotes = match.notes ? `${match.notes}; ${dateNote}` : dateNote;
+        await db.updateLearningPathTopic(match.id, { status: 'completed', notes: newNotes });
+        updatedTopicIds.push(match.id);
+      }
+    }
+
+    // 4. Mark first not-covered topic as 'in_progress'
+    if (topicsNotCovered.length > 0) {
+      const match = findLpMatch(topicsNotCovered[0]!);
+      if (match && match.status === 'planned') {
+        await db.updateLearningPathTopic(match.id, { status: 'in_progress' });
+        updatedTopicIds.push(match.id);
+      }
+    }
+
+    // 5. Set next planned topic after last completed as 'in_progress'
+    const refreshed = await db.getLearningPath(resolved.id);
+    const sorted = refreshed.sort((a, b) => a.orderIndex - b.orderIndex);
+    let lastCompletedIdx = -1;
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      if (sorted[i]!.status === 'completed') { lastCompletedIdx = i; break; }
+    }
+    if (lastCompletedIdx >= 0 && lastCompletedIdx < sorted.length - 1) {
+      const next = sorted[lastCompletedIdx + 1]!;
+      if (next.status === 'planned') {
+        await db.updateLearningPathTopic(next.id, { status: 'in_progress' });
+        updatedTopicIds.push(next.id);
+      }
+    }
+
+    const summary = [
+      `Урок записан: ${coveredStr}`,
+      updatedTopicIds.length > 0 ? `Обновлено тем в плане: ${updatedTopicIds.length}` : null,
+    ].filter(Boolean).join('. ');
+
+    return {
+      success: true,
+      message: summary,
+      entity: 'lessons',
+      entities: updatedTopicIds.length > 0 ? ['lessons', 'learning-path'] : ['lessons'],
+      data: { lessonId: lesson.id, updatedTopics: updatedTopicIds.length },
+    };
+  },
+
   attach_file: async (params) => {
     console.log('[AI Tools] attach_file params:', JSON.stringify(params));
     // Auto-resolve student ID from filename if missing
@@ -547,8 +696,11 @@ export function stripActions(text: string): string {
 export function getChangedEntities(executions: ActionExecution[]): string[] {
   const entities = new Set<string>();
   for (const ex of executions) {
-    if (ex.result.success && ex.result.entity) {
-      entities.add(ex.result.entity);
+    if (ex.result.success) {
+      if (ex.result.entity) entities.add(ex.result.entity);
+      if (ex.result.entities) {
+        for (const e of ex.result.entities) entities.add(e);
+      }
     }
   }
   return [...entities];

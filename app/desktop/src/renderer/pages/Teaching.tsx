@@ -534,7 +534,7 @@ export function Teaching() {
   }, [student?.id, loadHomeworkFiles]);
 
   // DB lessons for current student
-  const [dbLessons, setDbLessons] = useState<Array<{id: string; studentId: string; date: string; topic: string; status: string; notes: string; homeworkGiven: string | null}>>([]);
+  const [dbLessons, setDbLessons] = useState<Array<{id: string; studentId: string; date: string; topic: string; status: string; notes: string; homeworkGiven: string | null; topicId: string | null}>>([]);
 
   const loadLessons = useCallback((studentId: string) => {
     window.db.lessons.list(studentId).then((rows) => {
@@ -546,6 +546,7 @@ export function Teaching() {
         status: r.status ?? 'planned',
         notes: r.notes ?? '',
         homeworkGiven: r.homeworkGiven ?? null,
+        topicId: r.topicId ?? null,
       })));
     }).catch((err) => console.error('[Teaching] Failed to load lessons:', err));
   }, []);
@@ -1920,7 +1921,7 @@ function LearningPathTopicView({
 }: {
   topic: LearningPathTopic | undefined;
   topicIndex: number;
-  dbLessons: Array<{ id: string; studentId: string; date: string; topic: string; status: string; notes: string; homeworkGiven: string | null }>;
+  dbLessons: Array<{ id: string; studentId: string; date: string; topic: string; status: string; notes: string; homeworkGiven: string | null; topicId: string | null }>;
   sidebarHomeworkFiles: Array<{ id: string; filename: string; filepath: string; status: string; createdAt: string }>;
   onBack: () => void;
   onReload: () => void;
@@ -1971,9 +1972,12 @@ function LearningPathTopicView({
     }
   };
 
-  // Related lessons: topic ILIKE '%title%'
+  // Related lessons: prefer topic_id match, fallback to keyword search
   const titleWords = topic.title.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
   const relatedLessons = dbLessons.filter((l) => {
+    // Exact FK match
+    if (l.topicId === topic.id) return true;
+    // Fallback: keyword search
     const lt = l.topic.toLowerCase();
     return titleWords.some((w) => lt.includes(w));
   });

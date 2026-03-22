@@ -8,5 +8,6 @@ export interface Lesson {
   status: LessonStatus;
   notes: string;
   homeworkGiven: string | null;
+  topicId: string | null;
   createdAt: Date;
 }
