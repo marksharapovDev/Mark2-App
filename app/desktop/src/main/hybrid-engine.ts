@@ -65,13 +65,24 @@ const MODE_PROMPTS: Record<InteractionMode, string> = {
   execute:
     'РЕЖИМ: Выполняй задачу сразу. Не задавай уточняющих вопросов. Если чего-то не хватает — прими разумное решение сам и сообщи что решил.',
   consult:
-    'РЕЖИМ: Перед выполнением задай уточняющие вопросы. Убедись что ты правильно понял задачу. Спроси про детали которых не хватает. Только после ответа пользователя приступай к выполнению.',
+    'РЕЖИМ УТОЧНЕНИЯ: Задай уточняющие вопросы ОДИН раз. После того как пользователь ответил на твои вопросы — СРАЗУ выполняй задачу, больше не спрашивай. Максимум один раунд вопросов.',
   auto:
     'РЕЖИМ: Оцени задачу сам. Если задача простая и понятная — выполняй сразу. Если не хватает важной информации или задача сложная и неоднозначная — задай уточняющие вопросы перед выполнением.',
 };
 
-export function getModePrompt(mode: InteractionMode): string {
+const CONSULT_EXECUTE_PROMPT =
+  'Пользователь ответил на твои вопросы. Теперь ВЫПОЛНЯЙ задачу. Не задавай больше вопросов.';
+
+export function getModePrompt(mode: InteractionMode, questionRound = 0): string {
+  if (mode === 'consult' && questionRound >= 1) {
+    return CONSULT_EXECUTE_PROMPT;
+  }
   return MODE_PROMPTS[mode];
+}
+
+interface ActiveModeState {
+  mode: InteractionMode;
+  questionRound: number;
 }
 
 const EXECUTE_MARKER = '[EXECUTE_TASK]';
@@ -128,7 +139,7 @@ function isConfirmation(message: string): boolean {
 
 const pendingTask = new Map<string, string>(); // sessionId -> prompt
 const pendingConfirmations = new Map<string, PendingConfirmation>(); // sessionId -> pending destructive action
-const activeMode = new Map<string, InteractionMode>(); // sessionId -> persisted mode across messages
+const activeMode = new Map<string, ActiveModeState>(); // sessionId -> persisted mode + question round
 
 // --- Session context (per-session metadata from UI) ---
 
@@ -164,9 +175,13 @@ async function buildTeachingContext(sessionId: string, agent: AgentName): Promis
       return `## Текущий ученик: ${student.name}\n\nПлан обучения пока не создан.\n`;
     }
 
-    const lines = topics.map((t, i) =>
-      `${i + 1}. [id:${t.id}] ${t.title} — ${t.status}`,
-    );
+    const lines = topics.map((t, i) => {
+      let line = `${i + 1}. [id:${t.id}] ${t.title} — ${t.status}`;
+      if (t.description) {
+        line += `\n   Описание: ${t.description}`;
+      }
+      return line;
+    });
     return `## Текущий план обучения: ${student.name}\n\n${lines.join('\n')}\n`;
   } catch (err) {
     console.error('[HybridEngine] Failed to load teaching context:', err);
@@ -241,9 +256,10 @@ async function executeViaClaudeCode(
   prompt: string,
   crossContext?: string,
   mode: InteractionMode = 'auto',
+  questionRound = 0,
 ): Promise<HybridResponse> {
   // Prepend cross-context + append mode instruction
-  const modeInstruction = getModePrompt(mode);
+  const modeInstruction = getModePrompt(mode, questionRound);
   const fullPrompt = crossContext
     ? `${crossContext}\n\n---\n\n${prompt}\n\n${modeInstruction}`
     : `${prompt}\n\n${modeInstruction}`;
@@ -300,14 +316,19 @@ export async function sendMessage(
 
   // Resolve effective mode: explicit marker overrides, otherwise persist from previous message
   let mode: InteractionMode;
+  let questionRound = 0;
   if (detectedMode !== 'auto') {
-    // Explicit marker in this message → set/overwrite active mode
+    // Explicit marker in this message → set/overwrite active mode, reset round
     mode = detectedMode;
-    activeMode.set(sessionId, mode);
+    activeMode.set(sessionId, { mode, questionRound: 0 });
   } else if (activeMode.has(sessionId)) {
     // No marker, but we have a persisted mode from a previous message in this chain
-    mode = activeMode.get(sessionId)!;
-    console.log(`[HybridEngine] Active mode persisted: ${mode} (from previous message)`);
+    const state = activeMode.get(sessionId)!;
+    mode = state.mode;
+    // Increment question round (user is replying to agent's questions)
+    questionRound = state.questionRound + 1;
+    activeMode.set(sessionId, { mode, questionRound });
+    console.log(`[HybridEngine] Active mode persisted: ${mode} (questionRound: ${questionRound})`);
   } else {
     mode = 'auto';
   }
@@ -356,7 +377,7 @@ export async function sendMessage(
   const pending = pendingTask.get(sessionId);
   if (pending && isConfirmation(cleanMessage)) {
     pendingTask.delete(sessionId);
-    return executeViaClaudeCode(agent, sessionId, pending, crossContext, mode);
+    return executeViaClaudeCode(agent, sessionId, pending, crossContext, mode, questionRound);
   }
   pendingTask.delete(sessionId);
 
@@ -364,31 +385,31 @@ export async function sendMessage(
   // Claude Code is smart enough to ask questions in consult mode and execute in execute mode
   if (mode !== 'auto') {
     console.log(`[HybridEngine] Explicit mode "${mode}", routing to Claude Code`);
-    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode);
+    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound);
   }
 
   // Data action → straight to Claude Code (no Level 2 classification)
   if (isDataAction(cleanMessage)) {
     console.log('[HybridEngine] Data action detected, routing to Claude Code');
-    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode);
+    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound);
   }
 
   // Level 1 + 2: heavy tasks that need classification
   if (maybeHeavyTask(cleanMessage)) {
     const classification = await classifyMessage(cleanMessage);
     if (classification === 'TASK') {
-      return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode);
+      return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound);
     }
   }
 
-  const apiResponse = await sendToApi(agent, sessionId, cleanMessage, crossContext, getModePrompt(mode));
+  const apiResponse = await sendToApi(agent, sessionId, cleanMessage, crossContext, getModePrompt(mode, questionRound));
 
   console.log('[HybridEngine] Raw API response:', apiResponse.substring(0, 500));
   console.log('[HybridEngine] Contains ACTION tags:', apiResponse.includes('[ACTION:'));
 
   if (apiResponse.includes(EXECUTE_MARKER)) {
     const taskDescription = apiResponse.replace(EXECUTE_MARKER, '').trim();
-    return executeViaClaudeCode(agent, sessionId, taskDescription || cleanMessage, crossContext, mode);
+    return executeViaClaudeCode(agent, sessionId, taskDescription || cleanMessage, crossContext, mode, questionRound);
   }
 
   // Process AI actions in the response
