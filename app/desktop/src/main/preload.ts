@@ -230,6 +230,30 @@ const dbApi = {
       ipcRenderer.invoke('db:files:list', entityType, entityId),
     create: (data: Record<string, unknown>) =>
       ipcRenderer.invoke('db:files:create', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:files:update', id, data),
+  },
+  lessons: {
+    list: (studentId?: string) =>
+      ipcRenderer.invoke('db:lessons:list', studentId),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:lessons:create', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:lessons:update', id, data),
+    delete: (id: string) =>
+      ipcRenderer.invoke('db:lessons:delete', id),
+  },
+  learningPath: {
+    list: (studentId: string) =>
+      ipcRenderer.invoke('db:learning-path:list', studentId),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:learning-path:create', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:learning-path:update', id, data),
+    delete: (id: string) =>
+      ipcRenderer.invoke('db:learning-path:delete', id),
+    reorder: (studentId: string, topicIds: string[]) =>
+      ipcRenderer.invoke('db:learning-path:reorder', studentId, topicIds),
   },
 };
 

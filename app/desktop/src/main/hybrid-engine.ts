@@ -17,6 +17,62 @@ import {
 
 export type { AgentName };
 
+// --- Interaction mode detection ---
+
+export type InteractionMode = 'execute' | 'consult' | 'auto';
+
+const EXECUTE_PHRASES = [
+  'делай сразу', 'сделай сразу', 'без вопросов', 'не спрашивай',
+  'just do it', 'do it now',
+];
+
+const CONSULT_PHRASES = [
+  'задай вопросы', 'уточни', 'посоветуйся', 'спроси меня',
+  'ask me', 'ask questions',
+];
+
+const ALL_MARKER_PHRASES = [...EXECUTE_PHRASES, ...CONSULT_PHRASES];
+
+export function detectInteractionMode(message: string): InteractionMode {
+  const lower = message.toLowerCase();
+  if (EXECUTE_PHRASES.some((p) => lower.includes(p))) {
+    const matched = EXECUTE_PHRASES.find((p) => lower.includes(p));
+    console.log(`[HybridEngine] Interaction mode: execute (marker: "${matched}")`);
+    return 'execute';
+  }
+  if (CONSULT_PHRASES.some((p) => lower.includes(p))) {
+    const matched = CONSULT_PHRASES.find((p) => lower.includes(p));
+    console.log(`[HybridEngine] Interaction mode: consult (marker: "${matched}")`);
+    return 'consult';
+  }
+  console.log('[HybridEngine] Interaction mode: auto (no marker found)');
+  return 'auto';
+}
+
+export function stripInteractionMarkers(message: string): string {
+  let result = message;
+  for (const phrase of ALL_MARKER_PHRASES) {
+    const regex = new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    result = result.replace(regex, '');
+  }
+  // Clean up leftover punctuation/whitespace: ". ." → ".", double spaces, trailing dots
+  result = result.replace(/\.\s*\./g, '.').replace(/\s{2,}/g, ' ').trim();
+  return result;
+}
+
+const MODE_PROMPTS: Record<InteractionMode, string> = {
+  execute:
+    'РЕЖИМ: Выполняй задачу сразу. Не задавай уточняющих вопросов. Если чего-то не хватает — прими разумное решение сам и сообщи что решил.',
+  consult:
+    'РЕЖИМ: Перед выполнением задай уточняющие вопросы. Убедись что ты правильно понял задачу. Спроси про детали которых не хватает. Только после ответа пользователя приступай к выполнению.',
+  auto:
+    'РЕЖИМ: Оцени задачу сам. Если задача простая и понятная — выполняй сразу. Если не хватает важной информации или задача сложная и неоднозначная — задай уточняющие вопросы перед выполнением.',
+};
+
+export function getModePrompt(mode: InteractionMode): string {
+  return MODE_PROMPTS[mode];
+}
+
 const EXECUTE_MARKER = '[EXECUTE_TASK]';
 
 // --- Level 1: keyword check ---
@@ -138,11 +194,13 @@ async function executeViaClaudeCode(
   sessionId: string,
   prompt: string,
   crossContext?: string,
+  mode: InteractionMode = 'auto',
 ): Promise<HybridResponse> {
-  // Prepend cross-context before the main task prompt
+  // Prepend cross-context + append mode instruction
+  const modeInstruction = getModePrompt(mode);
   const fullPrompt = crossContext
-    ? `${crossContext}\n\n---\n\n${prompt}`
-    : prompt;
+    ? `${crossContext}\n\n---\n\n${prompt}\n\n${modeInstruction}`
+    : `${prompt}\n\n${modeInstruction}`;
   const result = await claude.run({ agent, prompt: fullPrompt });
   const content = result.trim();
 
@@ -184,7 +242,11 @@ export async function sendMessage(
   sessionId: string,
   message: string,
 ): Promise<HybridResponse> {
-  await saveMessage(agent, sessionId, 'user', message, 'api');
+  // Detect interaction mode before anything else
+  const mode = detectInteractionMode(message);
+  const cleanMessage = stripInteractionMarkers(message);
+
+  await saveMessage(agent, sessionId, 'user', cleanMessage, 'api');
 
   // Build cross-context from other sessions/agents
   const crossContext = await buildCrossContext(agent);
@@ -195,7 +257,7 @@ export async function sendMessage(
 
   // Check if user is confirming a destructive action
   const pendingConf = pendingConfirmations.get(sessionId);
-  if (pendingConf && isConfirmation(message)) {
+  if (pendingConf && isConfirmation(cleanMessage)) {
     pendingConfirmations.delete(sessionId);
     const actionResult = await executeConfirmedAction(pendingConf.action, pendingConf.params);
     const confirmContent = actionResult.success
@@ -215,34 +277,34 @@ export async function sendMessage(
 
   // Check task confirmation
   const pending = pendingTask.get(sessionId);
-  if (pending && isConfirmation(message)) {
+  if (pending && isConfirmation(cleanMessage)) {
     pendingTask.delete(sessionId);
-    return executeViaClaudeCode(agent, sessionId, pending, crossContext);
+    return executeViaClaudeCode(agent, sessionId, pending, crossContext, mode);
   }
   pendingTask.delete(sessionId);
 
   // Data action → straight to Claude Code (no Level 2 classification)
-  if (isDataAction(message)) {
+  if (isDataAction(cleanMessage)) {
     console.log('[HybridEngine] Data action detected, routing to Claude Code');
-    return executeViaClaudeCode(agent, sessionId, message, crossContext);
+    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode);
   }
 
   // Level 1 + 2: heavy tasks that need classification
-  if (maybeHeavyTask(message)) {
-    const classification = await classifyMessage(message);
+  if (maybeHeavyTask(cleanMessage)) {
+    const classification = await classifyMessage(cleanMessage);
     if (classification === 'TASK') {
-      return executeViaClaudeCode(agent, sessionId, message, crossContext);
+      return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode);
     }
   }
 
-  const apiResponse = await sendToApi(agent, sessionId, message, crossContext);
+  const apiResponse = await sendToApi(agent, sessionId, cleanMessage, crossContext, getModePrompt(mode));
 
   console.log('[HybridEngine] Raw API response:', apiResponse.substring(0, 500));
   console.log('[HybridEngine] Contains ACTION tags:', apiResponse.includes('[ACTION:'));
 
   if (apiResponse.includes(EXECUTE_MARKER)) {
     const taskDescription = apiResponse.replace(EXECUTE_MARKER, '').trim();
-    return executeViaClaudeCode(agent, sessionId, taskDescription || message, crossContext);
+    return executeViaClaudeCode(agent, sessionId, taskDescription || cleanMessage, crossContext, mode);
   }
 
   // Process AI actions in the response
@@ -265,7 +327,7 @@ export async function sendMessage(
     : cleanContent;
 
   if (proposesTask(finalContent)) {
-    pendingTask.set(sessionId, message);
+    pendingTask.set(sessionId, cleanMessage);
   }
 
   await saveMessage(agent, sessionId, 'assistant', finalContent, 'api');

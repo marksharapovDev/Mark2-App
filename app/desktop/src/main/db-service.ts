@@ -10,6 +10,8 @@ import type {
   DailyNote,
   Sphere,
   AttachedFile,
+  Lesson,
+  LearningPathTopic,
 } from '@mark2/shared';
 
 // --- Retry wrapper for EPIPE/fetch errors ---
@@ -342,5 +344,105 @@ export async function createAttachedFile(input: Record<string, unknown>): Promis
       throw error;
     }
     return mapRow<AttachedFile>(data);
+  });
+}
+
+export async function updateAttachedFile(id: string, input: Record<string, unknown>): Promise<AttachedFile> {
+  const sb = getSupabase();
+  const dbFields = toDbFields(input);
+  const { data, error } = await sb.from('attached_files').update(dbFields).eq('id', id).select().single();
+  if (error) throw error;
+  return mapRow<AttachedFile>(data);
+}
+
+// --- Lessons ---
+
+export async function getLessons(studentId?: string): Promise<Lesson[]> {
+  const sb = getSupabase();
+  let query = sb.from('lessons').select('*').order('date', { ascending: false });
+  if (studentId) {
+    query = query.eq('student_id', studentId);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return mapRows<Lesson>(data);
+}
+
+export async function createLesson(input: Record<string, unknown>): Promise<Lesson> {
+  const sb = getSupabase();
+  const dbFields = toDbFields(input);
+  const { data, error } = await sb.from('lessons').insert(dbFields).select().single();
+  if (error) throw error;
+  return mapRow<Lesson>(data);
+}
+
+export async function updateLesson(id: string, input: Record<string, unknown>): Promise<Lesson> {
+  const sb = getSupabase();
+  const dbFields = toDbFields(input);
+  const { data, error } = await sb.from('lessons').update(dbFields).eq('id', id).select().single();
+  if (error) throw error;
+  return mapRow<Lesson>(data);
+}
+
+export async function deleteLesson(id: string): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from('lessons').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// --- Learning Path Topics ---
+
+export async function getLearningPath(studentId: string): Promise<LearningPathTopic[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb
+      .from('learning_path_topics')
+      .select('*')
+      .eq('student_id', studentId)
+      .order('order_index', { ascending: true });
+    if (error) throw error;
+    return mapRows<LearningPathTopic>(data);
+  });
+}
+
+export async function createLearningPathTopic(input: Record<string, unknown>): Promise<LearningPathTopic> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('learning_path_topics').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<LearningPathTopic>(data);
+  });
+}
+
+export async function updateLearningPathTopic(id: string, input: Record<string, unknown>): Promise<LearningPathTopic> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const fields = toDbFields(input);
+    fields.updated_at = new Date().toISOString();
+    const { data, error } = await sb.from('learning_path_topics').update(fields).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<LearningPathTopic>(data);
+  });
+}
+
+export async function deleteLearningPathTopic(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('learning_path_topics').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+export async function reorderLearningPathTopics(studentId: string, topicIds: string[]): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    for (let i = 0; i < topicIds.length; i++) {
+      const { error } = await sb
+        .from('learning_path_topics')
+        .update({ order_index: i, updated_at: new Date().toISOString() })
+        .eq('id', topicIds[i])
+        .eq('student_id', studentId);
+      if (error) throw error;
+    }
   });
 }

@@ -107,6 +107,20 @@ interface DbAPI {
   files: {
     list: (entityType: string, entityId?: string) => Promise<import('@mark2/shared').AttachedFile[]>;
     create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').AttachedFile>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').AttachedFile>;
+  };
+  lessons: {
+    list: (studentId?: string) => Promise<import('@mark2/shared').Lesson[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').Lesson>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').Lesson>;
+    delete: (id: string) => Promise<void>;
+  };
+  learningPath: {
+    list: (studentId: string) => Promise<import('@mark2/shared').LearningPathTopic[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').LearningPathTopic>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').LearningPathTopic>;
+    delete: (id: string) => Promise<void>;
+    reorder: (studentId: string, topicIds: string[]) => Promise<void>;
   };
 }
 

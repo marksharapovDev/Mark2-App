@@ -7,7 +7,9 @@ export type { TransactionType, TransactionSource, Transaction } from './types/tr
 export type { WorkoutType, Exercise, Workout } from './types/workout.js';
 export type { Recurrence, CalendarEvent } from './types/calendar.js';
 export type { NoteSource, DailyNote } from './types/note.js';
-export type { AttachedFileEntityType, AttachedFileCategory, AttachedFileType, AttachedFile } from './types/attached-file.js';
+export type { AttachedFileEntityType, AttachedFileCategory, AttachedFileType, AttachedFileStatus, AttachedFile } from './types/attached-file.js';
+export type { LessonStatus, Lesson } from './types/lesson.js';
+export type { LearningPathStatus, LearningPathTopic } from './types/learning-path.js';
 export type { AgentName, ChatEngine, ChatRole, ChatSession, ChatMessage } from './types/chat.js';
 
 // Validation schemas

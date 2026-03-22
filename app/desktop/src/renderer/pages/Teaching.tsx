@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
-import type { TaskStatus } from '@mark2/shared';
+import type { TaskStatus, LearningPathTopic, LearningPathStatus } from '@mark2/shared';
 import { CheckCircle2, RefreshCw, Clock, XCircle, FileText, FileType, FileCode, PenLine, ClipboardList, BarChart3, Loader2 } from 'lucide-react';
 
 // --- Types ---
@@ -324,6 +324,20 @@ const TOPIC_ICON: Record<TopicStatus, React.ReactNode> = {
   upcoming: <Clock size={14} strokeWidth={1.5} className="text-yellow-400" />,
 };
 
+const LP_STATUS_ICON: Record<LearningPathStatus, React.ReactNode> = {
+  completed: <CheckCircle2 size={14} strokeWidth={1.5} className="text-emerald-400" />,
+  in_progress: <RefreshCw size={14} strokeWidth={1.5} className="text-blue-400" />,
+  planned: <Clock size={14} strokeWidth={1.5} className="text-neutral-500" />,
+  skipped: <XCircle size={14} strokeWidth={1.5} className="text-yellow-400" />,
+};
+
+const LP_STATUS_COLOR: Record<LearningPathStatus, string> = {
+  completed: 'border-emerald-800/50 bg-emerald-900/20 text-emerald-400',
+  in_progress: 'border-blue-800/50 bg-blue-900/20 text-blue-400',
+  planned: 'border-neutral-800 bg-neutral-900/30 text-neutral-500',
+  skipped: 'border-yellow-800/50 bg-yellow-900/20 text-yellow-400',
+};
+
 const LEVEL_LABEL: Record<StudentLevel, string> = {
   beginner: 'Начальный',
   intermediate: 'Средний',
@@ -492,32 +506,86 @@ export function Teaching() {
   const studentTasks = student ? teachingTasks.filter((t) => t.studentId === student.id) : [];
 
   // DB attached homework files for sidebar
-  const [sidebarHomeworkFiles, setSidebarHomeworkFiles] = useState<Array<{id: string; filename: string; filepath: string; createdAt: string}>>([]);
+  const [sidebarHomeworkFiles, setSidebarHomeworkFiles] = useState<Array<{id: string; filename: string; filepath: string; status: string; createdAt: string}>>([]);
+
+  const loadHomeworkFiles = useCallback((studentId: string) => {
+    window.db.files.list('student', studentId).then((files) => {
+      const hwFiles = files
+        .filter((f) => f.category === 'homework')
+        .map((f) => ({ id: f.id, filename: f.filename, filepath: f.filepath, status: (f as Record<string, unknown>).status as string ?? 'pending', createdAt: f.createdAt ? String(f.createdAt) : '' }));
+      setSidebarHomeworkFiles(hwFiles);
+    }).catch((err) => console.error('[Teaching] Failed to load sidebar files:', err));
+  }, []);
 
   useEffect(() => {
     if (!student) { setSidebarHomeworkFiles([]); return; }
-    console.log('[Teaching] Loading homework files for sidebar, student:', student.id);
-    window.db.files.list('student', student.id).then((files) => {
-      const hwFiles = files
-        .filter((f) => f.category === 'homework')
-        .map((f) => ({ id: f.id, filename: f.filename, filepath: f.filepath, createdAt: f.createdAt ? String(f.createdAt) : '' }));
-      console.log('[Teaching] Sidebar homework files:', hwFiles);
-      setSidebarHomeworkFiles(hwFiles);
-    }).catch((err) => console.error('[Teaching] Failed to load sidebar files:', err));
-  }, [student?.id]);
+    loadHomeworkFiles(student.id);
+  }, [student?.id, loadHomeworkFiles]);
 
   useEffect(() => {
     return window.dataEvents.onDataChanged((entities) => {
       if (entities.includes('files') && student) {
-        window.db.files.list('student', student.id).then((files) => {
-          setSidebarHomeworkFiles(
-            files.filter((f) => f.category === 'homework')
-              .map((f) => ({ id: f.id, filename: f.filename, filepath: f.filepath, createdAt: f.createdAt ? String(f.createdAt) : '' })),
-          );
-        }).catch(() => {});
+        loadHomeworkFiles(student.id);
       }
     });
-  }, [student?.id]);
+  }, [student?.id, loadHomeworkFiles]);
+
+  // DB lessons for current student
+  const [dbLessons, setDbLessons] = useState<Array<{id: string; studentId: string; date: string; topic: string; status: string; notes: string; homeworkGiven: string | null}>>([]);
+
+  const loadLessons = useCallback((studentId: string) => {
+    window.db.lessons.list(studentId).then((rows) => {
+      setDbLessons(rows.map((r) => ({
+        id: r.id,
+        studentId: r.studentId ?? studentId,
+        date: typeof r.date === 'string' ? r.date : String(r.date),
+        topic: r.topic ?? '',
+        status: r.status ?? 'planned',
+        notes: r.notes ?? '',
+        homeworkGiven: r.homeworkGiven ?? null,
+      })));
+    }).catch((err) => console.error('[Teaching] Failed to load lessons:', err));
+  }, []);
+
+  useEffect(() => {
+    if (!student) { setDbLessons([]); return; }
+    loadLessons(student.id);
+  }, [student?.id, loadLessons]);
+
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('lessons') && student) {
+        loadLessons(student.id);
+      }
+    });
+  }, [student?.id, loadLessons]);
+
+  // DB learning path topics for current student
+  const [dbLearningPath, setDbLearningPath] = useState<LearningPathTopic[]>([]);
+
+  const loadLearningPath = useCallback((studentId: string) => {
+    window.db.learningPath.list(studentId).then((rows) => {
+      setDbLearningPath(rows);
+    }).catch((err) => console.error('[Teaching] Failed to load learning path:', err));
+  }, []);
+
+  useEffect(() => {
+    if (!student) { setDbLearningPath([]); return; }
+    loadLearningPath(student.id);
+  }, [student?.id, loadLearningPath]);
+
+  useEffect(() => {
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.includes('learning-path') && student) {
+        loadLearningPath(student.id);
+      }
+    });
+  }, [student?.id, loadLearningPath]);
+
+  // Computed real stats
+  const realLessonCount = dbLessons.length;
+  const realHwDone = sidebarHomeworkFiles.filter((f) => f.status === 'completed').length;
+  const realHwPending = sidebarHomeworkFiles.filter((f) => f.status === 'pending').length;
 
   // All-students data for General tab
   const allUpcomingLessons = MOCK_LESSONS
@@ -778,7 +846,17 @@ export function Teaching() {
                         Путь обучения
                       </div>
                       <div className="space-y-1">
-                        {topics.map((topic) => (
+                        {dbLearningPath.length > 0 ? dbLearningPath.map((topic) => (
+                          <div
+                            key={topic.id}
+                            className={`flex items-center gap-1.5 text-xs ${
+                              topic.status === 'in_progress' ? 'text-neutral-200' : 'text-neutral-400'
+                            }`}
+                          >
+                            <span className="text-[11px] shrink-0">{LP_STATUS_ICON[topic.status]}</span>
+                            <span className="truncate">{topic.title}</span>
+                          </div>
+                        )) : topics.map((topic) => (
                           <div
                             key={topic.id}
                             className={`flex items-center gap-1.5 text-xs ${
@@ -983,7 +1061,11 @@ export function Teaching() {
               lessons={lessons}
               homeworks={homeworks}
               topics={topics}
+              dbLearningPath={dbLearningPath}
               tasks={studentTasks}
+              realLessonCount={realLessonCount}
+              realHwDone={realHwDone}
+              realHwPending={realHwPending}
               onLessonClick={(id) => setMainView({ kind: 'lesson-detail', lessonId: id })}
               onHomeworkClick={(id) => setMainView({ kind: 'homework-detail', homeworkId: id })}
               onTaskClick={(id) => setMainView({ kind: 'task-detail', taskId: id })}
@@ -1065,7 +1147,11 @@ function StudentOverview({
   lessons,
   homeworks,
   topics,
+  dbLearningPath,
   tasks,
+  realLessonCount,
+  realHwDone,
+  realHwPending,
   onLessonClick,
   onHomeworkClick,
   onTaskClick,
@@ -1075,7 +1161,11 @@ function StudentOverview({
   lessons: MockLesson[];
   homeworks: MockHomework[];
   topics: MockTopic[];
+  dbLearningPath: LearningPathTopic[];
   tasks: TeachingTask[];
+  realLessonCount: number;
+  realHwDone: number;
+  realHwPending: number;
   onLessonClick: (id: string) => void;
   onHomeworkClick: (id: string) => void;
   onTaskClick: (id: string) => void;
@@ -1153,9 +1243,9 @@ function StudentOverview({
 
       {/* Stats */}
       <div className="flex gap-3 mb-6">
-        <StatBadge label="Уроков" count={student.totalLessons} color="text-blue-400 bg-blue-400/10" />
-        <StatBadge label="ДЗ выполнено" count={stats.done ?? 0} color="text-emerald-400 bg-emerald-400/10" />
-        <StatBadge label="ДЗ предстоит" count={stats.upcoming ?? 0} color="text-yellow-400 bg-yellow-400/10" />
+        <StatBadge label="Уроков" count={realLessonCount} color="text-blue-400 bg-blue-400/10" />
+        <StatBadge label="ДЗ выполнено" count={realHwDone} color="text-emerald-400 bg-emerald-400/10" />
+        <StatBadge label="ДЗ предстоит" count={realHwPending} color="text-yellow-400 bg-yellow-400/10" />
         {(stats.overdue ?? 0) > 0 && (
           <StatBadge label="Просрочено" count={stats.overdue ?? 0} color="text-red-400 bg-red-400/10" />
         )}
@@ -1304,22 +1394,47 @@ function StudentOverview({
       {/* Learning path */}
       <div>
         <h2 className="text-sm font-semibold text-neutral-300 mb-3">Путь обучения</h2>
-        <div className="flex flex-wrap gap-2">
-          {topics.map((topic) => (
-            <span
-              key={topic.id}
-              className={`text-xs px-2.5 py-1 rounded-full border ${
-                topic.status === 'done'
-                  ? 'border-emerald-800/50 bg-emerald-900/20 text-emerald-400'
-                  : topic.status === 'current'
-                    ? 'border-blue-800/50 bg-blue-900/20 text-blue-400'
-                    : 'border-neutral-800 bg-neutral-900/30 text-neutral-500'
-              }`}
-            >
-              {TOPIC_ICON[topic.status]} {topic.title}
-            </span>
-          ))}
-        </div>
+        {dbLearningPath.length > 0 ? (
+          <div className="space-y-2">
+            {dbLearningPath.map((topic, idx) => (
+              <div
+                key={topic.id}
+                className={`flex items-start gap-3 px-4 py-2.5 rounded-lg border ${LP_STATUS_COLOR[topic.status]}`}
+              >
+                <span className="shrink-0 mt-0.5">{LP_STATUS_ICON[topic.status]}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-neutral-600 font-mono">{idx + 1}</span>
+                    <span className="text-sm font-medium">{topic.title}</span>
+                  </div>
+                  {topic.description && (
+                    <p className="text-xs text-neutral-500 mt-0.5">{topic.description}</p>
+                  )}
+                  {topic.notes && (
+                    <p className="text-[11px] text-neutral-600 mt-1 italic">{topic.notes}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {topics.map((topic) => (
+              <span
+                key={topic.id}
+                className={`text-xs px-2.5 py-1 rounded-full border ${
+                  topic.status === 'done'
+                    ? 'border-emerald-800/50 bg-emerald-900/20 text-emerald-400'
+                    : topic.status === 'current'
+                      ? 'border-blue-800/50 bg-blue-900/20 text-blue-400'
+                      : 'border-neutral-800 bg-neutral-900/30 text-neutral-500'
+                }`}
+              >
+                {TOPIC_ICON[topic.status]} {topic.title}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

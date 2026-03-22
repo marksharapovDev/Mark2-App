@@ -389,15 +389,19 @@ export async function sendToApi(
   sessionId: string,
   message: string,
   crossContext?: string,
+  modePrompt?: string,
 ): Promise<string> {
   const model = process.env.CHAT_MODEL ?? 'anthropic/claude-haiku-4.5';
   const openai = getOpenAIClient();
   const systemPrompt = loadAgentSystemPrompt(agent);
 
-  // Build system prompt: agent CLAUDE.md + cross-context
-  const fullSystemPrompt = crossContext
+  // Build system prompt: agent CLAUDE.md + cross-context + interaction mode
+  let fullSystemPrompt = crossContext
     ? `${systemPrompt}\n\n${crossContext}`
     : systemPrompt;
+  if (modePrompt) {
+    fullSystemPrompt += `\n\n${modePrompt}`;
+  }
 
   const history = await getSessionMessages(sessionId, 20);
   const historyMessages: OpenAI.ChatCompletionMessageParam[] = history.map((row) => ({

@@ -2,6 +2,8 @@ export type AttachedFileEntityType = 'student' | 'lesson' | 'homework' | 'subjec
 export type AttachedFileCategory = 'homework' | 'lesson_plan' | 'material' | 'notes' | 'test' | 'solution';
 export type AttachedFileType = 'docx' | 'pdf' | 'md' | 'py' | 'txt' | 'xlsx' | 'pptx';
 
+export type AttachedFileStatus = 'pending' | 'completed';
+
 export interface AttachedFile {
   id: string;
   entityType: AttachedFileEntityType;
@@ -10,5 +12,6 @@ export interface AttachedFile {
   filepath: string;
   fileType: AttachedFileType;
   category: AttachedFileCategory;
+  status: AttachedFileStatus;
   createdAt: Date;
 }

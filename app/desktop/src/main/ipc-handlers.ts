@@ -230,6 +230,48 @@ export function registerIpcHandlers(): void {
     return db.createAttachedFile(data);
   });
 
+  ipcMain.handle('db:files:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateAttachedFile(id, data);
+  });
+
+  // Lessons
+  ipcMain.handle('db:lessons:list', async (_event, studentId?: string) => {
+    return db.getLessons(studentId);
+  });
+
+  ipcMain.handle('db:lessons:create', async (_event, data: Record<string, unknown>) => {
+    return db.createLesson(data);
+  });
+
+  ipcMain.handle('db:lessons:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateLesson(id, data);
+  });
+
+  ipcMain.handle('db:lessons:delete', async (_event, id: string) => {
+    return db.deleteLesson(id);
+  });
+
+  // Learning Path
+  ipcMain.handle('db:learning-path:list', async (_event, studentId: string) => {
+    return db.getLearningPath(studentId);
+  });
+
+  ipcMain.handle('db:learning-path:create', async (_event, data: Record<string, unknown>) => {
+    return db.createLearningPathTopic(data);
+  });
+
+  ipcMain.handle('db:learning-path:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateLearningPathTopic(id, data);
+  });
+
+  ipcMain.handle('db:learning-path:delete', async (_event, id: string) => {
+    return db.deleteLearningPathTopic(id);
+  });
+
+  ipcMain.handle('db:learning-path:reorder', async (_event, studentId: string, topicIds: string[]) => {
+    return db.reorderLearningPathTopics(studentId, topicIds);
+  });
+
   // === File operations ===
 
   ipcMain.handle('file:open', async (_event, filePath: string) => {

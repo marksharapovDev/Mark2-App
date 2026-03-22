@@ -351,6 +351,68 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     return { success: true, message: `Файл сохранён: ${basename(fullPath)}`, entity: 'files', data: { path: fullPath } };
   },
 
+  // Learning Path
+  create_learning_path: async (params) => {
+    let studentId = params.studentId ? String(params.studentId) : '';
+
+    // Auto-resolve by name if no valid UUID
+    if (!studentId || !isValidUuid(studentId)) {
+      const studentName = String(params.studentName ?? '');
+      if (studentName) {
+        const found = await db.findStudentByName(studentName);
+        if (found) {
+          studentId = found.id;
+          console.log('[AI Tools] Resolved student for learning path:', found.name, found.id);
+        } else {
+          return { success: false, message: `Ученик "${studentName}" не найден`, entity: '' };
+        }
+      } else {
+        return { success: false, message: 'Нужен studentId или studentName', entity: '' };
+      }
+    }
+
+    const topics = params.topics as Array<{ title: string; description?: string }> | undefined;
+    if (!topics || !Array.isArray(topics) || topics.length === 0) {
+      return { success: false, message: 'topics[] обязателен', entity: '' };
+    }
+
+    const created: unknown[] = [];
+    for (let i = 0; i < topics.length; i++) {
+      const t = topics[i]!;
+      const result = await db.createLearningPathTopic({
+        studentId,
+        title: t.title,
+        description: t.description ?? null,
+        orderIndex: i,
+        status: 'planned',
+      });
+      created.push(result);
+    }
+
+    return {
+      success: true,
+      message: `Создан путь обучения: ${topics.length} тем`,
+      entity: 'learning-path',
+      data: { count: topics.length, studentId },
+    };
+  },
+
+  update_learning_path_topic: async (params) => {
+    const topicId = String(params.topicId ?? '');
+    if (!topicId) return { success: false, message: 'topicId обязателен', entity: '' };
+    const { topicId: _id, ...data } = params;
+    await db.updateLearningPathTopic(topicId, data);
+    return { success: true, message: 'Тема обновлена', entity: 'learning-path' };
+  },
+
+  reorder_learning_path: async (params) => {
+    const studentId = String(params.studentId ?? '');
+    const topicIds = params.topicIds as string[] | undefined;
+    if (!studentId || !topicIds) return { success: false, message: 'studentId и topicIds обязательны', entity: '' };
+    await db.reorderLearningPathTopics(studentId, topicIds);
+    return { success: true, message: 'Порядок тем обновлён', entity: 'learning-path' };
+  },
+
   attach_file: async (params) => {
     console.log('[AI Tools] attach_file params:', JSON.stringify(params));
     // Auto-resolve student ID from filename if missing

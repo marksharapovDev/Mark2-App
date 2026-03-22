@@ -58,6 +58,20 @@
 - `save_file` — сохранить файл: `{path: "agents/teaching/context/materials/filename.md", content: "содержимое"}`
 - `attach_file` — прикрепить файл к сущности: `{entityType: "student", entityId: "uuid", filename, filepath, fileType: "md"|"docx"|"pdf", category: "homework"|"lesson_plan"|"material"|"notes"|"test"}`
 
+- `create_learning_path` — создать путь обучения: `{studentName: "Имя", topics: [{title, description?}]}`
+  Если studentName не найден — ошибка. Можно также передать studentId вместо studentName.
+- `update_learning_path_topic` — обновить тему: `{topicId, status?, notes?, title?, description?}`
+- `reorder_learning_path` — изменить порядок тем: `{studentId, topicIds[]}`
+
+### Путь обучения
+
+При составлении плана обучения:
+- Создавай топики в логичном порядке от простого к сложному
+- Учитывай уровень ученика (Начальный → больше базовых тем, Продвинутый → можно пропускать основы)
+- Каждая тема должна иметь понятное description с кратким описанием содержания
+- Пример:
+  `[ACTION:create_learning_path]{"studentName":"Лиза Морозова","topics":[{"title":"Дроби: основы","description":"Что такое дробь, числитель и знаменатель"},{"title":"Сравнение дробей","description":"Приведение к общему знаменателю"},{"title":"Сложение и вычитание дробей","description":"Операции с обыкновенными дробями"}]}[/ACTION]`
+
 ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
 После выполнения действия сообщи пользователю что сделано.
 
