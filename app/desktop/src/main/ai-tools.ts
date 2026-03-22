@@ -110,10 +110,10 @@ async function tryResolveStudentFromFilename(filename: string): Promise<{ id: st
 // --- Topic matching helper ---
 
 /** Match a lesson topic string to a learning path topic using multi-strategy matching */
-function findMatchingLpTopic(
+function findMatchingLpTopic<T extends { id: string; title: string }>(
   lessonTopic: string,
-  lpTopics: Array<{ id: string; title: string }>,
-): { id: string; title: string } | undefined {
+  lpTopics: T[],
+): T | undefined {
   const lessonLower = lessonTopic.toLowerCase();
 
   // 1. Exact match
@@ -131,7 +131,7 @@ function findMatchingLpTopic(
   const lessonWords = lessonLower.split(/[\s,.:;—–\-/]+/).filter((w) => w.length > 2);
   if (lessonWords.length === 0) return undefined;
 
-  let bestMatch: { id: string; title: string } | undefined;
+  let bestMatch: T | undefined;
   let bestScore = 0;
 
   for (const t of lpTopics) {
