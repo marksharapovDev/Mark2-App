@@ -30,13 +30,19 @@ export interface ChatMessageRow {
 const HOME = os.homedir();
 const AGENTS_DIR = path.join(HOME, 'mark2', 'agents');
 
+const HAIKU_BOUNDARY_INSTRUCTION =
+  '\n\nВАЖНО: Ты НЕ выполняешь действия. Если пользователь просит создать, изменить, удалить что-то — ' +
+  'скажи что передаёшь задачу основному агенту. Никогда не генерируй [ACTION:...] теги или function_calls.';
+
 function loadAgentSystemPrompt(agent: AgentName): string {
   const claudeMdPath = path.join(AGENTS_DIR, agent, 'CLAUDE.md');
+  let prompt: string;
   try {
-    return fs.readFileSync(claudeMdPath, 'utf-8');
+    prompt = fs.readFileSync(claudeMdPath, 'utf-8');
   } catch {
-    return `You are the ${agent} agent for Mark2. Respond in Russian.`;
+    prompt = `You are the ${agent} agent for Mark2. Respond in Russian.`;
   }
+  return prompt + HAIKU_BOUNDARY_INSTRUCTION;
 }
 
 function getOpenAIClient(): OpenAI {

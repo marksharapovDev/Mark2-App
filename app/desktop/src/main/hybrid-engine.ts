@@ -283,6 +283,13 @@ export async function sendMessage(
   }
   pendingTask.delete(sessionId);
 
+  // Explicit mode (execute/consult) → always Claude Code
+  // Claude Code is smart enough to ask questions in consult mode and execute in execute mode
+  if (mode !== 'auto') {
+    console.log(`[HybridEngine] Explicit mode "${mode}", routing to Claude Code`);
+    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode);
+  }
+
   // Data action → straight to Claude Code (no Level 2 classification)
   if (isDataAction(cleanMessage)) {
     console.log('[HybridEngine] Data action detected, routing to Claude Code');
