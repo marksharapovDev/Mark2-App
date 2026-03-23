@@ -25,8 +25,8 @@ function isValidUuid(s: string): boolean {
 
 const LAT_TO_CYR: Record<string, string> = {
   'shch': 'щ', 'sch': 'щ',
-  'yo': 'ё', 'zh': 'ж', 'ch': 'ч', 'sh': 'ш',
-  'yu': 'ю', 'ya': 'я', 'ts': 'ц', 'iy': 'ий', 'ey': 'ей',
+  'yo': 'ё', 'zh': 'ж', 'ch': 'ч', 'sh': 'ш', 'kh': 'х',
+  'yu': 'ю', 'ya': 'я', 'ts': 'ц', 'ey': 'ей',
   'a': 'а', 'b': 'б', 'v': 'в', 'g': 'г', 'd': 'д',
   'e': 'е', 'z': 'з', 'i': 'и', 'y': 'ы',
   'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н', 'o': 'о',
@@ -105,6 +105,48 @@ async function tryResolveStudentFromFilename(filename: string): Promise<{ id: st
   }
 
   return null;
+}
+
+/**
+ * Extract the topic portion from a homework filename.
+ * "dz_liza_morozova_drobi_osnovnye_ponyatiya.docx" + studentName="Лиза Морозова" → "дроби основные понятия"
+ *
+ * Strategy:
+ * 1. Strip extension and known prefixes (dz_, homework_, etc.)
+ * 2. If student name is known, strip matching parts from the beginning
+ * 3. Transliterate remaining parts to Cyrillic
+ */
+function extractTopicFromHomeworkFilename(filename: string, studentName?: string): string {
+  // Strip extension
+  let base = filename.replace(/\.[^.]+$/, '').toLowerCase();
+  // Strip common prefixes
+  base = base.replace(/^(dz|homework|plan|material|test|lesson|notes|solution)_/i, '');
+
+  const parts = base.split(/[_\-]+/).filter((p) => p.length >= 2);
+  if (parts.length === 0) return transliterate(base);
+
+  let topicStartIdx = 0;
+
+  if (studentName) {
+    // Use known student name to determine how many leading parts to skip
+    const nameWords = studentName.toLowerCase().split(/\s+/);
+    // Check if first N parts match student name (transliterated)
+    for (let n = Math.min(nameWords.length, parts.length); n >= 1; n--) {
+      const candidateParts = parts.slice(0, n);
+      const candidateCyr = candidateParts.map((p) => transliterate(p));
+      const allMatch = candidateCyr.every((cp) =>
+        nameWords.some((nw) => nw.includes(cp) || cp.includes(nw))
+      );
+      if (allMatch && parts.length > n) {
+        topicStartIdx = n;
+        break;
+      }
+    }
+  }
+
+  const topicParts = parts.slice(topicStartIdx);
+  if (topicParts.length === 0) return parts.map((p) => transliterate(p)).join(' ');
+  return topicParts.map((p) => transliterate(p)).join(' ');
 }
 
 // --- Topic matching helper ---
@@ -640,6 +682,7 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     console.log('[AI Tools] attach_file params:', JSON.stringify(params));
     // Auto-resolve student ID from filename if missing
     let studentId = '';
+    let studentName = '';
     if (params.entityType === 'student' && (!params.entityId || !isValidUuid(String(params.entityId)))) {
       const filename = String(params.filename ?? '');
       const resolved = await tryResolveStudentFromFilename(filename);
@@ -647,11 +690,18 @@ const AI_TOOLS: Record<string, ActionHandler> = {
         console.log('[AI Tools] Auto-resolved student:', resolved.name, resolved.id);
         params.entityId = resolved.id;
         studentId = resolved.id;
+        studentName = resolved.name;
       } else {
         console.warn('[AI Tools] Could not auto-resolve student from filename:', filename);
       }
     } else if (params.entityType === 'student' && params.entityId) {
       studentId = String(params.entityId);
+      // Look up student name for filename parsing
+      try {
+        const students = await db.getStudents();
+        const found = students.find((s) => s.id === studentId);
+        if (found) studentName = found.name;
+      } catch { /* ignore */ }
     }
 
     // For homework files, try to match topic_id from learning path
@@ -659,10 +709,14 @@ const AI_TOOLS: Record<string, ActionHandler> = {
       try {
         const lpTopics = await db.getLearningPath(studentId);
         const filename = String(params.filename ?? '').toLowerCase();
-        const match = findMatchingLpTopic(filename, lpTopics);
+        const topicFromFilename = extractTopicFromHomeworkFilename(filename, studentName);
+        console.log(`[AI Tools] attach_file extracted topic from filename: "${topicFromFilename}" (original: "${filename}", student: "${studentName}")`);
+        const match = findMatchingLpTopic(topicFromFilename, lpTopics);
         if (match) {
           params.topicId = match.id;
-          console.log(`[AI Tools] Matched homework to learning path topic "${match.title}" (id: ${match.id})`);
+          console.log(`[AI Tools] attach_file matched topic: "${match.title}" (id: ${match.id})`);
+        } else {
+          console.log(`[AI Tools] attach_file no matching topic for filename: ${filename}`);
         }
       } catch { /* ignore */ }
     }

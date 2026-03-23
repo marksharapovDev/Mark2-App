@@ -330,16 +330,15 @@ export async function getAttachedFiles(entityType: string, entityId?: string): P
 
 export async function getHomeworkFiles(topicId?: string | null, studentId?: string | null): Promise<AttachedFile[]> {
   const sb = getSupabase();
-  // 1. Try by topic_id first
   if (topicId) {
+    // Strict: only return files for this specific topic
     const { data, error } = await sb.from('attached_files').select('*')
       .eq('category', 'homework').eq('topic_id', topicId)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    if (data && data.length > 0) return mapRows<AttachedFile>(data);
-    // Fallback: if nothing found by topic_id, try by student_id
+    return mapRows<AttachedFile>(data);
   }
-  // 2. Fallback to student_id (catches files without topic_id set)
+  // No topic_id provided — return all homework files for this student
   if (studentId) {
     const { data, error } = await sb.from('attached_files').select('*')
       .eq('category', 'homework').eq('entity_type', 'student').eq('entity_id', studentId)

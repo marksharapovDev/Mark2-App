@@ -1618,11 +1618,16 @@ function HomeworkFilesInline({
 
   useEffect(() => {
     if (!lesson.homeworkGiven) return;
-    window.db.files.homework(lesson.topicId ?? null, lesson.studentId).then((files) => {
+    if (!lesson.topicId) {
+      // No topic_id — can't reliably match homework files
+      setLoaded(true);
+      return;
+    }
+    window.db.files.homework(lesson.topicId, null).then((files) => {
       setHwFiles(files);
       setLoaded(true);
     }).catch(() => setLoaded(true));
-  }, [lesson.homeworkGiven, lesson.topicId, lesson.studentId]);
+  }, [lesson.homeworkGiven, lesson.topicId]);
 
   if (!lesson.homeworkGiven) return null;
 
@@ -2088,28 +2093,14 @@ function LearningPathTopicView({
   const [relatedHomework, setRelatedHomework] = useState<Array<{ id: string; filename: string; filepath: string; status: string; topicId: string | null; createdAt: string }>>([]);
   useEffect(() => {
     if (!topic) return;
-    window.db.files.homework(topic.id, studentId).then((files) => {
-      // Also include sidebar files matched by keyword (for files without topic_id that didn't match in DB)
-      const dbIds = new Set(files.map((f) => f.id));
-      const keywordMatches = sidebarHomeworkFiles.filter((f) => {
-        if (dbIds.has(f.id)) return false;
-        const fn = f.filename.toLowerCase();
-        return titleWords.some((w) => fn.includes(w));
-      });
-      const merged = [
-        ...files.map((f) => ({ id: f.id, filename: f.filename, filepath: f.filepath, status: (f as Record<string, unknown>).status as string ?? 'pending', topicId: f.topicId ?? null, createdAt: f.createdAt ? String(f.createdAt) : '' })),
-        ...keywordMatches,
-      ];
-      setRelatedHomework(merged);
+    window.db.files.homework(topic.id, null).then((files) => {
+      const mapped = files.map((f) => ({ id: f.id, filename: f.filename, filepath: f.filepath, status: (f as Record<string, unknown>).status as string ?? 'pending', topicId: f.topicId ?? null, createdAt: f.createdAt ? String(f.createdAt) : '' }));
+      setRelatedHomework(mapped);
     }).catch(() => {
-      // Fallback to keyword matching only
-      setRelatedHomework(sidebarHomeworkFiles.filter((f) => {
-        if (f.topicId === topic.id) return true;
-        const fn = f.filename.toLowerCase();
-        return titleWords.some((w) => fn.includes(w));
-      }));
+      // Fallback to sidebar files filtered by topic_id
+      setRelatedHomework(sidebarHomeworkFiles.filter((f) => f.topicId === topic.id));
     });
-  }, [topic?.id, studentId]);
+  }, [topic?.id]);
 
   return (
     <div className="max-w-2xl">
