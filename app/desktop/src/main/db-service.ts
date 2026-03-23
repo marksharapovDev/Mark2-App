@@ -328,6 +328,21 @@ export async function getAttachedFiles(entityType: string, entityId?: string): P
   return mapRows<AttachedFile>(data);
 }
 
+export async function getHomeworkFiles(topicId?: string | null, studentId?: string | null): Promise<AttachedFile[]> {
+  const sb = getSupabase();
+  let query = sb.from('attached_files').select('*').eq('category', 'homework').order('created_at', { ascending: false });
+  if (topicId) {
+    query = query.eq('topic_id', topicId);
+  } else if (studentId) {
+    query = query.eq('entity_type', 'student').eq('entity_id', studentId);
+  } else {
+    return [];
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return mapRows<AttachedFile>(data);
+}
+
 export async function createAttachedFile(input: Record<string, unknown>): Promise<AttachedFile> {
   return withRetry(async () => {
     const sb = getSupabase();

@@ -237,6 +237,10 @@ export function registerIpcHandlers(): void {
     return db.getAttachedFiles(entityType, entityId);
   });
 
+  ipcMain.handle('db:files:homework', async (_event, topicId?: string | null, studentId?: string | null) => {
+    return db.getHomeworkFiles(topicId, studentId);
+  });
+
   ipcMain.handle('db:files:create', async (_event, data: Record<string, unknown>) => {
     return db.createAttachedFile(data);
   });

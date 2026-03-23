@@ -883,24 +883,29 @@ export function Teaching() {
 
                     <div className="mx-3 border-t border-neutral-800" />
 
-                    {/* Lesson history */}
+                    {/* Lesson history — from DB */}
                     <div className="px-3 pt-3 pb-2">
-                      <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                      <button
+                        onClick={() => setMainView({ kind: 'lessons-history' })}
+                        className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 hover:text-neutral-300 transition-colors"
+                      >
                         История уроков
-                      </div>
+                      </button>
                       <div className="space-y-0.5">
-                        {lessons.map((lesson) => (
+                        {dbLessons.length > 0 ? dbLessons.slice(0, 10).map((lesson) => (
                           <button
                             key={lesson.id}
-                            onClick={() => setMainView({ kind: 'lesson-detail', lessonId: lesson.id })}
+                            onClick={() => setMainView({ kind: 'lessons-history' })}
                             className="w-full text-left text-xs py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
                           >
                             <span className="text-neutral-600 mr-1.5 text-[10px]">{lesson.date.slice(5)}</span>
-                            <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors">
+                            <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors truncate">
                               {lesson.topic}
                             </span>
                           </button>
-                        ))}
+                        )) : (
+                          <div className="text-[11px] text-neutral-600">Пока пусто</div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1600,6 +1605,75 @@ function AllHomeworksView({
   );
 }
 
+function HomeworkFilesInline({
+  lesson,
+  variant = 'default',
+}: {
+  lesson: { homeworkGiven: string | null; topicId?: string | null; studentId: string };
+  variant?: 'default' | 'compact';
+}) {
+  const [hwFiles, setHwFiles] = useState<Array<{ id: string; filename: string; filepath: string }>>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!lesson.homeworkGiven) return;
+    window.db.files.homework(lesson.topicId ?? null, lesson.studentId).then((files) => {
+      setHwFiles(files);
+      setLoaded(true);
+    }).catch(() => setLoaded(true));
+  }, [lesson.homeworkGiven, lesson.topicId, lesson.studentId]);
+
+  if (!lesson.homeworkGiven) return null;
+
+  if (variant === 'compact') {
+    return (
+      <div>
+        <div className="text-[10px] text-neutral-600 uppercase mb-0.5">Заданное ДЗ</div>
+        {loaded && hwFiles.length > 0 ? (
+          <div className="space-y-0.5">
+            {hwFiles.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => window.electronAPI.openFile(f.filepath)}
+                className="block text-xs text-blue-400 hover:text-blue-300 transition-colors truncate"
+              >
+                {f.filename}
+              </button>
+            ))}
+          </div>
+        ) : loaded ? (
+          <p className="text-xs text-neutral-400">ДЗ задано (файл не прикреплён)</p>
+        ) : (
+          <p className="text-xs text-neutral-600">Загрузка...</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 mb-6 shadow-sm shadow-black/10">
+      <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Заданное ДЗ</h2>
+      {loaded && hwFiles.length > 0 ? (
+        <div className="space-y-1">
+          {hwFiles.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => window.electronAPI.openFile(f.filepath)}
+              className="block text-sm text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              {f.filename}
+            </button>
+          ))}
+        </div>
+      ) : loaded ? (
+        <p className="text-neutral-300 text-sm">ДЗ задано (файл не прикреплён)</p>
+      ) : (
+        <p className="text-neutral-500 text-sm">Загрузка...</p>
+      )}
+    </div>
+  );
+}
+
 function LessonDetailView({
   lesson,
   homeworks,
@@ -1647,12 +1721,7 @@ function LessonDetailView({
         </div>
       )}
 
-      {lesson.homeworkGiven && (
-        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 mb-6 shadow-sm shadow-black/10">
-          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Заданное ДЗ</h2>
-          <p className="text-neutral-300 text-sm">{lesson.homeworkGiven}</p>
-        </div>
-      )}
+      <HomeworkFilesInline lesson={lesson} />
 
       {/* Files from lesson */}
       {lesson.files && lesson.files.length > 0 && (
@@ -1960,6 +2029,7 @@ function LearningPathTopicView({
   const [descDraft, setDescDraft] = useState('');
   const [notesDraft, setNotesDraft] = useState('');
   const [statusValue, setStatusValue] = useState<LearningPathStatus>('planned');
+  const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
 
   useEffect(() => {
     if (topic) {
@@ -2093,20 +2163,44 @@ function LearningPathTopicView({
         <div className="mb-6">
           <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Уроки по этой теме</h2>
           <div className="space-y-1.5">
-            {relatedLessons.map((lesson) => (
-              <div
-                key={lesson.id}
-                className="flex items-center gap-3 bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-2.5"
-              >
-                <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
-                  lesson.status === 'completed' ? 'bg-emerald-900/40 text-emerald-300' : 'bg-blue-900/40 text-blue-300'
-                }`}>
-                  {lesson.status === 'completed' ? 'Проведён' : 'Запланирован'}
-                </span>
-                <span className="text-neutral-500 text-xs shrink-0">{formatDate(lesson.date)}</span>
-                <span className="text-sm text-neutral-300 truncate">{lesson.topic}</span>
-              </div>
-            ))}
+            {relatedLessons.map((lesson) => {
+              const expanded = expandedLessonId === lesson.id;
+              return (
+                <button
+                  key={lesson.id}
+                  onClick={() => setExpandedLessonId(expanded ? null : lesson.id)}
+                  className="w-full text-left bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-2.5 hover:bg-neutral-800/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
+                      lesson.status === 'completed' ? 'bg-emerald-900/40 text-emerald-300' : 'bg-blue-900/40 text-blue-300'
+                    }`}>
+                      {lesson.status === 'completed' ? 'Проведён' : 'Запланирован'}
+                    </span>
+                    <span className="text-neutral-500 text-xs shrink-0">{formatDate(lesson.date)}</span>
+                    <span className="text-sm text-neutral-300 truncate flex-1">{lesson.topic}</span>
+                    <span className="text-neutral-600 text-xs shrink-0">{expanded ? '▲' : '▼'}</span>
+                  </div>
+                  {expanded && (
+                    <div className="mt-3 pt-3 border-t border-neutral-800 space-y-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="text-[10px] text-neutral-600">
+                        Дата: {lesson.date}
+                      </div>
+                      {lesson.notes && (
+                        <div>
+                          <div className="text-[10px] text-neutral-600 uppercase mb-0.5">Заметки</div>
+                          <p className="text-xs text-neutral-400 leading-relaxed">{lesson.notes}</p>
+                        </div>
+                      )}
+                      <HomeworkFilesInline lesson={lesson} variant="compact" />
+                      {!lesson.notes && !lesson.homeworkGiven && (
+                        <p className="text-xs text-neutral-600">Нет дополнительной информации</p>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -2203,12 +2297,7 @@ function LessonsHistoryView({
                       <p className="text-xs text-neutral-400 leading-relaxed">{lesson.notes}</p>
                     </div>
                   )}
-                  {lesson.homeworkGiven && (
-                    <div>
-                      <div className="text-[10px] text-neutral-600 uppercase mb-0.5">Заданное ДЗ</div>
-                      <p className="text-xs text-neutral-400">{lesson.homeworkGiven}</p>
-                    </div>
-                  )}
+                  <HomeworkFilesInline lesson={lesson} variant="compact" />
                   {!lesson.notes && !lesson.homeworkGiven && (
                     <p className="text-xs text-neutral-600">Нет дополнительной информации</p>
                   )}

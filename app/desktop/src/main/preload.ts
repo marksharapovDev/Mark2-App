@@ -236,6 +236,8 @@ const dbApi = {
   files: {
     list: (entityType: string, entityId?: string) =>
       ipcRenderer.invoke('db:files:list', entityType, entityId),
+    homework: (topicId?: string | null, studentId?: string | null) =>
+      ipcRenderer.invoke('db:files:homework', topicId, studentId),
     create: (data: Record<string, unknown>) =>
       ipcRenderer.invoke('db:files:create', data),
     update: (id: string, data: Record<string, unknown>) =>

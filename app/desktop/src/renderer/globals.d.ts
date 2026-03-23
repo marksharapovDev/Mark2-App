@@ -108,6 +108,7 @@ interface DbAPI {
   };
   files: {
     list: (entityType: string, entityId?: string) => Promise<import('@mark2/shared').AttachedFile[]>;
+    homework: (topicId?: string | null, studentId?: string | null) => Promise<import('@mark2/shared').AttachedFile[]>;
     create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').AttachedFile>;
     update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').AttachedFile>;
   };
