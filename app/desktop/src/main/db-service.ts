@@ -330,17 +330,24 @@ export async function getAttachedFiles(entityType: string, entityId?: string): P
 
 export async function getHomeworkFiles(topicId?: string | null, studentId?: string | null): Promise<AttachedFile[]> {
   const sb = getSupabase();
-  let query = sb.from('attached_files').select('*').eq('category', 'homework').order('created_at', { ascending: false });
+  // 1. Try by topic_id first
   if (topicId) {
-    query = query.eq('topic_id', topicId);
-  } else if (studentId) {
-    query = query.eq('entity_type', 'student').eq('entity_id', studentId);
-  } else {
-    return [];
+    const { data, error } = await sb.from('attached_files').select('*')
+      .eq('category', 'homework').eq('topic_id', topicId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    if (data && data.length > 0) return mapRows<AttachedFile>(data);
+    // Fallback: if nothing found by topic_id, try by student_id
   }
-  const { data, error } = await query;
-  if (error) throw error;
-  return mapRows<AttachedFile>(data);
+  // 2. Fallback to student_id (catches files without topic_id set)
+  if (studentId) {
+    const { data, error } = await sb.from('attached_files').select('*')
+      .eq('category', 'homework').eq('entity_type', 'student').eq('entity_id', studentId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return mapRows<AttachedFile>(data);
+  }
+  return [];
 }
 
 export async function createAttachedFile(input: Record<string, unknown>): Promise<AttachedFile> {

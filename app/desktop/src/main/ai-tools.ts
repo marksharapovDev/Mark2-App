@@ -667,6 +667,7 @@ const AI_TOOLS: Record<string, ActionHandler> = {
       } catch { /* ignore */ }
     }
 
+    console.log(`[AI Tools] attach_file topic_id: ${params.topicId || 'none'}, entity: ${params.entityType}/${params.entityId}, category: ${params.category}`);
     const result = await db.createAttachedFile(params);
     return { success: true, message: `Файл прикреплён: ${params.filename}`, entity: 'files', data: result as unknown as Record<string, unknown> };
   },

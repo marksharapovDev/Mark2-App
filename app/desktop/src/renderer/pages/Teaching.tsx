@@ -1156,6 +1156,7 @@ export function Teaching() {
             <LearningPathTopicView
               topic={dbLearningPath.find((t) => t.id === mainView.topicId)}
               topicIndex={dbLearningPath.findIndex((t) => t.id === mainView.topicId)}
+              studentId={student.id}
               dbLessons={dbLessons}
               sidebarHomeworkFiles={sidebarHomeworkFiles}
               onBack={() => setMainView({ kind: 'learning-path' })}
@@ -2012,6 +2013,7 @@ function LearningPathView({
 function LearningPathTopicView({
   topic,
   topicIndex,
+  studentId,
   dbLessons,
   sidebarHomeworkFiles,
   onBack,
@@ -2019,6 +2021,7 @@ function LearningPathTopicView({
 }: {
   topic: LearningPathTopic | undefined;
   topicIndex: number;
+  studentId: string;
   dbLessons: Array<{ id: string; studentId: string; date: string; topic: string; status: string; notes: string; homeworkGiven: string | null; topicId: string | null }>;
   sidebarHomeworkFiles: Array<{ id: string; filename: string; filepath: string; status: string; topicId: string | null; createdAt: string }>;
   onBack: () => void;
@@ -2081,12 +2084,32 @@ function LearningPathTopicView({
     return titleWords.some((w) => lt.includes(w));
   });
 
-  // Related homework files: prefer topic_id match, fallback to keyword search
-  const relatedHomework = sidebarHomeworkFiles.filter((f) => {
-    if (f.topicId === topic.id) return true;
-    const fn = f.filename.toLowerCase();
-    return titleWords.some((w) => fn.includes(w));
-  });
+  // Related homework files: load from DB with topic_id → student_id fallback
+  const [relatedHomework, setRelatedHomework] = useState<Array<{ id: string; filename: string; filepath: string; status: string; topicId: string | null; createdAt: string }>>([]);
+  useEffect(() => {
+    if (!topic) return;
+    window.db.files.homework(topic.id, studentId).then((files) => {
+      // Also include sidebar files matched by keyword (for files without topic_id that didn't match in DB)
+      const dbIds = new Set(files.map((f) => f.id));
+      const keywordMatches = sidebarHomeworkFiles.filter((f) => {
+        if (dbIds.has(f.id)) return false;
+        const fn = f.filename.toLowerCase();
+        return titleWords.some((w) => fn.includes(w));
+      });
+      const merged = [
+        ...files.map((f) => ({ id: f.id, filename: f.filename, filepath: f.filepath, status: (f as Record<string, unknown>).status as string ?? 'pending', topicId: f.topicId ?? null, createdAt: f.createdAt ? String(f.createdAt) : '' })),
+        ...keywordMatches,
+      ];
+      setRelatedHomework(merged);
+    }).catch(() => {
+      // Fallback to keyword matching only
+      setRelatedHomework(sidebarHomeworkFiles.filter((f) => {
+        if (f.topicId === topic.id) return true;
+        const fn = f.filename.toLowerCase();
+        return titleWords.some((w) => fn.includes(w));
+      }));
+    });
+  }, [topic?.id, studentId]);
 
   return (
     <div className="max-w-2xl">
@@ -2208,7 +2231,7 @@ function LearningPathTopicView({
       {/* Related homework files */}
       {relatedHomework.length > 0 && (
         <div className="mb-6">
-          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Домашние задания</h2>
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Домашние задания по этой теме</h2>
           <div className="space-y-1.5">
             {relatedHomework.map((file) => (
               <div
