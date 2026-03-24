@@ -1947,6 +1947,84 @@ function LearningPathView({
   const totalCount = dbLearningPath.length;
   const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
+  // Add topic form
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+
+  const handleAddTopic = async () => {
+    if (!newTitle.trim()) return;
+    try {
+      const maxOrder = dbLearningPath.reduce((max, t) => Math.max(max, t.orderIndex), -1);
+      await window.db.learningPath.create({
+        studentId: student.id,
+        title: newTitle.trim(),
+        description: newDesc.trim() || null,
+        orderIndex: maxOrder + 1,
+        status: 'planned',
+      });
+      window.dataEvents.emitDataChanged(['learning-path']);
+      setNewTitle('');
+      setNewDesc('');
+      setShowAddForm(false);
+    } catch (err) {
+      console.error('[LearningPathView] Failed to add topic:', err);
+    }
+  };
+
+  // Inline title editing
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [editingTitleValue, setEditingTitleValue] = useState('');
+
+  const saveInlineTitle = async (topicId: string, originalTitle: string) => {
+    setEditingTitleId(null);
+    if (editingTitleValue.trim() && editingTitleValue.trim() !== originalTitle) {
+      try {
+        await window.db.learningPath.update(topicId, { title: editingTitleValue.trim() });
+        window.dataEvents.emitDataChanged(['learning-path']);
+      } catch (err) {
+        console.error('[LearningPathView] Failed to save title:', err);
+      }
+    }
+  };
+
+  // Drag and drop reordering
+  const dragIdx = useRef<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const handleDragStart = (idx: number) => {
+    dragIdx.current = idx;
+  };
+
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    setDragOverIdx(idx);
+  };
+
+  const handleDrop = async (targetIdx: number) => {
+    const fromIdx = dragIdx.current;
+    dragIdx.current = null;
+    setDragOverIdx(null);
+    if (fromIdx === null || fromIdx === targetIdx) return;
+
+    const reordered = [...dbLearningPath];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(targetIdx, 0, moved);
+    const newOrder = reordered.map((t) => t.id);
+
+    try {
+      await window.db.learningPath.reorder(student.id, newOrder);
+      window.dataEvents.emitDataChanged(['learning-path']);
+    } catch (err) {
+      console.error('[LearningPathView] Failed to reorder:', err);
+    }
+  };
+
+  const handleDragEnd = () => {
+    dragIdx.current = null;
+    setDragOverIdx(null);
+  };
+
   return (
     <div className="max-w-2xl">
       <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
@@ -1975,34 +2053,64 @@ function LearningPathView({
       {/* Timeline */}
       <div className="space-y-1">
         {dbLearningPath.map((topic, idx) => (
-          <button
+          <div
             key={topic.id}
-            onClick={() => onTopicClick(topic.id)}
-            className={`w-full text-left flex items-start gap-3 px-4 py-3 rounded-lg border hover:brightness-125 transition ${LP_STATUS_COLOR[topic.status]}`}
+            draggable
+            onDragStart={() => handleDragStart(idx)}
+            onDragOver={(e) => handleDragOver(e, idx)}
+            onDrop={() => handleDrop(idx)}
+            onDragEnd={handleDragEnd}
+            className={`transition-opacity ${dragIdx.current === idx ? 'opacity-40' : ''} ${dragOverIdx === idx ? 'ring-1 ring-neutral-500 rounded-lg' : ''}`}
           >
-            {/* Timeline dot + line */}
-            <div className="flex flex-col items-center shrink-0 mt-0.5">
-              <span>{LP_STATUS_ICON[topic.status]}</span>
-              {idx < dbLearningPath.length - 1 && (
-                <div className="w-px h-4 bg-neutral-700 mt-1" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-neutral-600 font-mono">{idx + 1}</span>
-                <span className="text-sm font-medium">{topic.title}</span>
-                <span className="text-[10px] uppercase ml-auto shrink-0 opacity-70">
-                  {LP_STATUS_LABEL[topic.status]}
-                </span>
+            <button
+              onClick={() => onTopicClick(topic.id)}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                setEditingTitleId(topic.id);
+                setEditingTitleValue(topic.title);
+              }}
+              className={`w-full text-left flex items-start gap-3 px-4 py-3 rounded-lg border hover:brightness-125 transition cursor-grab active:cursor-grabbing ${LP_STATUS_COLOR[topic.status]}`}
+            >
+              {/* Timeline dot + line */}
+              <div className="flex flex-col items-center shrink-0 mt-0.5">
+                <span>{LP_STATUS_ICON[topic.status]}</span>
+                {idx < dbLearningPath.length - 1 && (
+                  <div className="w-px h-4 bg-neutral-700 mt-1" />
+                )}
               </div>
-              {topic.description && (
-                <p className="text-xs text-neutral-500 mt-0.5">{topic.description}</p>
-              )}
-              {topic.notes && (
-                <p className="text-[11px] text-neutral-600 mt-1 italic">{topic.notes}</p>
-              )}
-            </div>
-          </button>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-neutral-600 font-mono">{idx + 1}</span>
+                  {editingTitleId === topic.id ? (
+                    <input
+                      autoFocus
+                      value={editingTitleValue}
+                      onChange={(e) => setEditingTitleValue(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      onBlur={() => saveInlineTitle(topic.id, topic.title)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveInlineTitle(topic.id, topic.title);
+                        if (e.key === 'Escape') setEditingTitleId(null);
+                      }}
+                      className="flex-1 text-sm font-medium bg-neutral-900 border border-neutral-700 rounded px-2 py-0.5 text-neutral-200 focus:outline-none focus:border-neutral-500"
+                    />
+                  ) : (
+                    <span className="text-sm font-medium">{topic.title}</span>
+                  )}
+                  <span className="text-[10px] uppercase ml-auto shrink-0 opacity-70">
+                    {LP_STATUS_LABEL[topic.status]}
+                  </span>
+                </div>
+                {topic.description && (
+                  <p className="text-xs text-neutral-500 mt-0.5">{topic.description}</p>
+                )}
+                {topic.notes && (
+                  <p className="text-[11px] text-neutral-600 mt-1 italic">{topic.notes}</p>
+                )}
+              </div>
+            </button>
+          </div>
         ))}
       </div>
 
@@ -2011,6 +2119,51 @@ function LearningPathView({
           Путь обучения пока не создан. Попросите бота составить план.
         </div>
       )}
+
+      {/* Add topic */}
+      <div className="mt-4">
+        {showAddForm ? (
+          <div className="border border-neutral-800 rounded-lg p-4 space-y-3">
+            <input
+              autoFocus
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="Название темы"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddTopic(); if (e.key === 'Escape') setShowAddForm(false); }}
+              className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-neutral-500 placeholder:text-neutral-600"
+            />
+            <textarea
+              value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value)}
+              placeholder="Описание (необязательно)"
+              rows={2}
+              className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-neutral-500 resize-none placeholder:text-neutral-600"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleAddTopic}
+                disabled={!newTitle.trim()}
+                className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded transition-colors"
+              >
+                Сохранить
+              </button>
+              <button
+                onClick={() => { setShowAddForm(false); setNewTitle(''); setNewDesc(''); }}
+                className="px-3 py-1.5 text-xs font-medium text-neutral-400 hover:text-neutral-200 transition-colors"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors"
+          >
+            + Добавить тему
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -2245,6 +2398,52 @@ function LearningPathTopicView({
         <div className="text-neutral-600 text-xs py-4">
           Связанных уроков и домашних заданий пока нет.
         </div>
+      )}
+
+      {/* Delete topic */}
+      <DeleteTopicButton topicId={topic.id} onBack={onBack} />
+    </div>
+  );
+}
+
+function DeleteTopicButton({ topicId, onBack }: { topicId: string; onBack: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+
+  const handleDelete = async () => {
+    try {
+      await window.db.learningPath.delete(topicId);
+      window.dataEvents.emitDataChanged(['learning-path']);
+      onBack();
+    } catch (err) {
+      console.error('[LearningPathTopicView] Failed to delete topic:', err);
+    }
+  };
+
+  return (
+    <div className="mt-8 pt-6 border-t border-neutral-800">
+      {confirming ? (
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-neutral-400">Точно удалить?</span>
+          <button
+            onClick={handleDelete}
+            className="px-3 py-1.5 text-xs font-medium bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
+          >
+            Да
+          </button>
+          <button
+            onClick={() => setConfirming(false)}
+            className="px-3 py-1.5 text-xs font-medium text-neutral-400 hover:text-neutral-200 transition-colors"
+          >
+            Нет
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setConfirming(true)}
+          className="text-sm text-red-500 hover:text-red-400 transition-colors"
+        >
+          Удалить тему
+        </button>
       )}
     </div>
   );
