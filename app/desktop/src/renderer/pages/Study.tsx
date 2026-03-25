@@ -1,49 +1,21 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
-import type { TaskStatus } from '@mark2/shared';
-import { BookOpen, PenLine, ClipboardList, BarChart3, FileText, MapPin, NotebookText, CheckCircle2, Clock, Paperclip, RefreshCw, Loader2 } from 'lucide-react';
+import type { Subject, StudyAssignment, StudyExam, TaskStatus } from '@mark2/shared';
+import {
+  BookOpen, PenLine, ClipboardList, BarChart3, FileText, MapPin, NotebookText,
+  CheckCircle2, Clock, RefreshCw, Loader2, Plus, Trash2,
+  GraduationCap, Calendar, FolderOpen, FileQuestion,
+} from 'lucide-react';
 
 // --- Types ---
 
-type MaterialStatus = 'done' | 'in_progress' | 'draft';
-type MaterialCategory = 'lecture' | 'seminar' | 'homework' | 'typovoy' | 'coursework' | 'report' | 'notes';
+type AssignmentType = StudyAssignment['type'];
+type AssignmentStatus = StudyAssignment['status'];
+type ExamType = StudyExam['type'];
+type ExamStatus = StudyExam['status'];
 type Priority = 'low' | 'medium' | 'high';
 type SidebarTab = 'subjects' | 'general';
-
-interface Schedule {
-  day: string;
-  time: string;
-  type: string;
-}
-
-interface Material {
-  id: string;
-  subjectId: string;
-  title: string;
-  category: MaterialCategory;
-  status: MaterialStatus;
-  date: string;
-  filePath?: string;
-  description?: string;
-  deadline?: string;
-  originalContent?: string;
-  summaryContent?: string;
-}
-
-interface SubjectInfo {
-  id: string;
-  courseId: string;
-  name: string;
-  professor: string;
-  room?: string;
-  schedule: Schedule[];
-}
-
-interface Course {
-  id: string;
-  name: string;
-  isCurrent: boolean;
-}
+type SubjectTab = 'assignments' | 'exams' | 'files' | 'notes';
 
 interface StudyTask {
   id: string;
@@ -57,33 +29,42 @@ interface StudyTask {
 
 // --- Constants ---
 
-const CATEGORY_META: Record<MaterialCategory, { icon: React.ReactNode; label: string; pluralLabel: string }> = {
-  lecture: { icon: <BookOpen size={14} strokeWidth={1.5} />, label: 'Лекция', pluralLabel: 'Лекции' },
-  seminar: { icon: <PenLine size={14} strokeWidth={1.5} />, label: 'Семинар', pluralLabel: 'Семинары' },
-  homework: { icon: <ClipboardList size={14} strokeWidth={1.5} />, label: 'ДЗ', pluralLabel: 'ДЗ' },
-  typovoy: { icon: <BarChart3 size={14} strokeWidth={1.5} />, label: 'Типовой расчёт', pluralLabel: 'Типовые расчёты' },
-  coursework: { icon: <FileText size={14} strokeWidth={1.5} />, label: 'Курсовая', pluralLabel: 'Курсовая' },
-  report: { icon: <MapPin size={14} strokeWidth={1.5} />, label: 'Доклад', pluralLabel: 'Доклады' },
-  notes: { icon: <NotebookText size={14} strokeWidth={1.5} />, label: 'Конспект', pluralLabel: 'Конспекты' },
+const ASSIGNMENT_TYPE_META: Record<AssignmentType, { icon: React.ReactNode; label: string }> = {
+  homework: { icon: <ClipboardList size={14} strokeWidth={1.5} />, label: 'ДЗ' },
+  lab_report: { icon: <BarChart3 size={14} strokeWidth={1.5} />, label: 'Лаб. работа' },
+  essay: { icon: <PenLine size={14} strokeWidth={1.5} />, label: 'Эссе' },
+  project: { icon: <FolderOpen size={14} strokeWidth={1.5} />, label: 'Проект' },
+  presentation: { icon: <MapPin size={14} strokeWidth={1.5} />, label: 'Презентация' },
+  typical_calc: { icon: <BarChart3 size={14} strokeWidth={1.5} />, label: 'Типовой расчёт' },
+  coursework: { icon: <FileText size={14} strokeWidth={1.5} />, label: 'Курсовая' },
+  report: { icon: <BookOpen size={14} strokeWidth={1.5} />, label: 'Доклад' },
+  other: { icon: <FileQuestion size={14} strokeWidth={1.5} />, label: 'Другое' },
 };
 
-const STATUS_META: Record<MaterialStatus, { icon: React.ReactNode; label: string; color: string }> = {
-  done: { icon: <CheckCircle2 size={14} strokeWidth={1.5} className="text-emerald-400" />, label: 'Сдано', color: 'bg-emerald-900/40 text-emerald-300' },
-  in_progress: { icon: <Clock size={14} strokeWidth={1.5} className="text-yellow-400" />, label: 'В работе', color: 'bg-yellow-900/40 text-yellow-300' },
-  draft: { icon: <Paperclip size={14} strokeWidth={1.5} className="text-neutral-400" />, label: 'Черновик', color: 'bg-neutral-700/40 text-neutral-400' },
+const ASSIGNMENT_STATUS_META: Record<AssignmentStatus, { label: string; color: string; icon: React.ReactNode }> = {
+  pending: { label: 'Ожидает', color: 'bg-neutral-700/40 text-neutral-400', icon: <Clock size={14} strokeWidth={1.5} className="text-neutral-400" /> },
+  in_progress: { label: 'В работе', color: 'bg-yellow-900/40 text-yellow-300', icon: <RefreshCw size={14} strokeWidth={1.5} className="text-yellow-400" /> },
+  submitted: { label: 'Сдано', color: 'bg-blue-900/40 text-blue-300', icon: <CheckCircle2 size={14} strokeWidth={1.5} className="text-blue-400" /> },
+  graded: { label: 'Оценено', color: 'bg-emerald-900/40 text-emerald-300', icon: <CheckCircle2 size={14} strokeWidth={1.5} className="text-emerald-400" /> },
+};
+
+const EXAM_TYPE_META: Record<ExamType, string> = {
+  exam: 'Экзамен',
+  credit: 'Зачёт',
+  test: 'Контрольная',
+  midterm: 'Промежуточная',
+};
+
+const EXAM_STATUS_META: Record<ExamStatus, { label: string; color: string }> = {
+  upcoming: { label: 'Предстоит', color: 'bg-blue-900/40 text-blue-300' },
+  passed: { label: 'Сдан', color: 'bg-emerald-900/40 text-emerald-300' },
+  failed: { label: 'Не сдан', color: 'bg-red-900/40 text-red-300' },
 };
 
 const PRIORITY_COLORS: Record<Priority, { border: string; badge: string; label: string }> = {
   high: { border: 'border-l-red-500', badge: 'bg-red-500/20 text-red-400', label: 'High' },
   medium: { border: 'border-l-yellow-500', badge: 'bg-yellow-500/20 text-yellow-400', label: 'Medium' },
   low: { border: 'border-l-neutral-600', badge: 'bg-neutral-700/50 text-neutral-400', label: 'Low' },
-};
-
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  done: 'Done',
-  in_progress: 'In Progress',
-  todo: 'Todo',
-  cancelled: 'Cancelled',
 };
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
@@ -93,170 +74,7 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   cancelled: 'text-red-400',
 };
 
-// --- Mock Data ---
-
-const COURSES: Course[] = [
-  { id: 'course2', name: 'Курс 2 (текущий)', isCurrent: true },
-  { id: 'course1', name: 'Курс 1', isCurrent: false },
-];
-
-const SUBJECTS: SubjectInfo[] = [
-  {
-    id: 'matan',
-    courseId: 'course2',
-    name: 'Математический анализ',
-    professor: 'Иванов А.С.',
-    room: '305',
-    schedule: [
-      { day: 'Пн', time: '10:00', type: 'лекция' },
-      { day: 'Ср', time: '12:00', type: 'семинар' },
-    ],
-  },
-  {
-    id: 'physics',
-    courseId: 'course2',
-    name: 'Физика',
-    professor: 'Петрова М.И.',
-    room: '412',
-    schedule: [
-      { day: 'Вт', time: '14:00', type: 'лекция' },
-      { day: 'Чт', time: '16:00', type: 'лаб.' },
-    ],
-  },
-  {
-    id: 'informatics',
-    courseId: 'course2',
-    name: 'Информатика',
-    professor: 'Сидоров К.В.',
-    room: '201',
-    schedule: [{ day: 'Пт', time: '10:00', type: 'лекция' }],
-  },
-  {
-    id: 'algebra',
-    courseId: 'course1',
-    name: 'Линейная алгебра',
-    professor: 'Кузнецов В.П.',
-    schedule: [{ day: 'Пн', time: '08:30', type: 'лекция' }],
-  },
-  {
-    id: 'history',
-    courseId: 'course1',
-    name: 'История',
-    professor: 'Соколова Е.А.',
-    schedule: [{ day: 'Ср', time: '10:00', type: 'лекция' }],
-  },
-];
-
-const MATERIALS: Material[] = [
-  // Matan
-  {
-    id: 'm1', subjectId: 'matan', title: 'Пределы функций', category: 'lecture', status: 'done', date: '2026-02-03',
-    filePath: '/Users/marksarapov/Documents/study/matan/lec1.pdf',
-    originalContent: `Определение предела функции по Коши:
-Пусть f(x) определена в проколотой окрестности точки a. Число L называется пределом f(x) при x→a, если:
-∀ε>0 ∃δ>0: 0<|x-a|<δ ⇒ |f(x)-L|<ε
-
-Определение по Гейне:
-lim f(x) = L при x→a, если для любой последовательности {xn}, xn→a, xn≠a, выполнено f(xn)→L.
-
-Свойства пределов:
-1. lim(f±g) = lim f ± lim g
-2. lim(f·g) = lim f · lim g
-3. lim(f/g) = lim f / lim g (lim g ≠ 0)
-
-Замечательные пределы:
-• lim sin(x)/x = 1 при x→0
-• lim (1+1/x)^x = e при x→∞`,
-    summaryContent: `Предел функции — значение, к которому стремится f(x) при x→a.
-
-Два определения: ε-δ (Коши) и через последовательности (Гейне).
-
-Ключевые свойства: предел суммы = сумма пределов, аналогично для произведения и частного.
-
-Замечательные пределы: sin(x)/x → 1, (1+1/x)^x → e.`,
-  },
-  {
-    id: 'm2', subjectId: 'matan', title: 'Производные', category: 'lecture', status: 'done', date: '2026-02-10',
-    originalContent: `Определение производной:
-f'(x₀) = lim[Δx→0] (f(x₀+Δx) - f(x₀)) / Δx
-
-Геометрический смысл: угловой коэффициент касательной к графику f в точке x₀.
-
-Таблица производных:
-• (xⁿ)' = n·xⁿ⁻¹
-• (eˣ)' = eˣ
-• (ln x)' = 1/x
-• (sin x)' = cos x
-• (cos x)' = -sin x
-
-Правила дифференцирования:
-1. (f±g)' = f'±g'
-2. (f·g)' = f'g + fg'
-3. (f/g)' = (f'g - fg')/g²
-4. (f(g(x)))' = f'(g(x))·g'(x) — цепное правило`,
-    summaryContent: `Производная — мгновенная скорость изменения функции (предел отношения приращений).
-
-Геометрически: наклон касательной.
-
-Основные: (xⁿ)'=nxⁿ⁻¹, (eˣ)'=eˣ, (sin x)'=cos x.
-
-Правила: сумма, произведение (Лейбниц), частное, цепное правило для композиций.`,
-  },
-  { id: 'm3', subjectId: 'matan', title: 'Интегралы', category: 'lecture', status: 'draft', date: '2026-03-17' },
-  { id: 'm4', subjectId: 'matan', title: 'Задачи на пределы', category: 'seminar', status: 'done', date: '2026-02-05' },
-  { id: 'm5', subjectId: 'matan', title: 'Задачи на производные', category: 'seminar', status: 'in_progress', date: '2026-03-12' },
-  { id: 'm6', subjectId: 'matan', title: 'Пределы', category: 'homework', status: 'done', date: '2026-02-10', description: 'Вычислить пределы 15 функций, включая замечательные пределы.' },
-  { id: 'm7', subjectId: 'matan', title: 'Производные', category: 'homework', status: 'in_progress', date: '2026-03-15', deadline: '2026-03-25', description: 'Найти производные сложных функций. 20 задач из сборника.' },
-  { id: 'm8', subjectId: 'matan', title: 'Интегралы (часть 1)', category: 'homework', status: 'in_progress', date: '2026-03-18', deadline: '2026-04-05' },
-  { id: 'm9', subjectId: 'matan', title: 'Ряды Тейлора', category: 'homework', status: 'in_progress', date: '2026-03-20', deadline: '2026-04-10' },
-  { id: 'm10', subjectId: 'matan', title: 'Типовой расчёт 1', category: 'typovoy', status: 'in_progress', date: '2026-03-01', deadline: '2026-04-01', description: 'Дифференциальное исчисление функций одной переменной. 30 задач.' },
-
-  // Physics
-  {
-    id: 'p1', subjectId: 'physics', title: 'Механика', category: 'lecture', status: 'done', date: '2026-02-04',
-    filePath: '/Users/marksarapov/Documents/study/physics/lec1.pdf',
-    originalContent: `Кинематика материальной точки:
-Радиус-вектор: r⃗(t) = x(t)î + y(t)ĵ + z(t)k̂
-Скорость: v⃗ = dr⃗/dt
-Ускорение: a⃗ = dv⃗/dt
-
-Равномерное движение: x = x₀ + v·t
-Равноускоренное: x = x₀ + v₀t + at²/2
-
-Законы Ньютона:
-1. В ИСО тело покоится или движется равномерно, если ΣF⃗ = 0
-2. F⃗ = ma⃗
-3. F⃗₁₂ = -F⃗₂₁
-
-Закон сохранения импульса: p⃗ = mv⃗ = const (замкнутая система)
-Закон сохранения энергии: E = K + U = const`,
-    summaryContent: `Кинематика: положение → скорость (производная) → ускорение (вторая производная).
-
-Два типа движения: равномерное (v=const) и равноускоренное (a=const).
-
-Три закона Ньютона: инерция, F=ma, действие=противодействие.
-
-Законы сохранения: импульс (p=mv) и энергия (E=K+U) в замкнутых системах.`,
-  },
-  { id: 'p2', subjectId: 'physics', title: 'Термодинамика', category: 'lecture', status: 'done', date: '2026-02-18' },
-  { id: 'p3', subjectId: 'physics', title: 'Измерение ускорения', category: 'seminar', status: 'done', date: '2026-02-06', description: 'Лабораторная работа: измерение ускорения свободного падения.' },
-  { id: 'p4', subjectId: 'physics', title: 'Теплоёмкость', category: 'seminar', status: 'in_progress', date: '2026-03-20', deadline: '2026-03-27' },
-  { id: 'p5', subjectId: 'physics', title: 'Волновая оптика', category: 'coursework', status: 'draft', date: '2026-03-01', deadline: '2026-05-15', description: 'Курсовая работа по волновой оптике. Исследование дифракции.' },
-  { id: 'p6', subjectId: 'physics', title: 'Квантовая механика', category: 'report', status: 'in_progress', date: '2026-03-10', deadline: '2026-04-03', description: 'Доклад на 10-15 минут по основам квантовой механики.' },
-
-  // Informatics
-  { id: 'i1', subjectId: 'informatics', title: 'Алгоритмы сортировки', category: 'lecture', status: 'done', date: '2026-02-07' },
-  { id: 'i2', subjectId: 'informatics', title: 'Реализация quicksort', category: 'homework', status: 'done', date: '2026-02-14', filePath: '/Users/marksarapov/Documents/study/informatics/quicksort.py' },
-  { id: 'i3', subjectId: 'informatics', title: 'Графы и деревья', category: 'homework', status: 'in_progress', date: '2026-03-14', deadline: '2026-03-28', description: 'Реализовать BFS, DFS. Построить минимальное остовное дерево.' },
-  { id: 'i4', subjectId: 'informatics', title: 'Сложность алгоритмов', category: 'notes', status: 'done', date: '2026-02-20' },
-
-  // Course 1 (all done)
-  { id: 'a1', subjectId: 'algebra', title: 'Матрицы и определители', category: 'lecture', status: 'done', date: '2025-09-05' },
-  { id: 'a2', subjectId: 'algebra', title: 'Системы линейных уравнений', category: 'homework', status: 'done', date: '2025-09-20' },
-  { id: 'a3', subjectId: 'algebra', title: 'Векторные пространства', category: 'notes', status: 'done', date: '2025-10-15' },
-  { id: 'h1', subjectId: 'history', title: 'Древний мир', category: 'lecture', status: 'done', date: '2025-09-10' },
-  { id: 'h2', subjectId: 'history', title: 'Средневековье — реферат', category: 'report', status: 'done', date: '2025-10-20' },
-];
+const DEFAULT_SUBJECT_COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
 // --- Helpers ---
 
@@ -276,38 +94,6 @@ function mapDbTaskToStudy(t: Record<string, unknown>): StudyTask {
   };
 }
 
-function getSubjectMaterials(subjectId: string): Material[] {
-  return MATERIALS.filter((m) => m.subjectId === subjectId);
-}
-
-function getSubjectName(subjectId: string): string {
-  return SUBJECTS.find((s) => s.id === subjectId)?.name ?? subjectId;
-}
-
-function groupByCategory(materials: Material[]): Record<MaterialCategory, Material[]> {
-  const groups: Record<string, Material[]> = {};
-  for (const m of materials) {
-    if (!groups[m.category]) groups[m.category] = [];
-    (groups[m.category] as Material[]).push(m);
-  }
-  return groups as Record<MaterialCategory, Material[]>;
-}
-
-function getUpcomingDeadlines(courseId?: string): Array<Material & { subjectName: string }> {
-  const subjectIds = courseId
-    ? new Set(SUBJECTS.filter((s) => s.courseId === courseId).map((s) => s.id))
-    : new Set(SUBJECTS.map((s) => s.id));
-
-  return MATERIALS
-    .filter((m) => m.deadline && m.status !== 'done' && subjectIds.has(m.subjectId))
-    .sort((a, b) => (a.deadline ?? '').localeCompare(b.deadline ?? ''))
-    .slice(0, 5)
-    .map((m) => ({
-      ...m,
-      subjectName: SUBJECTS.find((s) => s.id === m.subjectId)?.name ?? '',
-    }));
-}
-
 function formatDate(dateStr: string): string {
   const parts = dateStr.split('-');
   const month = parts[1] ?? '0';
@@ -316,158 +102,123 @@ function formatDate(dateStr: string): string {
   return `${parseInt(day, 10)} ${months[parseInt(month, 10)]}`;
 }
 
-function openFile(filePath: string) {
-  (window as unknown as Record<string, unknown>).electronAPI
-    ? (window as unknown as { electronAPI: { openFile: (p: string) => Promise<void> } }).electronAPI.openFile(filePath)
-    : console.log('Would open:', filePath);
+function getDeadlineColor(deadline: string): string {
+  const today = new Date().toISOString().slice(0, 10);
+  if (deadline < today) return 'text-red-400';
+  if (deadline === today) return 'text-yellow-400';
+  return 'text-neutral-400';
+}
+
+function parseSchedule(schedule: string | null): Array<{ day: string; time: string; type: string }> {
+  if (!schedule) return [];
+  try {
+    const parsed = JSON.parse(schedule);
+    if (Array.isArray(parsed)) return parsed;
+  } catch { /* ignore */ }
+  // Parse simple format "Пн 10:00, Ср 14:00"
+  return schedule.split(',').map((s) => {
+    const trimmed = s.trim();
+    const parts = trimmed.split(/\s+/);
+    return { day: parts[0] ?? '', time: parts[1] ?? '', type: parts[2] ?? '' };
+  }).filter((s) => s.day);
+}
+
+function getSubjectColor(subject: Subject, index: number): string {
+  return subject.color ?? DEFAULT_SUBJECT_COLORS[index % DEFAULT_SUBJECT_COLORS.length] ?? '#3b82f6';
 }
 
 // --- Views ---
 
 type MainView =
-  | { kind: 'overview' }
-  | { kind: 'material-detail'; materialId: string }
-  | { kind: 'category-list'; category: MaterialCategory; filter: MaterialStatus | 'all' }
+  | { kind: 'empty' }
+  | { kind: 'subject'; tab: SubjectTab }
+  | { kind: 'assignment-detail'; id: string }
+  | { kind: 'exam-detail'; id: string }
   | { kind: 'task-detail'; taskId: string }
-  | { kind: 'add-material' };
-
-// --- Collapsible Section ---
-
-function CollapsibleCategory({
-  category,
-  materials,
-  onMaterialClick,
-  activeMaterialId,
-}: {
-  category: MaterialCategory;
-  materials: Material[];
-  onMaterialClick: (id: string) => void;
-  activeMaterialId?: string;
-}) {
-  const [open, setOpen] = useState(true);
-  const meta = CATEGORY_META[category];
-
-  return (
-    <div>
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-1.5 px-1 py-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
-      >
-        <span className="text-[10px] text-neutral-600">{open ? '\u25BE' : '\u25B8'}</span>
-        <span>{meta.icon}</span>
-        <span>{meta.pluralLabel}</span>
-        <span className="text-neutral-600 ml-auto">({materials.length})</span>
-      </button>
-      {open && (
-        <div className="ml-2 space-y-0.5 max-h-32 overflow-y-auto scrollbar-thin">
-          {materials.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => onMaterialClick(m.id)}
-              className={`w-full text-left flex items-center gap-1.5 text-xs text-neutral-400 py-0.5 px-1.5 rounded hover:bg-neutral-800/50 transition-colors group ${
-                activeMaterialId === m.id ? 'bg-neutral-800/50 text-neutral-200' : ''
-              }`}
-            >
-              <span className="text-[10px] shrink-0">{STATUS_META[m.status].icon}</span>
-              <span className="truncate group-hover:text-neutral-200 transition-colors">{m.title}</span>
-              <span className="text-neutral-600 text-[10px] shrink-0 ml-auto">{formatDate(m.date)}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+  | { kind: 'add-assignment' }
+  | { kind: 'add-exam' }
+  | { kind: 'add-subject' };
 
 // --- Main Component ---
 
 export function Study() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('subjects');
-  const [selectedCourseId, setSelectedCourseId] = useState<string>(
-    COURSES.find((c) => c.isCurrent)?.id ?? COURSES[0]?.id ?? '',
-  );
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
-  const [mainView, setMainView] = useState<MainView>({ kind: 'overview' });
+  const [mainView, setMainView] = useState<MainView>({ kind: 'empty' });
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem('mark2-study-sidebar-width');
     if (saved) { const n = parseInt(saved, 10); if (n >= 200 && n <= 400) return n; }
     return Math.min(400, Math.max(200, Math.round(window.innerWidth * 0.2)));
   });
-  const [taskChecked, setTaskChecked] = useState<Record<string, boolean>>({});
-  const [newMaterial, setNewMaterial] = useState({
-    title: '',
-    category: 'lecture' as MaterialCategory,
-    status: 'draft' as MaterialStatus,
-    description: '',
-    deadline: '',
-  });
+
   // DB state
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [assignments, setAssignments] = useState<StudyAssignment[]>([]);
+  const [exams, setExams] = useState<StudyExam[]>([]);
   const [studyTasks, setStudyTasks] = useState<StudyTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
 
   const isDraggingSidebar = useRef(false);
-
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
 
-  // Load data from DB
   const reloadData = useCallback(async () => {
     try {
-      const dbTasks = await window.db.tasks.list('study');
+      const [dbSubjects, dbAssignments, dbExams, dbTasks] = await Promise.all([
+        window.db.subjects.list(),
+        window.db.assignments.list(),
+        window.db.exams.list(),
+        window.db.tasks.list('study'),
+      ]);
+      setSubjects(dbSubjects);
+      setAssignments(dbAssignments);
+      setExams(dbExams);
       setStudyTasks(dbTasks.map((t) => mapDbTaskToStudy(t as unknown as Record<string, unknown>)));
+      setDbError(null);
     } catch (err) {
       setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
     }
   }, []);
 
-  // Initial load
   useEffect(() => {
     reloadData().finally(() => setLoading(false));
   }, [reloadData]);
 
-  // Reload on data-changed from AI
   useEffect(() => {
     return window.dataEvents.onDataChanged((entities) => {
-      if (entities.includes('tasks') || entities.includes('subjects')) {
+      if (entities.some((e) => ['tasks', 'subjects', 'assignments', 'exams'].includes(e))) {
         reloadData();
       }
     });
   }, [reloadData]);
 
-  const courseSubjects = SUBJECTS.filter((s) => s.courseId === selectedCourseId);
-  const subject = selectedSubjectId ? SUBJECTS.find((s) => s.id === selectedSubjectId) : null;
-  const materials = subject ? getSubjectMaterials(subject.id) : [];
-  const grouped = groupByCategory(materials);
+  const subject = selectedSubjectId ? subjects.find((s) => s.id === selectedSubjectId) ?? null : null;
+  const subjectAssignments = subject ? assignments.filter((a) => a.subjectId === subject.id) : [];
+  const subjectExams = subject ? exams.filter((e) => e.subjectId === subject.id) : [];
   const subjectTasks = subject ? studyTasks.filter((t) => t.subjectId === subject.id) : [];
-  const deadlines = getUpcomingDeadlines(selectedCourseId);
 
-  // General tab stats
-  const allSubjectsCurrent = SUBJECTS.filter((s) => s.courseId === selectedCourseId);
-  const allMaterialsCurrent = MATERIALS.filter((m) =>
-    allSubjectsCurrent.some((s) => s.id === m.subjectId),
-  );
-  const totalInProgress = allMaterialsCurrent.filter((m) => m.status === 'in_progress').length;
-  const totalDone = allMaterialsCurrent.filter((m) => m.status === 'done').length;
-  const allTasksTodo = studyTasks.filter((t) => t.status === 'todo').length;
+  // Upcoming deadlines across all subjects
+  const upcomingDeadlines = assignments
+    .filter((a) => a.deadline && a.status !== 'graded' && a.status !== 'submitted')
+    .sort((a, b) => (a.deadline ?? '').localeCompare(b.deadline ?? ''))
+    .slice(0, 6);
+
+  const upcomingExams = exams
+    .filter((e) => e.status === 'upcoming' && e.date)
+    .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+    .slice(0, 5);
 
   const selectSubject = useCallback((id: string) => {
     setSelectedSubjectId(id);
     setSidebarTab('subjects');
-    setMainView({ kind: 'overview' });
-  }, []);
-
-  const selectCourse = useCallback((id: string) => {
-    setSelectedCourseId(id);
-    setSelectedSubjectId(null);
-    setMainView({ kind: 'overview' });
+    setMainView({ kind: 'subject', tab: 'assignments' });
   }, []);
 
   const handleSidebarDragStart = useCallback(() => {
     isDraggingSidebar.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-
     const onMove = (e: MouseEvent) => {
       if (!isDraggingSidebar.current) return;
       const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, e.clientX));
@@ -485,29 +236,13 @@ export function Study() {
     document.addEventListener('mouseup', onUp);
   }, []);
 
-  const toggleTaskChecked = useCallback((taskId: string) => {
-    setTaskChecked((prev) => {
-      const newChecked = !prev[taskId];
-      const newStatus = newChecked ? 'done' : 'todo';
+  const toggleTaskDone = useCallback((taskId: string) => {
+    setStudyTasks((prev) => prev.map((t) => {
+      if (t.id !== taskId) return t;
+      const newStatus = t.status === 'done' ? 'todo' : 'done';
       window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
-      return { ...prev, [taskId]: newChecked };
-    });
-  }, []);
-
-  const getEffectiveStatus = useCallback((task: StudyTask): TaskStatus => {
-    if (taskChecked[task.id]) return 'done';
-    return task.status;
-  }, [taskChecked]);
-
-  const sendTaskToChat = useCallback((task: StudyTask) => {
-    const text = `Помоги с задачей: ${task.title}\n${task.context}`;
-    const inputEl = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Message..."]');
-    if (inputEl) {
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-      nativeInputValueSetter?.call(inputEl, text);
-      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-      inputEl.focus();
-    }
+      return { ...t, status: newStatus as TaskStatus };
+    }));
   }, []);
 
   return (
@@ -520,221 +255,196 @@ export function Study() {
         >
           {/* Tabs */}
           <div className="flex border-b border-neutral-800">
-            <button
-              onClick={() => setSidebarTab('subjects')}
-              className={`flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
-                sidebarTab === 'subjects'
-                  ? 'text-neutral-200 border-b-2 border-blue-500'
-                  : 'text-neutral-500 hover:text-neutral-300'
-              }`}
-            >
-              Предметы
-            </button>
-            <button
-              onClick={() => setSidebarTab('general')}
-              className={`flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
-                sidebarTab === 'general'
-                  ? 'text-neutral-200 border-b-2 border-blue-500'
-                  : 'text-neutral-500 hover:text-neutral-300'
-              }`}
-            >
-              Общее
-            </button>
+            {(['subjects', 'general'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setSidebarTab(tab)}
+                className={`flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                  sidebarTab === tab
+                    ? 'text-neutral-200 border-b-2 border-blue-500'
+                    : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+              >
+                {tab === 'subjects' ? 'Предметы' : 'Общее'}
+              </button>
+            ))}
           </div>
 
           {sidebarTab === 'subjects' && (
-            <>
-              {/* Course selector */}
-              <div className="px-3 py-3">
-                <select
-                  value={selectedCourseId}
-                  onChange={(e) => selectCourse(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-sm text-neutral-200 focus:outline-none focus:border-blue-500/50"
-                >
-                  {COURSES.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Subjects header + add button */}
-              <div className="px-3 pb-1 flex items-center justify-between">
+            <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
+              {/* Subjects header + add */}
+              <div className="px-3 pt-3 pb-1 flex items-center justify-between">
                 <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Предметы</span>
                 <button
-                  onClick={() => setMainView({ kind: 'add-material' })}
+                  onClick={() => { setSelectedSubjectId(null); setMainView({ kind: 'add-subject' }); }}
                   className="w-5 h-5 flex items-center justify-center rounded bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors text-sm"
-                  title="Добавить материал"
+                  title="Добавить предмет"
                 >
                   +
                 </button>
               </div>
-              <nav className="px-2 space-y-0.5">
-                {courseSubjects.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => selectSubject(s.id)}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors ${
-                      selectedSubjectId === s.id
-                        ? 'bg-neutral-800 text-white'
-                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
-                    }`}
-                  >
-                    <span className="mr-2 inline-block w-1.5 h-1.5 rounded-full bg-blue-500 align-middle" />
-                    {s.name}
-                  </button>
-                ))}
+
+              {/* Subject list */}
+              <nav className="px-2 space-y-0.5 mb-2">
+                {subjects.filter((s) => s.status !== 'dropped').map((s, idx) => {
+                  const color = getSubjectColor(s, idx);
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => selectSubject(s.id)}
+                      className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors ${
+                        selectedSubjectId === s.id
+                          ? 'bg-neutral-800 text-white'
+                          : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
+                      }`}
+                    >
+                      <span
+                        className="mr-2 inline-block w-2 h-2 rounded-full align-middle"
+                        style={{ backgroundColor: color }}
+                      />
+                      {s.name}
+                      {s.status === 'completed' && (
+                        <span className="ml-2 text-[10px] text-emerald-500">✓</span>
+                      )}
+                    </button>
+                  );
+                })}
+                {subjects.length === 0 && !loading && (
+                  <div className="text-xs text-neutral-600 px-3 py-2">Нет предметов</div>
+                )}
               </nav>
 
-              {/* Subject detail sections */}
+              {/* Selected subject details in sidebar */}
               {subject && (
-                <div className="flex-1 overflow-hidden flex flex-col mt-2">
+                <>
                   <div className="mx-3 border-t border-neutral-800" />
-                  <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
-                    {/* Info */}
-                    <div className="px-3 pt-3 pb-2">
-                      <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                        Информация
+                  <div className="px-3 pt-3 pb-2 space-y-1.5">
+                    <div className="text-xs text-neutral-300 font-medium">{subject.name}</div>
+                    {subject.professor && (
+                      <div className="text-xs text-neutral-500">
+                        <span className="text-neutral-600">Преп:</span> {subject.professor}
                       </div>
-                      <div className="space-y-1 text-xs">
-                        <div className="text-neutral-300 font-medium">{subject.name}</div>
-                        <div className="text-neutral-400">
-                          <span className="text-neutral-500">Преподаватель:</span> {subject.professor}
-                        </div>
-                        {subject.room && (
-                          <div className="text-neutral-400">
-                            <span className="text-neutral-500">Аудитория:</span> {subject.room}
-                          </div>
-                        )}
-                        <div className="text-neutral-500 text-[11px] mt-1">
-                          {subject.schedule.map((s) => `${s.day} ${s.time} (${s.type})`).join(', ')}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mx-3 border-t border-neutral-800" />
-
-                    {/* Tasks for this subject */}
-                    {subjectTasks.length > 0 && (
-                      <>
-                        <div className="px-3 pt-3 pb-2">
-                          <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                            Задачи
-                          </div>
-                          <div className="space-y-1">
-                            {subjectTasks.map((task) => {
-                              const effectiveStatus = getEffectiveStatus(task);
-                              const pColor = PRIORITY_COLORS[task.priority];
-                              return (
-                                <button
-                                  key={task.id}
-                                  onClick={() => setMainView({ kind: 'task-detail', taskId: task.id })}
-                                  className={`w-full text-left flex items-center gap-1.5 text-xs py-1 px-2 rounded border-l-2 ${pColor.border} hover:bg-neutral-800/50 transition-colors ${
-                                    mainView.kind === 'task-detail' && 'taskId' in mainView && mainView.taskId === task.id
-                                      ? 'bg-neutral-800/50' : ''
-                                  }`}
-                                >
-                                  <span className={`shrink-0 ${STATUS_COLORS[effectiveStatus]}`}>
-                                    {effectiveStatus === 'done' ? <CheckCircle2 size={14} strokeWidth={1.5} /> : effectiveStatus === 'in_progress' ? <RefreshCw size={14} strokeWidth={1.5} /> : <Clock size={14} strokeWidth={1.5} />}
-                                  </span>
-                                  <span className={`truncate ${effectiveStatus === 'done' ? 'text-neutral-500 line-through' : 'text-neutral-400'}`}>
-                                    {task.title}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        <div className="mx-3 border-t border-neutral-800" />
-                      </>
                     )}
-
-                    {/* Materials by category (tree) */}
-                    <div className="px-3 pt-3 pb-2">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-                          Материалы
-                        </div>
-                        <button
-                          onClick={() => setMainView({ kind: 'add-material' })}
-                          className="w-4 h-4 flex items-center justify-center rounded bg-neutral-800 text-neutral-500 hover:bg-neutral-700 hover:text-neutral-200 transition-colors text-[10px]"
-                          title="Добавить материал"
-                        >
-                          +
-                        </button>
+                    {subject.schedule && (
+                      <div className="text-[11px] text-neutral-600">
+                        {parseSchedule(subject.schedule).map((s) => `${s.day} ${s.time}`).join(', ')}
                       </div>
-                      <div className="space-y-0.5">
-                        {(Object.keys(CATEGORY_META) as MaterialCategory[])
-                          .filter((cat) => grouped[cat] && grouped[cat].length > 0)
-                          .map((cat) => (
-                            <CollapsibleCategory
-                              key={cat}
-                              category={cat}
-                              materials={grouped[cat]}
-                              onMaterialClick={(id) => setMainView({ kind: 'material-detail', materialId: id })}
-                              activeMaterialId={mainView.kind === 'material-detail' ? mainView.materialId : undefined}
-                            />
-                          ))}
+                    )}
+                    {subject.type && (
+                      <div className="text-[11px] text-neutral-600">
+                        Тип: {subject.type === 'lecture' ? 'Лекция' : subject.type === 'seminar' ? 'Семинар' : subject.type === 'lab' ? 'Лаб.' : 'Практика'}
                       </div>
-                    </div>
+                    )}
+                  </div>
 
-                    <div className="mx-3 border-t border-neutral-800" />
-
-                    {/* Upcoming deadlines */}
-                    {deadlines.filter((d) => d.subjectId === subject.id).length > 0 && (
-                      <div className="px-3 pt-3 pb-3">
-                        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                          Ближайшие дедлайны
-                        </div>
-                        <div className="space-y-1.5">
-                          {deadlines
-                            .filter((d) => d.subjectId === subject.id)
-                            .map((d) => (
+                  {/* Subject deadlines */}
+                  {subjectAssignments.filter((a) => a.deadline && a.status !== 'graded').length > 0 && (
+                    <>
+                      <div className="mx-3 border-t border-neutral-800" />
+                      <div className="px-3 pt-2 pb-2">
+                        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">Дедлайны</div>
+                        <div className="space-y-1">
+                          {subjectAssignments
+                            .filter((a) => a.deadline && a.status !== 'graded')
+                            .sort((a, b) => (a.deadline ?? '').localeCompare(b.deadline ?? ''))
+                            .slice(0, 3)
+                            .map((a) => (
                               <button
-                                key={d.id}
-                                onClick={() => setMainView({ kind: 'material-detail', materialId: d.id })}
-                                className="w-full text-left text-xs py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
+                                key={a.id}
+                                onClick={() => setMainView({ kind: 'assignment-detail', id: a.id })}
+                                className="w-full text-left text-xs py-0.5 px-1 rounded hover:bg-neutral-800/50 transition-colors"
                               >
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-red-400/70 text-[10px] shrink-0">
-                                    {formatDate(d.deadline!)}
-                                  </span>
-                                </div>
-                                <div className="text-neutral-400 group-hover:text-neutral-200 transition-colors truncate mt-0.5">
-                                  {CATEGORY_META[d.category].icon} {d.title}
-                                </div>
+                                <span className={`${getDeadlineColor(a.deadline!)} mr-1.5`}>{formatDate(a.deadline!)}</span>
+                                <span className="text-neutral-400">{a.title}</span>
                               </button>
                             ))}
                         </div>
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </>
+                  )}
+                </>
               )}
-            </>
+
+              {/* Global deadlines section */}
+              {upcomingDeadlines.length > 0 && (
+                <>
+                  <div className="mx-3 border-t border-neutral-800" />
+                  <div className="px-3 pt-3 pb-2">
+                    <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">Дедлайны</div>
+                    <div className="space-y-1">
+                      {upcomingDeadlines.slice(0, 4).map((a) => {
+                        const subj = subjects.find((s) => s.id === a.subjectId);
+                        return (
+                          <button
+                            key={a.id}
+                            onClick={() => {
+                              setSelectedSubjectId(a.subjectId);
+                              setMainView({ kind: 'assignment-detail', id: a.id });
+                            }}
+                            className="w-full text-left text-xs py-0.5 px-1 rounded hover:bg-neutral-800/50 transition-colors"
+                          >
+                            <span className={`${getDeadlineColor(a.deadline!)} mr-1.5`}>{formatDate(a.deadline!)}</span>
+                            <span className="text-neutral-500 mr-1">{subj?.name?.slice(0, 15)}</span>
+                            <span className="text-neutral-400">{a.title}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Upcoming exams */}
+              {upcomingExams.length > 0 && (
+                <>
+                  <div className="mx-3 border-t border-neutral-800" />
+                  <div className="px-3 pt-3 pb-3">
+                    <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">Экзамены</div>
+                    <div className="space-y-1">
+                      {upcomingExams.map((e) => {
+                        const subj = subjects.find((s) => s.id === e.subjectId);
+                        return (
+                          <button
+                            key={e.id}
+                            onClick={() => {
+                              setSelectedSubjectId(e.subjectId);
+                              setMainView({ kind: 'exam-detail', id: e.id });
+                            }}
+                            className="w-full text-left text-xs py-0.5 px-1 rounded hover:bg-neutral-800/50 transition-colors"
+                          >
+                            <GraduationCap size={12} className="inline mr-1 text-neutral-600" />
+                            <span className="text-neutral-500 mr-1">{e.date ? formatDate(e.date) : '—'}</span>
+                            <span className="text-neutral-400">{subj?.name?.slice(0, 12)}: {e.title}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           )}
 
           {sidebarTab === 'general' && (
             <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
               {/* Stats */}
               <div className="px-3 pt-3 pb-2">
-                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                  Статистика
-                </div>
+                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Статистика</div>
                 <div className="grid grid-cols-2 gap-1.5">
                   <div className="bg-blue-400/10 rounded px-2 py-1.5">
-                    <div className="text-sm font-bold text-blue-400">{allSubjectsCurrent.length}</div>
+                    <div className="text-sm font-bold text-blue-400">{subjects.filter((s) => s.status === 'active' || !s.status).length}</div>
                     <div className="text-[10px] text-blue-400/70 uppercase">Предметов</div>
                   </div>
                   <div className="bg-emerald-400/10 rounded px-2 py-1.5">
-                    <div className="text-sm font-bold text-emerald-400">{totalDone}</div>
+                    <div className="text-sm font-bold text-emerald-400">{assignments.filter((a) => a.status === 'graded' || a.status === 'submitted').length}</div>
                     <div className="text-[10px] text-emerald-400/70 uppercase">Сдано</div>
                   </div>
                   <div className="bg-yellow-400/10 rounded px-2 py-1.5">
-                    <div className="text-sm font-bold text-yellow-400">{totalInProgress}</div>
+                    <div className="text-sm font-bold text-yellow-400">{assignments.filter((a) => a.status === 'in_progress').length}</div>
                     <div className="text-[10px] text-yellow-400/70 uppercase">В работе</div>
                   </div>
                   <div className="bg-red-400/10 rounded px-2 py-1.5">
-                    <div className="text-sm font-bold text-red-400">{allTasksTodo}</div>
+                    <div className="text-sm font-bold text-red-400">{studyTasks.filter((t) => t.status === 'todo').length}</div>
                     <div className="text-[10px] text-red-400/70 uppercase">Задач todo</div>
                   </div>
                 </div>
@@ -742,23 +452,20 @@ export function Study() {
 
               <div className="mx-3 border-t border-neutral-800" />
 
-              {/* All tasks */}
+              {/* Tasks */}
               <div className="px-3 pt-3 pb-2">
-                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                  Мои задачи
-                </div>
+                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Задачи</div>
                 <div className="space-y-1">
                   {studyTasks.map((task) => {
-                    const effectiveStatus = getEffectiveStatus(task);
                     const pColor = PRIORITY_COLORS[task.priority];
-                    const isDone = effectiveStatus === 'done';
+                    const isDone = task.status === 'done';
                     return (
                       <div
                         key={task.id}
                         className={`flex items-center gap-1.5 text-xs py-1 px-2 rounded border-l-2 ${pColor.border} hover:bg-neutral-800/50 transition-colors`}
                       >
                         <button
-                          onClick={() => toggleTaskChecked(task.id)}
+                          onClick={() => toggleTaskDone(task.id)}
                           className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center transition-colors ${
                             isDone ? 'bg-emerald-600 border-emerald-600' : 'border-neutral-600 hover:border-neutral-400'
                           }`}
@@ -771,55 +478,48 @@ export function Study() {
                         </button>
                         <button
                           onClick={() => {
-                            setSelectedSubjectId(task.subjectId);
+                            if (task.subjectId) setSelectedSubjectId(task.subjectId);
                             setMainView({ kind: 'task-detail', taskId: task.id });
                           }}
                           className={`truncate text-left flex-1 ${isDone ? 'text-neutral-500 line-through' : 'text-neutral-400 hover:text-neutral-200'}`}
                         >
                           {task.title}
                         </button>
-                        <button
-                          onClick={() => sendTaskToChat(task)}
-                          className="text-neutral-600 hover:text-blue-400 transition-colors shrink-0"
-                          title="Отправить боту"
-                        >
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
-                          </svg>
-                        </button>
                       </div>
                     );
                   })}
+                  {studyTasks.length === 0 && <div className="text-xs text-neutral-600">Нет задач</div>}
                 </div>
               </div>
 
               <div className="mx-3 border-t border-neutral-800" />
 
-              {/* Upcoming deadlines (all subjects) */}
+              {/* All deadlines */}
               <div className="px-3 pt-3 pb-2">
-                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                  Ближайшие дедлайны
-                </div>
+                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Ближайшие дедлайны</div>
                 <div className="space-y-1.5">
-                  {deadlines.map((d) => (
-                    <button
-                      key={d.id}
-                      onClick={() => {
-                        setSelectedSubjectId(d.subjectId);
-                        setSidebarTab('subjects');
-                        setMainView({ kind: 'material-detail', materialId: d.id });
-                      }}
-                      className="w-full text-left text-xs py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-red-400/70 text-[10px] shrink-0">{formatDate(d.deadline!)}</span>
-                        <span className="text-neutral-500 text-[10px] truncate">{d.subjectName}</span>
-                      </div>
-                      <div className="text-neutral-400 group-hover:text-neutral-200 transition-colors truncate mt-0.5">
-                        {CATEGORY_META[d.category].icon} {d.title}
-                      </div>
-                    </button>
-                  ))}
+                  {upcomingDeadlines.map((a) => {
+                    const subj = subjects.find((s) => s.id === a.subjectId);
+                    return (
+                      <button
+                        key={a.id}
+                        onClick={() => {
+                          setSelectedSubjectId(a.subjectId);
+                          setMainView({ kind: 'assignment-detail', id: a.id });
+                        }}
+                        className="w-full text-left text-xs py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className={`${getDeadlineColor(a.deadline!)} text-[10px] shrink-0`}>{formatDate(a.deadline!)}</span>
+                          <span className="text-neutral-500 text-[10px] truncate">{subj?.name}</span>
+                        </div>
+                        <div className="text-neutral-400 group-hover:text-neutral-200 transition-colors truncate mt-0.5">
+                          {ASSIGNMENT_TYPE_META[a.type]?.icon} {a.title}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {upcomingDeadlines.length === 0 && <div className="text-xs text-neutral-600">Нет дедлайнов</div>}
                 </div>
               </div>
 
@@ -827,23 +527,25 @@ export function Study() {
 
               {/* All subjects overview */}
               <div className="px-3 pt-3 pb-3">
-                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                  Предметы
-                </div>
+                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Предметы</div>
                 <div className="space-y-1">
-                  {allSubjectsCurrent.map((s) => {
-                    const subMats = MATERIALS.filter((m) => m.subjectId === s.id);
-                    const done = subMats.filter((m) => m.status === 'done').length;
+                  {subjects.map((s, idx) => {
+                    const subAssignments = assignments.filter((a) => a.subjectId === s.id);
+                    const done = subAssignments.filter((a) => a.status === 'graded' || a.status === 'submitted').length;
                     return (
                       <button
                         key={s.id}
                         onClick={() => selectSubject(s.id)}
                         className="w-full text-left flex items-center gap-2 text-xs py-1.5 px-2 rounded hover:bg-neutral-800/50 transition-colors group"
                       >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full shrink-0"
+                          style={{ backgroundColor: getSubjectColor(s, idx) }}
+                        />
                         <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors flex-1 truncate">
                           {s.name}
                         </span>
-                        <span className="text-neutral-600 text-[10px] shrink-0">{done}/{subMats.length}</span>
+                        <span className="text-neutral-600 text-[10px] shrink-0">{done}/{subAssignments.length}</span>
                       </button>
                     );
                   })}
@@ -871,63 +573,108 @@ export function Study() {
               {dbError}
             </div>
           )}
-          {!loading && !subject && mainView.kind !== 'add-material' && (
+
+          {!loading && mainView.kind === 'empty' && (
             <div className="flex items-center justify-center h-full text-neutral-500">
               Выберите предмет
             </div>
           )}
 
-          {!loading && subject && mainView.kind === 'overview' && (
-            <SubjectOverview
+          {!loading && mainView.kind === 'add-subject' && (
+            <AddSubjectView
+              onSave={async (data) => {
+                await window.db.subjects.create(data);
+                await reloadData();
+                setMainView({ kind: 'empty' });
+              }}
+              onBack={() => setMainView({ kind: 'empty' })}
+            />
+          )}
+
+          {!loading && subject && mainView.kind === 'subject' && (
+            <SubjectView
               subject={subject}
-              materials={materials}
+              subjectIndex={subjects.indexOf(subject)}
+              assignments={subjectAssignments}
+              exams={subjectExams}
               tasks={subjectTasks}
-              deadlines={deadlines}
-              onMaterialClick={(id) => setMainView({ kind: 'material-detail', materialId: id })}
-              onCategoryClick={(cat) => setMainView({ kind: 'category-list', category: cat, filter: 'all' })}
+              activeTab={mainView.tab}
+              onTabChange={(tab) => setMainView({ kind: 'subject', tab })}
+              onAssignmentClick={(id) => setMainView({ kind: 'assignment-detail', id })}
+              onExamClick={(id) => setMainView({ kind: 'exam-detail', id })}
               onTaskClick={(id) => setMainView({ kind: 'task-detail', taskId: id })}
-              getEffectiveStatus={getEffectiveStatus}
-              onAddMaterial={() => setMainView({ kind: 'add-material' })}
+              onAddAssignment={() => setMainView({ kind: 'add-assignment' })}
+              onAddExam={() => setMainView({ kind: 'add-exam' })}
+              toggleTaskDone={toggleTaskDone}
             />
           )}
 
-          {!loading && subject && mainView.kind === 'material-detail' && (
-            <MaterialDetailView
-              material={materials.find((m) => m.id === mainView.materialId)
-                ?? MATERIALS.find((m) => m.id === mainView.materialId)}
-              onBack={() => setMainView({ kind: 'overview' })}
+          {!loading && mainView.kind === 'assignment-detail' && (
+            <AssignmentDetailView
+              assignment={assignments.find((a) => a.id === mainView.id)}
+              subjectName={subjects.find((s) => s.id === assignments.find((a) => a.id === mainView.id)?.subjectId)?.name}
+              onBack={() => setMainView(subject ? { kind: 'subject', tab: 'assignments' } : { kind: 'empty' })}
+              onUpdate={async (id, data) => {
+                await window.db.assignments.update(id, data);
+                await reloadData();
+              }}
+              onDelete={async (id) => {
+                await window.db.assignments.delete(id);
+                await reloadData();
+                setMainView(subject ? { kind: 'subject', tab: 'assignments' } : { kind: 'empty' });
+              }}
             />
           )}
 
-          {!loading && subject && mainView.kind === 'category-list' && (
-            <CategoryListView
-              subject={subject}
-              category={mainView.category}
-              materials={grouped[mainView.category] ?? []}
-              filter={mainView.filter}
-              onFilterChange={(f) => setMainView({ kind: 'category-list', category: mainView.category, filter: f })}
-              onMaterialClick={(id) => setMainView({ kind: 'material-detail', materialId: id })}
-              onBack={() => setMainView({ kind: 'overview' })}
+          {!loading && mainView.kind === 'exam-detail' && (
+            <ExamDetailView
+              exam={exams.find((e) => e.id === mainView.id)}
+              subjectName={subjects.find((s) => s.id === exams.find((e) => e.id === mainView.id)?.subjectId)?.name}
+              onBack={() => setMainView(subject ? { kind: 'subject', tab: 'exams' } : { kind: 'empty' })}
+              onUpdate={async (id, data) => {
+                await window.db.exams.update(id, data);
+                await reloadData();
+              }}
+              onDelete={async (id) => {
+                await window.db.exams.delete(id);
+                await reloadData();
+                setMainView(subject ? { kind: 'subject', tab: 'exams' } : { kind: 'empty' });
+              }}
             />
           )}
 
-          {!loading && subject && mainView.kind === 'task-detail' && (
+          {!loading && mainView.kind === 'task-detail' && (
             <TaskDetailView
               task={studyTasks.find((t) => t.id === mainView.taskId)}
-              onBack={() => setMainView({ kind: 'overview' })}
-              toggleTaskChecked={toggleTaskChecked}
-              getEffectiveStatus={getEffectiveStatus}
-              sendTaskToChat={sendTaskToChat}
+              subjectName={subjects.find((s) => s.id === studyTasks.find((t) => t.id === mainView.taskId)?.subjectId)?.name}
+              onBack={() => setMainView(subject ? { kind: 'subject', tab: 'assignments' } : { kind: 'empty' })}
+              toggleDone={toggleTaskDone}
             />
           )}
 
-          {!loading && mainView.kind === 'add-material' && (
-            <AddMaterialView
-              form={newMaterial}
-              onChange={setNewMaterial}
-              subjects={courseSubjects}
-              selectedSubjectId={selectedSubjectId}
-              onBack={() => setMainView({ kind: 'overview' })}
+          {!loading && subject && mainView.kind === 'add-assignment' && (
+            <AddAssignmentView
+              subjectId={subject.id}
+              subjectName={subject.name}
+              onSave={async (data) => {
+                await window.db.assignments.create(data);
+                await reloadData();
+                setMainView({ kind: 'subject', tab: 'assignments' });
+              }}
+              onBack={() => setMainView({ kind: 'subject', tab: 'assignments' })}
+            />
+          )}
+
+          {!loading && subject && mainView.kind === 'add-exam' && (
+            <AddExamView
+              subjectId={subject.id}
+              subjectName={subject.name}
+              onSave={async (data) => {
+                await window.db.exams.create(data);
+                await reloadData();
+                setMainView({ kind: 'subject', tab: 'exams' });
+              }}
+              onBack={() => setMainView({ kind: 'subject', tab: 'exams' })}
             />
           )}
         </main>
@@ -936,427 +683,538 @@ export function Study() {
   );
 }
 
-// --- Sub-components ---
+// === Sub-components ===
 
-function SubjectOverview({
-  subject,
-  materials,
-  tasks,
-  deadlines,
-  onMaterialClick,
-  onCategoryClick,
-  onTaskClick,
-  getEffectiveStatus,
-  onAddMaterial,
+function SubjectView({
+  subject, subjectIndex, assignments, exams, tasks, activeTab,
+  onTabChange, onAssignmentClick, onExamClick, onTaskClick,
+  onAddAssignment, onAddExam, toggleTaskDone,
 }: {
-  subject: SubjectInfo;
-  materials: Material[];
+  subject: Subject;
+  subjectIndex: number;
+  assignments: StudyAssignment[];
+  exams: StudyExam[];
   tasks: StudyTask[];
-  deadlines: Array<Material & { subjectName: string }>;
-  onMaterialClick: (id: string) => void;
-  onCategoryClick: (cat: MaterialCategory) => void;
+  activeTab: SubjectTab;
+  onTabChange: (tab: SubjectTab) => void;
+  onAssignmentClick: (id: string) => void;
+  onExamClick: (id: string) => void;
   onTaskClick: (id: string) => void;
-  getEffectiveStatus: (task: StudyTask) => TaskStatus;
-  onAddMaterial: () => void;
+  onAddAssignment: () => void;
+  onAddExam: () => void;
+  toggleTaskDone: (id: string) => void;
 }) {
-  const total = materials.length;
-  const done = materials.filter((m) => m.status === 'done').length;
-  const inProgress = materials.filter((m) => m.status === 'in_progress').length;
-  const draft = materials.filter((m) => m.status === 'draft').length;
-  const grouped = groupByCategory(materials);
+  const color = getSubjectColor(subject, subjectIndex);
+  const schedule = parseSchedule(subject.schedule);
+  const [statusFilter, setStatusFilter] = useState<AssignmentStatus | 'all'>('all');
+  const [typeFilter, setTypeFilter] = useState<AssignmentType | 'all'>('all');
+
+  const filteredAssignments = assignments
+    .filter((a) => statusFilter === 'all' || a.status === statusFilter)
+    .filter((a) => typeFilter === 'all' || a.type === typeFilter);
+
+  const tabs: Array<{ key: SubjectTab; label: string; count?: number }> = [
+    { key: 'assignments', label: 'Задания', count: assignments.length },
+    { key: 'exams', label: 'Экзамены', count: exams.length },
+    { key: 'files', label: 'Файлы' },
+    { key: 'notes', label: 'Заметки' },
+  ];
 
   return (
-    <div className="max-w-2xl">
-      {/* Subject card */}
+    <div className="max-w-3xl">
+      {/* Header */}
       <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
-        <h1 className="text-2xl font-bold mb-1">{subject.name}</h1>
-        <p className="text-neutral-400 text-sm mb-2">{subject.professor}</p>
-        <div className="text-xs text-neutral-500">
-          {subject.room && <><span>Ауд. {subject.room}</span><span className="mx-2">&middot;</span></>}
-          {subject.schedule.map((s) => `${s.day} ${s.time} (${s.type})`).join(', ')}
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="flex gap-3 mb-6">
-        <StatBadge label="Всего" count={total} color="text-blue-400 bg-blue-400/10" />
-        <StatBadge label="Сдано" count={done} color="text-emerald-400 bg-emerald-400/10" />
-        <StatBadge label="В работе" count={inProgress} color="text-yellow-400 bg-yellow-400/10" />
-        {draft > 0 && <StatBadge label="Черновик" count={draft} color="text-neutral-400 bg-neutral-400/10" />}
-      </div>
-
-      {/* Tasks */}
-      {tasks.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-sm font-semibold text-neutral-300 mb-3">Задачи</h2>
-          <div className="space-y-1.5">
-            {tasks.map((task) => {
-              const pColor = PRIORITY_COLORS[task.priority];
-              const effectiveStatus = getEffectiveStatus(task);
-              return (
-                <button
-                  key={task.id}
-                  onClick={() => onTaskClick(task.id)}
-                  className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg border-l-2 ${pColor.border} bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors`}
-                >
-                  <span className={`text-sm shrink-0 ${STATUS_COLORS[effectiveStatus]}`}>
-                    {effectiveStatus === 'done' ? <CheckCircle2 size={14} strokeWidth={1.5} /> : effectiveStatus === 'in_progress' ? <RefreshCw size={14} strokeWidth={1.5} /> : <Clock size={14} strokeWidth={1.5} />}
-                  </span>
-                  <span className={`text-sm flex-1 ${effectiveStatus === 'done' ? 'text-neutral-500 line-through' : 'text-neutral-300'}`}>
-                    {task.title}
-                  </span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${pColor.badge}`}>{pColor.label}</span>
-                </button>
-              );
-            })}
+        <div className="flex items-start gap-3">
+          <div className="w-3 h-3 rounded-full mt-2 shrink-0" style={{ backgroundColor: color }} />
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold">{subject.name}</h1>
+            <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-neutral-400">
+              {subject.professor && <span>{subject.professor}</span>}
+              {subject.type && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">
+                  {subject.type === 'lecture' ? 'Лекция' : subject.type === 'seminar' ? 'Семинар' : subject.type === 'lab' ? 'Лаб.' : 'Практика'}
+                </span>
+              )}
+              {subject.status && subject.status !== 'active' && (
+                <span className={`text-xs px-1.5 py-0.5 rounded ${subject.status === 'completed' ? 'bg-emerald-900/40 text-emerald-300' : 'bg-red-900/40 text-red-300'}`}>
+                  {subject.status === 'completed' ? 'Завершён' : 'Отброшен'}
+                </span>
+              )}
+              <span className="text-xs text-neutral-600">Семестр {subject.semester}</span>
+            </div>
+            {schedule.length > 0 && (
+              <div className="text-xs text-neutral-500 mt-2">
+                <Calendar size={12} className="inline mr-1" />
+                {schedule.map((s) => `${s.day} ${s.time}${s.type ? ` (${s.type})` : ''}`).join(', ')}
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Deadlines */}
-      {deadlines.filter((d) => d.subjectId === subject.id).length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-sm font-semibold text-neutral-300 mb-3">Ближайшие дедлайны</h2>
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 border-b border-neutral-800">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => onTabChange(tab.key)}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === tab.key
+                ? 'text-neutral-200 border-blue-500'
+                : 'text-neutral-500 border-transparent hover:text-neutral-300'
+            }`}
+          >
+            {tab.label}
+            {tab.count !== undefined && (
+              <span className="ml-1.5 text-xs text-neutral-600">{tab.count}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      {activeTab === 'assignments' && (
+        <div>
+          {/* Filters + add */}
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as AssignmentStatus | 'all')}
+              className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-300 focus:outline-none"
+            >
+              <option value="all">Все статусы</option>
+              {(Object.keys(ASSIGNMENT_STATUS_META) as AssignmentStatus[]).map((s) => (
+                <option key={s} value={s}>{ASSIGNMENT_STATUS_META[s].label}</option>
+              ))}
+            </select>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as AssignmentType | 'all')}
+              className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-300 focus:outline-none"
+            >
+              <option value="all">Все типы</option>
+              {(Object.keys(ASSIGNMENT_TYPE_META) as AssignmentType[]).map((t) => (
+                <option key={t} value={t}>{ASSIGNMENT_TYPE_META[t].label}</option>
+              ))}
+            </select>
+            <button
+              onClick={onAddAssignment}
+              className="ml-auto flex items-center gap-1 px-3 py-1 rounded text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+            >
+              <Plus size={12} /> Задание
+            </button>
+          </div>
+
+          {/* List */}
           <div className="space-y-2">
-            {deadlines
-              .filter((d) => d.subjectId === subject.id)
-              .map((d) => (
+            {filteredAssignments.map((a) => {
+              const isOverdue = a.deadline && a.deadline < new Date().toISOString().slice(0, 10) && a.status !== 'graded' && a.status !== 'submitted';
+              return (
                 <button
-                  key={d.id}
-                  onClick={() => onMaterialClick(d.id)}
+                  key={a.id}
+                  onClick={() => onAssignmentClick(a.id)}
                   className="w-full text-left bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-3 hover:bg-neutral-800/50 transition-colors shadow-sm shadow-black/10"
                 >
-                  <div className="flex items-baseline gap-3 text-sm">
-                    <span className="text-red-400/80 text-xs shrink-0">{formatDate(d.deadline!)}</span>
-                    <span className="text-neutral-300">
-                      {CATEGORY_META[d.category].icon} {d.title}
+                  <div className="flex items-center gap-3">
+                    <span className="shrink-0">{ASSIGNMENT_STATUS_META[a.status].icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-neutral-300">{a.title}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-500">
+                          {ASSIGNMENT_TYPE_META[a.type]?.label}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-neutral-600 mt-0.5 flex items-center gap-2">
+                        {a.deadline && (
+                          <span className={isOverdue ? 'text-red-400' : ''}>
+                            Дедлайн: {formatDate(a.deadline)}
+                          </span>
+                        )}
+                        {a.grade && <span className="text-emerald-400">Оценка: {a.grade}</span>}
+                      </div>
+                    </div>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${ASSIGNMENT_STATUS_META[a.status].color}`}>
+                      {ASSIGNMENT_STATUS_META[a.status].label}
                     </span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ml-auto ${STATUS_META[d.status].color}`}>
-                      {STATUS_META[d.status].label}
-                    </span>
-                  </div>
-                </button>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Materials by category */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-neutral-300">Материалы по категориям</h2>
-          <button
-            onClick={onAddMaterial}
-            className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors flex items-center gap-1"
-          >
-            + Добавить
-          </button>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          {(Object.keys(CATEGORY_META) as MaterialCategory[])
-            .filter((cat) => grouped[cat] && grouped[cat].length > 0)
-            .map((cat) => {
-              const catMaterials = grouped[cat];
-              const catDone = catMaterials.filter((m) => m.status === 'done').length;
-              return (
-                <button
-                  key={cat}
-                  onClick={() => onCategoryClick(cat)}
-                  className="text-left bg-neutral-900/30 border border-neutral-800 rounded-lg px-3 py-2.5 hover:bg-neutral-800/50 transition-colors"
-                >
-                  <div className="flex items-center gap-2 text-sm">
-                    <span>{CATEGORY_META[cat].icon}</span>
-                    <span className="text-neutral-300">{CATEGORY_META[cat].pluralLabel}</span>
-                    <span className="text-neutral-600 text-xs ml-auto">{catDone}/{catMaterials.length}</span>
                   </div>
                 </button>
               );
             })}
-        </div>
-      </div>
-
-      {/* Recent materials */}
-      <div>
-        <h2 className="text-sm font-semibold text-neutral-300 mb-3">Последние добавленные</h2>
-        <div className="space-y-2">
-          {[...materials].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((m) => (
-            <button
-              key={m.id}
-              onClick={() => onMaterialClick(m.id)}
-              className="w-full text-left bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-3 hover:bg-neutral-800/50 transition-colors shadow-sm shadow-black/10"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-sm shrink-0">{STATUS_META[m.status].icon}</span>
-                <span className="text-sm text-neutral-300">
-                  {CATEGORY_META[m.category].icon} {m.title}
-                </span>
-                <span className="text-neutral-600 text-[10px] shrink-0 ml-auto">{formatDate(m.date)}</span>
+            {filteredAssignments.length === 0 && (
+              <div className="text-neutral-600 text-sm py-8 text-center">
+                {assignments.length === 0 ? 'Нет заданий' : 'Нет заданий с такими фильтрами'}
               </div>
-            </button>
-          ))}
+            )}
+          </div>
+
+          {/* Tasks for this subject */}
+          {tasks.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold text-neutral-300 mb-3">Задачи</h3>
+              <div className="space-y-1.5">
+                {tasks.map((task) => {
+                  const pColor = PRIORITY_COLORS[task.priority];
+                  const isDone = task.status === 'done';
+                  return (
+                    <div
+                      key={task.id}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border-l-2 ${pColor.border} bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors`}
+                    >
+                      <button
+                        onClick={() => toggleTaskDone(task.id)}
+                        className={`w-4 h-4 rounded border shrink-0 flex items-center justify-center transition-colors ${
+                          isDone ? 'bg-emerald-600 border-emerald-600' : 'border-neutral-600 hover:border-neutral-400'
+                        }`}
+                      >
+                        {isDone && (
+                          <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => onTaskClick(task.id)}
+                        className={`text-sm flex-1 text-left ${isDone ? 'text-neutral-500 line-through' : 'text-neutral-300'}`}
+                      >
+                        {task.title}
+                      </button>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${pColor.badge}`}>{pColor.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
+      )}
+
+      {activeTab === 'exams' && (
+        <div>
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={onAddExam}
+              className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+            >
+              <Plus size={12} /> Экзамен
+            </button>
+          </div>
+          <div className="space-y-2">
+            {exams.map((e) => (
+              <button
+                key={e.id}
+                onClick={() => onExamClick(e.id)}
+                className="w-full text-left bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-3 hover:bg-neutral-800/50 transition-colors shadow-sm shadow-black/10"
+              >
+                <div className="flex items-center gap-3">
+                  <GraduationCap size={16} className="text-neutral-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-neutral-300">{e.title}</div>
+                    <div className="text-[11px] text-neutral-600 mt-0.5 flex items-center gap-2">
+                      <span>{EXAM_TYPE_META[e.type]}</span>
+                      {e.date && <span>{formatDate(e.date)}</span>}
+                      {e.grade && <span className="text-emerald-400">Оценка: {e.grade}</span>}
+                    </div>
+                  </div>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${EXAM_STATUS_META[e.status].color}`}>
+                    {EXAM_STATUS_META[e.status].label}
+                  </span>
+                </div>
+              </button>
+            ))}
+            {exams.length === 0 && (
+              <div className="text-neutral-600 text-sm py-8 text-center">Нет экзаменов</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'files' && (
+        <FilesView subjectName={subject.name} />
+      )}
+
+      {activeTab === 'notes' && (
+        <NotesView subjectName={subject.name} />
+      )}
+    </div>
+  );
+}
+
+// --- Files view (reads folder structure) ---
+
+function FilesView({ subjectName }: { subjectName: string }) {
+  return (
+    <div>
+      <p className="text-sm text-neutral-400 mb-4">
+        Файлы предмета хранятся в <code className="text-neutral-300 bg-neutral-800 px-1 rounded text-xs">agents/study/context/subjects/</code>
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        {['notes', 'summaries', 'assignments', 'materials', 'exams', 'templates'].map((folder) => (
+          <button
+            key={folder}
+            onClick={() => {
+              window.electronAPI.openFile(`agents/study/context/subjects/${toSlug(subjectName)}/${folder}`);
+            }}
+            className="text-left bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-3 hover:bg-neutral-800/50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <FolderOpen size={16} className="text-neutral-500" />
+              <span className="text-sm text-neutral-300 capitalize">{folder}</span>
+            </div>
+            <div className="text-[11px] text-neutral-600 mt-1">
+              {folder === 'notes' && 'Заметки с пар'}
+              {folder === 'summaries' && 'AI-конспекты'}
+              {folder === 'assignments' && 'Задания и решения'}
+              {folder === 'materials' && 'Учебные материалы'}
+              {folder === 'exams' && 'Подготовка к экзаменам'}
+              {folder === 'templates' && 'Шаблоны документов'}
+            </div>
+          </button>
+        ))}
+      </div>
+      <div className="mt-4 bg-neutral-900/50 border border-neutral-800 rounded-lg p-3">
+        <p className="text-xs text-neutral-500">
+          Попросите бота: <span className="text-neutral-400">"Сохрани заметку по матану — Интегралы"</span>
+        </p>
       </div>
     </div>
   );
 }
 
-function StatBadge({ label, count, color }: { label: string; count: number; color: string }) {
+function NotesView({ subjectName }: { subjectName: string }) {
   return (
-    <div className={`px-3 py-2 rounded-lg shadow-sm shadow-black/10 ${color}`}>
-      <div className="text-lg font-bold">{count}</div>
-      <div className="text-[10px] uppercase tracking-wider opacity-70">{label}</div>
+    <div>
+      <p className="text-sm text-neutral-400 mb-4">
+        Заметки из <code className="text-neutral-300 bg-neutral-800 px-1 rounded text-xs">notes/</code>.
+        Конспекты генерируются в <code className="text-neutral-300 bg-neutral-800 px-1 rounded text-xs">summaries/</code>.
+      </p>
+      <div className="flex gap-3">
+        <button
+          onClick={() => window.electronAPI.openFile(`agents/study/context/subjects/${toSlug(subjectName)}/notes`)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors"
+        >
+          <NotebookText size={16} /> Открыть notes/
+        </button>
+        <button
+          onClick={() => window.electronAPI.openFile(`agents/study/context/subjects/${toSlug(subjectName)}/summaries`)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors"
+        >
+          <BookOpen size={16} /> Открыть summaries/
+        </button>
+      </div>
+      <div className="mt-6 bg-neutral-900/50 border border-neutral-800 rounded-lg p-3 space-y-2">
+        <p className="text-xs text-neutral-500">
+          <span className="text-neutral-400">Сохранить заметку:</span> попросите бота <span className="text-neutral-300">"Запиши заметку по [предмет]: [текст]"</span>
+        </p>
+        <p className="text-xs text-neutral-500">
+          <span className="text-neutral-400">Создать конспект:</span> попросите бота <span className="text-neutral-300">"Сделай конспект из заметки [файл]"</span>
+        </p>
+      </div>
     </div>
   );
 }
 
-function MaterialDetailView({
-  material,
-  onBack,
-}: {
-  material: Material | undefined;
-  onBack: () => void;
-}) {
-  const [contentMode, setContentMode] = useState<'original' | 'summary'>('original');
+function toSlug(name: string): string {
+  const CYR: Record<string, string> = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+  };
+  return name.toLowerCase().split('').map((ch) => CYR[ch] ?? ch).join('')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
 
-  if (!material) {
+// --- Assignment Detail ---
+
+function AssignmentDetailView({
+  assignment, subjectName, onBack, onUpdate, onDelete,
+}: {
+  assignment: StudyAssignment | undefined;
+  subjectName: string | undefined;
+  onBack: () => void;
+  onUpdate: (id: string, data: Record<string, unknown>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  if (!assignment) {
     return (
       <div className="text-neutral-500">
-        <button onClick={onBack} className="text-sm hover:text-neutral-300 transition-colors mb-4">
-          &larr; Назад
-        </button>
-        <p>Материал не найден</p>
+        <button onClick={onBack} className="text-sm hover:text-neutral-300 transition-colors mb-4">&larr; Назад</button>
+        <p>Задание не найдено</p>
       </div>
     );
   }
 
-  const subject = SUBJECTS.find((s) => s.id === material.subjectId);
-  const hasContent = material.originalContent || material.summaryContent;
-  const isLecture = material.category === 'lecture';
+  const isOverdue = assignment.deadline && assignment.deadline < new Date().toISOString().slice(0, 10) && assignment.status !== 'graded' && assignment.status !== 'submitted';
 
   return (
     <div className="max-w-2xl">
-      <button
-        onClick={onBack}
-        className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4"
-      >
-        &larr; Назад к обзору
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
+        &larr; Назад
       </button>
 
       <div className="flex items-center gap-3 mb-2">
-        <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${STATUS_META[material.status].color}`}>
-          {STATUS_META[material.status].icon} {STATUS_META[material.status].label}
+        <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${ASSIGNMENT_STATUS_META[assignment.status].color}`}>
+          {ASSIGNMENT_STATUS_META[assignment.status].icon} {ASSIGNMENT_STATUS_META[assignment.status].label}
         </span>
         <span className="text-neutral-600 text-xs">
-          {CATEGORY_META[material.category].icon} {CATEGORY_META[material.category].label}
+          {ASSIGNMENT_TYPE_META[assignment.type]?.icon} {ASSIGNMENT_TYPE_META[assignment.type]?.label}
         </span>
-        <span className="text-neutral-500 text-sm">{formatDate(material.date)}</span>
       </div>
 
-      <h1 className="text-xl font-bold mb-1">{material.title}</h1>
-      {subject && <p className="text-neutral-500 text-sm mb-6">{subject.name}</p>}
+      <h1 className="text-xl font-bold mb-1">{assignment.title}</h1>
+      {subjectName && <p className="text-neutral-500 text-sm mb-4">{subjectName}</p>}
 
-      {/* Deadline */}
-      {material.deadline && (
-        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 mb-4 shadow-sm shadow-black/10">
-          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">
-            Дедлайн
-          </h2>
-          <p className="text-neutral-300 text-sm">{formatDate(material.deadline)}</p>
-        </div>
-      )}
-
-      {/* Description */}
-      {material.description && (
-        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 mb-4 shadow-sm shadow-black/10">
-          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-            Описание
-          </h2>
-          <p className="text-neutral-300 text-sm leading-relaxed">{material.description}</p>
-        </div>
-      )}
-
-      {/* Original / Summary toggle for lectures */}
-      {isLecture && hasContent && (
-        <div className="mb-4">
-          <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-              Содержание
-            </h2>
-            <div className="flex gap-0.5 ml-auto bg-neutral-900 rounded-lg p-0.5 border border-neutral-800">
-              <button
-                onClick={() => setContentMode('original')}
-                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                  contentMode === 'original'
-                    ? 'bg-neutral-700 text-white'
-                    : 'text-neutral-500 hover:text-neutral-300'
-                }`}
-              >
-                Оригинал
-              </button>
-              <button
-                onClick={() => setContentMode('summary')}
-                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                  contentMode === 'summary'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-neutral-500 hover:text-neutral-300'
-                }`}
-              >
-                Конспект
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 shadow-sm shadow-black/10">
-            {contentMode === 'original' && material.originalContent && (
-              <pre className="text-sm text-neutral-300 leading-relaxed whitespace-pre-wrap font-sans">
-                {material.originalContent}
-              </pre>
-            )}
-            {contentMode === 'summary' && material.summaryContent && (
-              <div>
-                <div className="flex items-center gap-1.5 mb-3 text-[10px] text-blue-400/70 uppercase tracking-wider">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
-                  </svg>
-                  AI-конспект
-                </div>
-                <pre className="text-sm text-neutral-300 leading-relaxed whitespace-pre-wrap font-sans">
-                  {material.summaryContent}
-                </pre>
-              </div>
-            )}
-            {contentMode === 'original' && !material.originalContent && (
-              <p className="text-neutral-600 text-sm">Оригинальный текст не загружен.</p>
-            )}
-            {contentMode === 'summary' && !material.summaryContent && (
-              <div className="text-center py-4">
-                <p className="text-neutral-600 text-sm mb-2">Конспект ещё не создан.</p>
-                <button className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
-                  Создать конспект через AI
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* File button */}
-      {material.filePath ? (
-        <button
-          onClick={() => openFile(material.filePath!)}
-          className="flex items-center gap-2 bg-blue-900/30 border border-blue-800/50 rounded-lg px-4 py-3 text-sm text-blue-300 hover:bg-blue-900/50 transition-colors"
+      {/* Status dropdown */}
+      <div className="flex items-center gap-3 mb-4">
+        <label className="text-xs text-neutral-500">Статус:</label>
+        <select
+          value={assignment.status}
+          onChange={(e) => onUpdate(assignment.id, { status: e.target.value })}
+          className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-300 focus:outline-none"
         >
-          <FileText size={16} strokeWidth={1.5} /> Посмотреть файл
-        </button>
-      ) : (
-        !hasContent && (
-          <div className="text-xs text-neutral-600 mt-2">
-            Файл не прикреплён. Можно создать через чат.
-          </div>
-        )
+          {(Object.keys(ASSIGNMENT_STATUS_META) as AssignmentStatus[]).map((s) => (
+            <option key={s} value={s}>{ASSIGNMENT_STATUS_META[s].label}</option>
+          ))}
+        </select>
+      </div>
+
+      {assignment.deadline && (
+        <div className={`bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 mb-4 shadow-sm shadow-black/10 ${isOverdue ? 'border-red-800/50' : ''}`}>
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Дедлайн</h2>
+          <p className={`text-sm ${isOverdue ? 'text-red-400 font-medium' : 'text-neutral-300'}`}>
+            {formatDate(assignment.deadline)}
+            {isOverdue && ' — просрочено!'}
+          </p>
+        </div>
       )}
+
+      {assignment.description && (
+        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 mb-4 shadow-sm shadow-black/10">
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Описание</h2>
+          <p className="text-neutral-300 text-sm leading-relaxed">{assignment.description}</p>
+        </div>
+      )}
+
+      {assignment.grade && (
+        <div className="bg-emerald-900/20 border border-emerald-800/30 rounded-lg p-4 mb-4">
+          <h2 className="text-xs font-semibold text-emerald-500 uppercase tracking-wider mb-1">Оценка</h2>
+          <p className="text-lg font-bold text-emerald-300">{assignment.grade}</p>
+        </div>
+      )}
+
+      {assignment.filePath && (
+        <button
+          onClick={() => window.electronAPI.openFile(assignment.filePath!)}
+          className="flex items-center gap-2 bg-blue-900/30 border border-blue-800/50 rounded-lg px-4 py-3 text-sm text-blue-300 hover:bg-blue-900/50 transition-colors mb-4"
+        >
+          <FileText size={16} strokeWidth={1.5} /> Открыть файл
+        </button>
+      )}
+
+      <div className="flex gap-3">
+        <button
+          onClick={() => onDelete(assignment.id)}
+          className="flex items-center gap-1 px-3 py-1.5 rounded text-xs text-red-400 hover:bg-red-900/30 transition-colors"
+        >
+          <Trash2 size={12} /> Удалить
+        </button>
+      </div>
     </div>
   );
 }
 
-function CategoryListView({
-  subject,
-  category,
-  materials,
-  filter,
-  onFilterChange,
-  onMaterialClick,
-  onBack,
+// --- Exam Detail ---
+
+function ExamDetailView({
+  exam, subjectName, onBack, onUpdate, onDelete,
 }: {
-  subject: SubjectInfo;
-  category: MaterialCategory;
-  materials: Material[];
-  filter: MaterialStatus | 'all';
-  onFilterChange: (f: MaterialStatus | 'all') => void;
-  onMaterialClick: (id: string) => void;
+  exam: StudyExam | undefined;
+  subjectName: string | undefined;
   onBack: () => void;
+  onUpdate: (id: string, data: Record<string, unknown>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
-  const filtered = filter === 'all' ? materials : materials.filter((m) => m.status === filter);
-  const filters: Array<{ value: MaterialStatus | 'all'; label: string }> = [
-    { value: 'all', label: 'Все' },
-    { value: 'done', label: 'Сдано' },
-    { value: 'in_progress', label: 'В работе' },
-    { value: 'draft', label: 'Черновик' },
-  ];
+  if (!exam) {
+    return (
+      <div className="text-neutral-500">
+        <button onClick={onBack} className="text-sm hover:text-neutral-300 transition-colors mb-4">&larr; Назад</button>
+        <p>Экзамен не найден</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl">
-      <button
-        onClick={onBack}
-        className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4"
-      >
-        &larr; Назад к обзору
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
+        &larr; Назад
       </button>
-      <h1 className="text-2xl font-bold mb-1">{subject.name}</h1>
-      <h2 className="text-neutral-500 text-sm mb-6">
-        {CATEGORY_META[category].icon} {CATEGORY_META[category].pluralLabel}
-      </h2>
 
-      {/* Filters */}
-      <div className="flex gap-1 mb-6">
-        {filters.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => onFilterChange(f.value)}
-            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-              filter === f.value
-                ? 'bg-neutral-700 text-white'
-                : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="flex items-center gap-3 mb-2">
+        <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${EXAM_STATUS_META[exam.status].color}`}>
+          {EXAM_STATUS_META[exam.status].label}
+        </span>
+        <span className="text-neutral-600 text-xs">{EXAM_TYPE_META[exam.type]}</span>
       </div>
 
-      {/* List */}
-      <div className="space-y-2">
-        {filtered.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => onMaterialClick(m.id)}
-            className="w-full text-left bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-3 hover:bg-neutral-800/50 transition-colors shadow-sm shadow-black/10"
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-sm shrink-0">{STATUS_META[m.status].icon}</span>
-              <div className="flex-1 min-w-0">
-                <span className="text-sm text-neutral-300">{m.title}</span>
-                <div className="text-[11px] text-neutral-600 mt-0.5">
-                  {formatDate(m.date)}
-                  {m.deadline && <span className="ml-2">Дедлайн: {formatDate(m.deadline)}</span>}
-                </div>
-              </div>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${STATUS_META[m.status].color}`}>
-                {STATUS_META[m.status].label}
-              </span>
-            </div>
-          </button>
-        ))}
-        {filtered.length === 0 && (
-          <div className="text-neutral-600 text-sm py-4 text-center">Нет материалов с таким статусом</div>
-        )}
+      <h1 className="text-xl font-bold mb-1">{exam.title}</h1>
+      {subjectName && <p className="text-neutral-500 text-sm mb-4">{subjectName}</p>}
+
+      <div className="flex items-center gap-3 mb-4">
+        <label className="text-xs text-neutral-500">Статус:</label>
+        <select
+          value={exam.status}
+          onChange={(e) => onUpdate(exam.id, { status: e.target.value })}
+          className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-300 focus:outline-none"
+        >
+          {(Object.keys(EXAM_STATUS_META) as ExamStatus[]).map((s) => (
+            <option key={s} value={s}>{EXAM_STATUS_META[s].label}</option>
+          ))}
+        </select>
+      </div>
+
+      {exam.date && (
+        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 mb-4 shadow-sm shadow-black/10">
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Дата</h2>
+          <p className="text-neutral-300 text-sm">{formatDate(exam.date)}</p>
+        </div>
+      )}
+
+      {exam.grade && (
+        <div className="bg-emerald-900/20 border border-emerald-800/30 rounded-lg p-4 mb-4">
+          <h2 className="text-xs font-semibold text-emerald-500 uppercase tracking-wider mb-1">Оценка</h2>
+          <p className="text-lg font-bold text-emerald-300">{exam.grade}</p>
+        </div>
+      )}
+
+      {exam.notes && (
+        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 mb-4 shadow-sm shadow-black/10">
+          <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Заметки</h2>
+          <p className="text-neutral-300 text-sm leading-relaxed">{exam.notes}</p>
+        </div>
+      )}
+
+      <div className="flex gap-3">
+        <button
+          onClick={() => onDelete(exam.id)}
+          className="flex items-center gap-1 px-3 py-1.5 rounded text-xs text-red-400 hover:bg-red-900/30 transition-colors"
+        >
+          <Trash2 size={12} /> Удалить
+        </button>
       </div>
     </div>
   );
 }
 
+// --- Task Detail ---
+
 function TaskDetailView({
-  task,
-  onBack,
-  toggleTaskChecked,
-  getEffectiveStatus,
-  sendTaskToChat,
+  task, subjectName, onBack, toggleDone,
 }: {
   task: StudyTask | undefined;
+  subjectName: string | undefined;
   onBack: () => void;
-  toggleTaskChecked: (id: string) => void;
-  getEffectiveStatus: (task: StudyTask) => TaskStatus;
-  sendTaskToChat: (task: StudyTask) => void;
+  toggleDone: (id: string) => void;
 }) {
   if (!task) {
     return (
@@ -1368,8 +1226,7 @@ function TaskDetailView({
   }
 
   const pColor = PRIORITY_COLORS[task.priority];
-  const effectiveStatus = getEffectiveStatus(task);
-  const isDone = effectiveStatus === 'done';
+  const isDone = task.status === 'done';
 
   return (
     <div className="max-w-2xl">
@@ -1377,10 +1234,9 @@ function TaskDetailView({
         &larr; Назад
       </button>
 
-      {/* Header */}
       <div className="flex items-start gap-3 mb-6">
         <button
-          onClick={() => toggleTaskChecked(task.id)}
+          onClick={() => toggleDone(task.id)}
           className={`w-5 h-5 mt-1 rounded border shrink-0 flex items-center justify-center transition-colors ${
             isDone ? 'bg-emerald-600 border-emerald-600' : 'border-neutral-600 hover:border-neutral-400'
           }`}
@@ -1395,137 +1251,335 @@ function TaskDetailView({
           <h1 className={`text-xl font-bold ${isDone ? 'text-neutral-500 line-through' : ''}`}>{task.title}</h1>
           <div className="flex items-center gap-3 mt-1">
             <span className={`text-xs px-2 py-0.5 rounded ${pColor.badge}`}>{pColor.label}</span>
-            <span className={`text-xs ${STATUS_COLORS[effectiveStatus]}`}>{STATUS_LABEL[effectiveStatus]}</span>
-            <span className="text-xs text-neutral-600">{getSubjectName(task.subjectId)}</span>
-            {task.deadline && (
-              <span className="text-xs text-neutral-600">Дедлайн: {formatDate(task.deadline)}</span>
-            )}
+            <span className={`text-xs ${STATUS_COLORS[task.status]}`}>{task.status}</span>
+            {subjectName && <span className="text-xs text-neutral-600">{subjectName}</span>}
+            {task.deadline && <span className="text-xs text-neutral-600">Дедлайн: {formatDate(task.deadline)}</span>}
           </div>
         </div>
       </div>
 
-      {/* Context */}
-      <div className="mb-6">
-        <h2 className="text-sm font-semibold text-neutral-300 mb-2">Контекст</h2>
+      {task.context && (
         <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3">
           <p className="text-sm text-neutral-400 leading-relaxed">{task.context}</p>
         </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-3">
-        <button
-          onClick={() => sendTaskToChat(task)}
-          className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors"
-        >
-          Отправить боту
-        </button>
-      </div>
+      )}
     </div>
   );
 }
 
-function AddMaterialView({
-  form,
-  onChange,
-  subjects,
-  selectedSubjectId,
-  onBack,
+// --- Add Assignment ---
+
+function AddAssignmentView({
+  subjectId, subjectName, onSave, onBack,
 }: {
-  form: { title: string; category: MaterialCategory; status: MaterialStatus; description: string; deadline: string };
-  onChange: (f: { title: string; category: MaterialCategory; status: MaterialStatus; description: string; deadline: string }) => void;
-  subjects: SubjectInfo[];
-  selectedSubjectId: string | null;
+  subjectId: string;
+  subjectName: string;
+  onSave: (data: Record<string, unknown>) => Promise<void>;
   onBack: () => void;
 }) {
-  const [subjectId, setSubjectId] = useState(selectedSubjectId ?? subjects[0]?.id ?? '');
+  const [title, setTitle] = useState('');
+  const [type, setType] = useState<AssignmentType>('homework');
+  const [deadline, setDeadline] = useState('');
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!title.trim()) return;
+    setSaving(true);
+    try {
+      await onSave({
+        subjectId,
+        title: title.trim(),
+        type,
+        deadline: deadline || null,
+        description: description.trim() || null,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="max-w-md">
       <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
         &larr; Назад
       </button>
-
-      <h1 className="text-2xl font-bold mb-6">Новый материал</h1>
+      <h1 className="text-2xl font-bold mb-1">Новое задание</h1>
+      <p className="text-sm text-neutral-500 mb-6">{subjectName}</p>
 
       <div className="space-y-4">
-        <div>
-          <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Предмет</label>
-          <select
-            value={subjectId}
-            onChange={(e) => setSubjectId(e.target.value)}
-            className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
-          >
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-        </div>
         <div>
           <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Название</label>
           <input
             type="text"
-            value={form.title}
-            onChange={(e) => onChange({ ...form, title: e.target.value })}
-            placeholder="Интегралы, ДЗ 3..."
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="ДЗ 3 — интегралы"
             className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
           />
         </div>
         <div className="flex gap-3">
           <div className="flex-1">
-            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Категория</label>
+            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Тип</label>
             <select
-              value={form.category}
-              onChange={(e) => onChange({ ...form, category: e.target.value as MaterialCategory })}
+              value={type}
+              onChange={(e) => setType(e.target.value as AssignmentType)}
               className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
             >
-              {(Object.keys(CATEGORY_META) as MaterialCategory[]).map((cat) => (
-                <option key={cat} value={cat}>{CATEGORY_META[cat].label}</option>
+              {(Object.keys(ASSIGNMENT_TYPE_META) as AssignmentType[]).map((t) => (
+                <option key={t} value={t}>{ASSIGNMENT_TYPE_META[t].label}</option>
               ))}
             </select>
           </div>
           <div className="flex-1">
-            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Статус</label>
-            <select
-              value={form.status}
-              onChange={(e) => onChange({ ...form, status: e.target.value as MaterialStatus })}
+            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Дедлайн</label>
+            <input
+              type="date"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
               className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
-            >
-              {(Object.keys(STATUS_META) as MaterialStatus[]).map((st) => (
-                <option key={st} value={st}>{STATUS_META[st].label}</option>
-              ))}
-            </select>
+            />
           </div>
-        </div>
-        <div>
-          <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Дедлайн</label>
-          <input
-            type="date"
-            value={form.deadline}
-            onChange={(e) => onChange({ ...form, deadline: e.target.value })}
-            className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
-          />
         </div>
         <div>
           <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Описание</label>
           <textarea
-            value={form.description}
-            onChange={(e) => onChange({ ...form, description: e.target.value })}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
             rows={3}
             placeholder="Что нужно сделать..."
             className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500 resize-none"
           />
         </div>
-
-        <button className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors">
-          Сохранить
+        <button
+          onClick={handleSave}
+          disabled={!title.trim() || saving}
+          className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Сохранение...' : 'Сохранить'}
         </button>
+      </div>
+    </div>
+  );
+}
 
-        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-3 mt-4">
-          <p className="text-xs text-neutral-500">
-            Или скажите боту: <span className="text-neutral-400">"Добавь лекцию по матану — Интегралы"</span>
-          </p>
+// --- Add Exam ---
+
+function AddExamView({
+  subjectId, subjectName, onSave, onBack,
+}: {
+  subjectId: string;
+  subjectName: string;
+  onSave: (data: Record<string, unknown>) => Promise<void>;
+  onBack: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [type, setType] = useState<ExamType>('exam');
+  const [date, setDate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!title.trim()) return;
+    setSaving(true);
+    try {
+      await onSave({
+        subjectId,
+        title: title.trim(),
+        type,
+        date: date || null,
+        notes: notes.trim() || null,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-md">
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
+        &larr; Назад
+      </button>
+      <h1 className="text-2xl font-bold mb-1">Новый экзамен</h1>
+      <p className="text-sm text-neutral-500 mb-6">{subjectName}</p>
+
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Название</label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Экзамен по термодинамике"
+            className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+          />
         </div>
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Тип</label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value as ExamType)}
+              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+            >
+              {(Object.keys(EXAM_TYPE_META) as ExamType[]).map((t) => (
+                <option key={t} value={t}>{EXAM_TYPE_META[t]}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1">
+            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Дата</label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Заметки</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Что нужно подготовить..."
+            className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500 resize-none"
+          />
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={!title.trim() || saving}
+          className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Сохранение...' : 'Сохранить'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- Add Subject ---
+
+function AddSubjectView({
+  onSave, onBack,
+}: {
+  onSave: (data: Record<string, unknown>) => Promise<void>;
+  onBack: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [professor, setProfessor] = useState('');
+  const [semester, setSemester] = useState(4);
+  const [schedule, setSchedule] = useState('');
+  const [type, setType] = useState('lecture');
+  const [color, setColor] = useState(DEFAULT_SUBJECT_COLORS[0]);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      await onSave({
+        name: name.trim(),
+        semester,
+        professor: professor.trim() || null,
+        schedule: schedule.trim() || null,
+        type,
+        color,
+        status: 'active',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-md">
+      <button onClick={onBack} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
+        &larr; Назад
+      </button>
+      <h1 className="text-2xl font-bold mb-6">Новый предмет</h1>
+
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Название</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Математический анализ"
+            className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+          />
+        </div>
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Преподаватель</label>
+            <input
+              type="text"
+              value={professor}
+              onChange={(e) => setProfessor(e.target.value)}
+              placeholder="Иванов А.С."
+              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+            />
+          </div>
+          <div className="w-24">
+            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Семестр</label>
+            <input
+              type="number"
+              value={semester}
+              onChange={(e) => setSemester(parseInt(e.target.value, 10) || 1)}
+              min={1} max={12}
+              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Расписание</label>
+          <input
+            type="text"
+            value={schedule}
+            onChange={(e) => setSchedule(e.target.value)}
+            placeholder="Пн 10:00, Ср 14:00"
+            className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+          />
+        </div>
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Тип</label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-500"
+            >
+              <option value="lecture">Лекция</option>
+              <option value="seminar">Семинар</option>
+              <option value="lab">Лаб.</option>
+              <option value="practice">Практика</option>
+            </select>
+          </div>
+          <div className="w-24">
+            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1">Цвет</label>
+            <div className="flex gap-1 flex-wrap">
+              {DEFAULT_SUBJECT_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setColor(c)}
+                  className={`w-5 h-5 rounded-full border-2 transition-colors ${
+                    color === c ? 'border-white' : 'border-transparent'
+                  }`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={!name.trim() || saving}
+          className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Сохранение...' : 'Создать предмет'}
+        </button>
       </div>
     </div>
   );

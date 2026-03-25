@@ -243,6 +243,49 @@ export function registerIpcHandlers(): void {
     return db.createSubject(data);
   });
 
+  // Subjects (update/delete)
+  ipcMain.handle('db:subjects:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateSubject(id, data);
+  });
+
+  ipcMain.handle('db:subjects:delete', async (_event, id: string) => {
+    return db.deleteSubject(id);
+  });
+
+  // Study Assignments
+  ipcMain.handle('db:assignments:list', async (_event, subjectId?: string) => {
+    return db.getStudyAssignments(subjectId);
+  });
+
+  ipcMain.handle('db:assignments:create', async (_event, data: Record<string, unknown>) => {
+    return db.createStudyAssignment(data);
+  });
+
+  ipcMain.handle('db:assignments:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateStudyAssignment(id, data);
+  });
+
+  ipcMain.handle('db:assignments:delete', async (_event, id: string) => {
+    return db.deleteStudyAssignment(id);
+  });
+
+  // Study Exams
+  ipcMain.handle('db:exams:list', async (_event, subjectId?: string) => {
+    return db.getStudyExams(subjectId);
+  });
+
+  ipcMain.handle('db:exams:create', async (_event, data: Record<string, unknown>) => {
+    return db.createStudyExam(data);
+  });
+
+  ipcMain.handle('db:exams:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateStudyExam(id, data);
+  });
+
+  ipcMain.handle('db:exams:delete', async (_event, id: string) => {
+    return db.deleteStudyExam(id);
+  });
+
   // Transactions
   ipcMain.handle('db:transactions:list', async (_event, filters?: Record<string, unknown>) => {
     return db.getTransactions(filters as Parameters<typeof db.getTransactions>[0]);

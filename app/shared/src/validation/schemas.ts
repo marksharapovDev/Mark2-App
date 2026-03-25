@@ -97,6 +97,10 @@ export const subjectSchema = z.object({
   name: z.string().min(1),
   semester: z.number().int().positive(),
   professor: z.string().nullable(),
+  schedule: z.string().nullable(),
+  type: z.string().nullable(),
+  status: z.string().nullable(),
+  color: z.string().nullable(),
   metadata: z.record(z.unknown()),
   createdAt: z.coerce.date(),
 });
@@ -106,7 +110,69 @@ export const createSubjectSchema = subjectSchema.omit({
   createdAt: true,
 }).partial({
   professor: true,
+  schedule: true,
+  type: true,
+  status: true,
+  color: true,
   metadata: true,
+});
+
+// --- Study Assignments ---
+
+export const assignmentTypeSchema = z.enum(['homework', 'lab_report', 'essay', 'project', 'presentation', 'typical_calc', 'coursework', 'report', 'other']);
+export const assignmentStatusSchema = z.enum(['pending', 'in_progress', 'submitted', 'graded']);
+
+export const studyAssignmentSchema = z.object({
+  id: z.string().uuid(),
+  subjectId: z.string().uuid(),
+  title: z.string().min(1),
+  description: z.string().nullable(),
+  type: assignmentTypeSchema,
+  status: assignmentStatusSchema,
+  deadline: z.string().nullable(),
+  grade: z.string().nullable(),
+  filePath: z.string().nullable(),
+  createdAt: z.coerce.date(),
+});
+
+export const createStudyAssignmentSchema = studyAssignmentSchema.omit({
+  id: true,
+  createdAt: true,
+}).partial({
+  description: true,
+  type: true,
+  status: true,
+  deadline: true,
+  grade: true,
+  filePath: true,
+});
+
+// --- Study Exams ---
+
+export const examTypeSchema = z.enum(['exam', 'credit', 'test', 'midterm']);
+export const examStatusSchema = z.enum(['upcoming', 'passed', 'failed']);
+
+export const studyExamSchema = z.object({
+  id: z.string().uuid(),
+  subjectId: z.string().uuid(),
+  title: z.string().min(1),
+  type: examTypeSchema,
+  date: z.string().nullable(),
+  status: examStatusSchema,
+  grade: z.string().nullable(),
+  notes: z.string().nullable(),
+  createdAt: z.coerce.date(),
+});
+
+export const createStudyExamSchema = studyExamSchema.omit({
+  id: true,
+  createdAt: true,
+}).partial({
+  type: true,
+  date: true,
+  status: true,
+  grade: true,
+  notes: true,
 });
 
 export const transactionSchema = z.object({

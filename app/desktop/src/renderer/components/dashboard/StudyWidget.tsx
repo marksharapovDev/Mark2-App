@@ -10,28 +10,28 @@ export function StudyWidget() {
 
   const reload = useCallback(async () => {
     try {
-      const result = await window.db.tasks.list('study');
-      if (result.length > 0) {
-        const inProgress = result.filter((t: { status: string }) => t.status === 'in_progress');
-        setInProgressCount(inProgress.length);
+      const [assignments, subjects] = await Promise.all([
+        window.db.assignments.list(),
+        window.db.subjects.list(),
+      ]);
 
-        const withDeadline = result
-          .filter((t) => t.dueDate != null)
-          .sort((a, b) => {
-            const da = a.dueDate ? new Date(a.dueDate).getTime() : 0;
-            const dlb = b.dueDate ? new Date(b.dueDate).getTime() : 0;
-            return da - dlb;
-          });
-        if (withDeadline.length > 0) {
-          const t = withDeadline[0];
-          if (t) {
-            setNextDeadline({
-              title: t.title,
-              subject: '',
-              deadline: t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : '',
-            });
-          }
-        }
+      const inProgress = assignments.filter((a) => a.status === 'in_progress');
+      setInProgressCount(inProgress.length);
+
+      const withDeadline = assignments
+        .filter((a) => a.deadline && a.status !== 'graded' && a.status !== 'submitted')
+        .sort((a, b) => (a.deadline ?? '').localeCompare(b.deadline ?? ''));
+
+      if (withDeadline.length > 0 && withDeadline[0]) {
+        const a = withDeadline[0];
+        const subj = subjects.find((s) => s.id === a.subjectId);
+        setNextDeadline({
+          title: a.title,
+          subject: subj?.name ?? '',
+          deadline: a.deadline ?? '',
+        });
+      } else {
+        setNextDeadline(null);
       }
     } catch {
       // keep empty state
@@ -44,7 +44,7 @@ export function StudyWidget() {
 
   useEffect(() => {
     return window.dataEvents.onDataChanged((entities) => {
-      if (entities.includes('tasks') || entities.includes('subjects')) {
+      if (entities.some((e) => ['tasks', 'subjects', 'assignments', 'exams'].includes(e))) {
         reload();
       }
     });
@@ -77,7 +77,7 @@ export function StudyWidget() {
         )}
 
         <div className="flex items-baseline justify-between">
-          <span className="text-xs text-neutral-500">Материалов в работе</span>
+          <span className="text-xs text-neutral-500">Заданий в работе</span>
           <span className="text-sm font-bold text-purple-400">{inProgressCount}</span>
         </div>
       </div>

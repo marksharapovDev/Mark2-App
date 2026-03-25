@@ -7,6 +7,8 @@ import type {
   DevTimeEntry,
   Student,
   Subject,
+  StudyAssignment,
+  StudyExam,
   Transaction,
   Workout,
   DailyNote,
@@ -372,6 +374,110 @@ export async function createSubject(input: Record<string, unknown>): Promise<Sub
   const { data, error } = await sb.from('subjects').insert(toDbFields(input)).select().single();
   if (error) throw error;
   return mapRow<Subject>(data);
+}
+
+export async function updateSubject(id: string, input: Record<string, unknown>): Promise<Subject> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('subjects').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<Subject>(data);
+  });
+}
+
+export async function deleteSubject(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('subjects').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+export async function findSubjectByName(name: string): Promise<Subject | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from('subjects').select('*');
+  if (error) throw error;
+  const rows = mapRows<Subject>(data);
+  const lower = name.toLowerCase();
+  return rows.find((s) => s.name.toLowerCase().includes(lower)) ?? null;
+}
+
+// --- Study Assignments ---
+
+export async function getStudyAssignments(subjectId?: string): Promise<StudyAssignment[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    let query = sb.from('study_assignments').select('*').order('created_at', { ascending: false });
+    if (subjectId) query = query.eq('subject_id', subjectId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return mapRows<StudyAssignment>(data);
+  });
+}
+
+export async function createStudyAssignment(input: Record<string, unknown>): Promise<StudyAssignment> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('study_assignments').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<StudyAssignment>(data);
+  });
+}
+
+export async function updateStudyAssignment(id: string, input: Record<string, unknown>): Promise<StudyAssignment> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('study_assignments').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<StudyAssignment>(data);
+  });
+}
+
+export async function deleteStudyAssignment(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('study_assignments').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+// --- Study Exams ---
+
+export async function getStudyExams(subjectId?: string): Promise<StudyExam[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    let query = sb.from('study_exams').select('*').order('date', { ascending: true });
+    if (subjectId) query = query.eq('subject_id', subjectId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return mapRows<StudyExam>(data);
+  });
+}
+
+export async function createStudyExam(input: Record<string, unknown>): Promise<StudyExam> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('study_exams').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<StudyExam>(data);
+  });
+}
+
+export async function updateStudyExam(id: string, input: Record<string, unknown>): Promise<StudyExam> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('study_exams').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<StudyExam>(data);
+  });
+}
+
+export async function deleteStudyExam(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('study_exams').delete().eq('id', id);
+    if (error) throw error;
+  });
 }
 
 // --- Transactions ---

@@ -238,6 +238,30 @@ const dbApi = {
       ipcRenderer.invoke('db:subjects:list', semester),
     create: (data: Record<string, unknown>) =>
       ipcRenderer.invoke('db:subjects:create', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:subjects:update', id, data),
+    delete: (id: string) =>
+      ipcRenderer.invoke('db:subjects:delete', id),
+  },
+  assignments: {
+    list: (subjectId?: string) =>
+      ipcRenderer.invoke('db:assignments:list', subjectId),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:assignments:create', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:assignments:update', id, data),
+    delete: (id: string) =>
+      ipcRenderer.invoke('db:assignments:delete', id),
+  },
+  exams: {
+    list: (subjectId?: string) =>
+      ipcRenderer.invoke('db:exams:list', subjectId),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:exams:create', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:exams:update', id, data),
+    delete: (id: string) =>
+      ipcRenderer.invoke('db:exams:delete', id),
   },
   transactions: {
     list: (filters?: { type?: string; category?: string; dateFrom?: string; dateTo?: string; studentId?: string; month?: string }) =>

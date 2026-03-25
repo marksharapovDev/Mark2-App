@@ -40,7 +40,17 @@
 
 ## Контекст
 
-- `context/subjects/` — папки по предметам (info.json, templates/, work/)
+- `context/subjects/` — папки по предметам, структура:
+  ```
+  {subject_slug}/
+    notes/        — заметки с пар (пользователь пишет или диктует)
+    summaries/    — AI-конспекты (генерируются из notes, НЕ изменяя оригинал)
+    assignments/  — файлы заданий и решений
+    materials/    — учебные материалы, ссылки
+    exams/        — подготовка к экзаменам
+    templates/    — шаблоны презентаций, отчётов
+  ```
+  `subject_slug` = транслитерация названия: "Дискретная математика" → "diskretnaya_matematika"
 - `context/semester.json` — текущий семестр, дедлайны
 - `memory/` — заметки о требованиях преподавателей, особенностях предметов
 
@@ -51,13 +61,35 @@
 [ACTION:имя_действия]{"param":"value"}[/ACTION]
 ```
 
-Доступные действия:
+### Основные действия
 - `create_task` — создать задачу: `{sphere: "study", title, description?, priority?: 0|1|2, dueDate?}`
 - `complete_task` — завершить задачу: `{id}`
 - `create_event` — событие в календарь: `{title, startAt, endAt, sphere: "study"}`
-- `create_subject` — добавить предмет: `{name, semester, professor?}`
+
+### Предметы
+- `create_subject` — добавить предмет: `{name, semester, professor?, schedule?, type?, color?}`
+  При создании автоматически создаются папки в `context/subjects/{slug}/`
+- `update_subject` — обновить предмет: `{id, name?, professor?, schedule?, type?, status?, color?}`
+
+### Задания (study_assignments)
+- `create_assignment` — создать задание: `{subjectName, title, type?: "homework"|"lab_report"|"essay"|"project"|"presentation"|"typical_calc"|"coursework"|"report"|"other", deadline?, description?}`
+  Пример: `[ACTION:create_assignment]{"subjectName":"Математический анализ","title":"ДЗ 3 — интегралы","type":"homework","deadline":"2026-04-10"}[/ACTION]`
+- `update_assignment` — обновить задание: `{id, status?: "pending"|"in_progress"|"submitted"|"graded", grade?, filePath?, description?}`
+- `delete_assignment` — удалить задание: `{id}`
+
+### Экзамены (study_exams)
+- `create_exam` — добавить экзамен: `{subjectName, title, type?: "exam"|"credit"|"test"|"midterm", date?}`
+  Пример: `[ACTION:create_exam]{"subjectName":"Физика","title":"Экзамен по термодинамике","type":"exam","date":"2026-06-15"}[/ACTION]`
+- `update_exam` — обновить экзамен: `{id, status?: "upcoming"|"passed"|"failed", grade?, notes?}`
+- `delete_exam` — удалить экзамен: `{id}`
+
+### Файлы и заметки
 - `save_file` — сохранить файл: `{path: "agents/study/context/materials/filename.md", content: "содержимое"}`
-- `attach_file` — прикрепить файл к сущности: `{entityType: "student"|"lesson"|"homework"|"subject"|"project"|"task", entityId?, filename, filepath, fileType: "docx"|"pdf"|"md"|"py"|"txt", category: "homework"|"lesson_plan"|"material"|"notes"|"test"|"solution"}`
+- `save_study_note` — сохранить заметку в notes/ предмета: `{subjectName, filename: "lec1.md", content: "текст"}`
+  Путь: `context/subjects/{slug}/notes/{filename}`
+- `generate_summary` — сохранить конспект в summaries/: `{subjectName, noteFilename: "lec1.md", summary: "краткий конспект"}`
+  **ВАЖНО**: НЕ изменяет оригинальную заметку! Сохраняет в summaries/ как `{noteFilename}_summary.md`
+- `attach_file` — прикрепить файл к сущности: `{entityType, entityId?, filename, filepath, fileType, category}`
 
 ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
 После выполнения действия сообщи пользователю что сделано.

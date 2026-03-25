@@ -4,6 +4,7 @@ export type { ProjectStatus, DevProject } from './types/project.js';
 export type { DevProjectStatus, DevProjectV2, DevTaskStatus, DevTaskPriority, DevTask, DevTimeEntry } from './types/dev.js';
 export type { StudentLevel, Student } from './types/student.js';
 export type { Subject } from './types/subject.js';
+export type { AssignmentType, AssignmentStatus, StudyAssignment, ExamType, ExamStatus, StudyExam, SubjectType, SubjectStatus } from './types/study.js';
 export type { TransactionType, Transaction, IncomeCategory, ExpenseCategory, SavingsCategory, TaxCategory, TransactionCategory, SavingsGoal, StudentRate, FinanceSummary } from './types/finance.js';
 export type { WorkoutType, Exercise, Workout } from './types/workout.js';
 export type { Recurrence, CalendarEvent } from './types/calendar.js';
@@ -32,6 +33,14 @@ export {
   createStudentSchema,
   subjectSchema,
   createSubjectSchema,
+  assignmentTypeSchema,
+  assignmentStatusSchema,
+  studyAssignmentSchema,
+  createStudyAssignmentSchema,
+  examTypeSchema,
+  examStatusSchema,
+  studyExamSchema,
+  createStudyExamSchema,
   transactionSchema,
   createTransactionSchema,
   exerciseSchema,

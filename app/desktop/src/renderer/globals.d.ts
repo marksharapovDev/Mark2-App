@@ -108,6 +108,20 @@ interface DbAPI {
   subjects: {
     list: (semester?: number) => Promise<import('@mark2/shared').Subject[]>;
     create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').Subject>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').Subject>;
+    delete: (id: string) => Promise<void>;
+  };
+  assignments: {
+    list: (subjectId?: string) => Promise<import('@mark2/shared').StudyAssignment[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').StudyAssignment>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').StudyAssignment>;
+    delete: (id: string) => Promise<void>;
+  };
+  exams: {
+    list: (subjectId?: string) => Promise<import('@mark2/shared').StudyExam[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').StudyExam>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').StudyExam>;
+    delete: (id: string) => Promise<void>;
   };
   transactions: {
     list: (filters?: { type?: string; category?: string; dateFrom?: string; dateTo?: string; studentId?: string; month?: string }) => Promise<import('@mark2/shared').Transaction[]>;

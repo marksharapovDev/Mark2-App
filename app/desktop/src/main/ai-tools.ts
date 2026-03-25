@@ -62,6 +62,36 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// --- Cyrillic → Latin transliteration for subject slugs ---
+
+const CYR_TO_LAT: Record<string, string> = {
+  'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+  'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+  'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+  'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+  'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+};
+
+function toSubjectSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .split('')
+    .map((ch) => CYR_TO_LAT[ch] ?? ch)
+    .join('')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
+function ensureSubjectFolders(subjectSlug: string): string {
+  const home = os.homedir();
+  const base = resolve(home, 'mark2', 'agents', 'study', 'context', 'subjects', subjectSlug);
+  const subdirs = ['notes', 'summaries', 'assignments', 'materials', 'exams', 'templates'];
+  for (const dir of subdirs) {
+    mkdirSync(resolve(base, dir), { recursive: true });
+  }
+  return base;
+}
+
 /**
  * Try to extract a student name from a filename like "dz_liza_morozova_drobi.md"
  * and look them up in the DB.
@@ -341,7 +371,7 @@ interface ActionResult {
 
 type ActionHandler = (params: Record<string, unknown>) => Promise<ActionResult>;
 
-const DESTRUCTIVE_ACTIONS = new Set(['delete_task', 'delete_event', 'delete_student', 'delete_learning_path_topic', 'delete_dev_task', 'delete_project']);
+const DESTRUCTIVE_ACTIONS = new Set(['delete_task', 'delete_event', 'delete_student', 'delete_learning_path_topic', 'delete_dev_task', 'delete_project', 'delete_assignment', 'delete_exam']);
 
 function isDestructive(action: string): boolean {
   return DESTRUCTIVE_ACTIONS.has(action);
@@ -539,7 +569,137 @@ const AI_TOOLS: Record<string, ActionHandler> = {
   // Subjects
   create_subject: async (params) => {
     const result = await db.createSubject(params);
+    // Create folder structure for the subject
+    const slug = toSubjectSlug(String(params.name ?? ''));
+    if (slug) ensureSubjectFolders(slug);
     return { success: true, message: `Предмет добавлен: ${params.name}`, entity: 'subjects', data: result as unknown as Record<string, unknown> };
+  },
+
+  update_subject: async (params) => {
+    const id = String(params.id ?? '');
+    if (!id) return { success: false, message: 'id обязателен', entity: '' };
+    const { id: _id, ...data } = params;
+    const result = await db.updateSubject(id, data);
+    return { success: true, message: `Предмет обновлён`, entity: 'subjects', data: result as unknown as Record<string, unknown> };
+  },
+
+  // Study Assignments
+  create_assignment: async (params) => {
+    let subjectId = params.subjectId ? String(params.subjectId) : '';
+    if (!subjectId && params.subjectName) {
+      const found = await db.findSubjectByName(String(params.subjectName));
+      if (!found) return { success: false, message: `Предмет "${params.subjectName}" не найден`, entity: '' };
+      subjectId = found.id;
+    }
+    if (!subjectId) return { success: false, message: 'subjectId или subjectName обязателен', entity: '' };
+
+    const input: Record<string, unknown> = {
+      subjectId,
+      title: params.title,
+    };
+    if (params.type) input.type = params.type;
+    if (params.deadline) input.deadline = params.deadline;
+    if (params.description) input.description = params.description;
+    if (params.status) input.status = params.status;
+
+    const result = await db.createStudyAssignment(input);
+    return { success: true, message: `Задание создано: ${params.title}`, entity: 'assignments', data: result as unknown as Record<string, unknown> };
+  },
+
+  update_assignment: async (params) => {
+    const id = String(params.id ?? params.assignmentId ?? '');
+    if (!id) return { success: false, message: 'id обязателен', entity: '' };
+    const { id: _id, assignmentId: _aid, ...data } = params;
+    const result = await db.updateStudyAssignment(id, data);
+    return { success: true, message: `Задание обновлено`, entity: 'assignments', data: result as unknown as Record<string, unknown> };
+  },
+
+  delete_assignment: async (params) => {
+    const id = String(params.id ?? '');
+    if (!id) return { success: false, message: 'id обязателен', entity: '' };
+    await db.deleteStudyAssignment(id);
+    return { success: true, message: `Задание удалено`, entity: 'assignments' };
+  },
+
+  // Study Exams
+  create_exam: async (params) => {
+    let subjectId = params.subjectId ? String(params.subjectId) : '';
+    if (!subjectId && params.subjectName) {
+      const found = await db.findSubjectByName(String(params.subjectName));
+      if (!found) return { success: false, message: `Предмет "${params.subjectName}" не найден`, entity: '' };
+      subjectId = found.id;
+    }
+    if (!subjectId) return { success: false, message: 'subjectId или subjectName обязателен', entity: '' };
+
+    const input: Record<string, unknown> = {
+      subjectId,
+      title: params.title,
+    };
+    if (params.type) input.type = params.type;
+    if (params.date) input.date = params.date;
+    if (params.notes) input.notes = params.notes;
+
+    const result = await db.createStudyExam(input);
+    return { success: true, message: `Экзамен добавлен: ${params.title}`, entity: 'exams', data: result as unknown as Record<string, unknown> };
+  },
+
+  update_exam: async (params) => {
+    const id = String(params.id ?? '');
+    if (!id) return { success: false, message: 'id обязателен', entity: '' };
+    const { id: _id, ...data } = params;
+    const result = await db.updateStudyExam(id, data);
+    return { success: true, message: `Экзамен обновлён`, entity: 'exams', data: result as unknown as Record<string, unknown> };
+  },
+
+  delete_exam: async (params) => {
+    const id = String(params.id ?? '');
+    if (!id) return { success: false, message: 'id обязателен', entity: '' };
+    await db.deleteStudyExam(id);
+    return { success: true, message: `Экзамен удалён`, entity: 'exams' };
+  },
+
+  // Study Notes
+  save_study_note: async (params) => {
+    let subjectName = String(params.subjectName ?? '');
+    if (!subjectName && params.subjectId) {
+      const subjects = await db.getSubjects();
+      const found = subjects.find((s) => s.id === String(params.subjectId));
+      if (found) subjectName = found.name;
+    }
+    if (!subjectName) return { success: false, message: 'subjectName обязателен', entity: '' };
+
+    const slug = toSubjectSlug(subjectName);
+    const filename = String(params.filename ?? 'note.md');
+    const content = String(params.content ?? '');
+    if (!content) return { success: false, message: 'content обязателен', entity: '' };
+
+    const base = ensureSubjectFolders(slug);
+    const fullPath = resolve(base, 'notes', filename);
+    writeFileSync(fullPath, content, 'utf-8');
+
+    return { success: true, message: `Заметка сохранена: ${filename}`, entity: 'files', data: { path: fullPath } };
+  },
+
+  generate_summary: async (params) => {
+    let subjectName = String(params.subjectName ?? '');
+    if (!subjectName && params.subjectId) {
+      const subjects = await db.getSubjects();
+      const found = subjects.find((s) => s.id === String(params.subjectId));
+      if (found) subjectName = found.name;
+    }
+    if (!subjectName) return { success: false, message: 'subjectName обязателен', entity: '' };
+
+    const slug = toSubjectSlug(subjectName);
+    const noteFilename = String(params.noteFilename ?? '');
+    const summary = String(params.summary ?? '');
+    if (!noteFilename || !summary) return { success: false, message: 'noteFilename и summary обязательны', entity: '' };
+
+    const base = ensureSubjectFolders(slug);
+    const summaryFilename = noteFilename.replace(/\.md$/, '') + '_summary.md';
+    const fullPath = resolve(base, 'summaries', summaryFilename);
+    writeFileSync(fullPath, summary, 'utf-8');
+
+    return { success: true, message: `Конспект сохранён: ${summaryFilename}`, entity: 'files', data: { path: fullPath } };
   },
 
   // Transactions
