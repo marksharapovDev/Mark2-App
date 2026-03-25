@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
+import { SidebarToggle } from '../components/layout/SidebarToggle';
+import { useCollapsibleSidebar } from '../hooks/use-collapsible-sidebar';
 import type { Transaction, SavingsGoal, FinanceSummary, TaskStatus, Student, StudentRate } from '@mark2/shared';
 import {
   ArrowDownCircle, ArrowUpCircle, PiggyBank, Receipt, TrendingUp,
@@ -195,6 +197,7 @@ export function Finance() {
     if (saved) { const n = parseInt(saved, 10); if (n >= 200 && n <= 400) return n; }
     return Math.min(400, Math.max(200, Math.round(window.innerWidth * 0.2)));
   });
+  const leftSidebar = useCollapsibleSidebar('finance', sidebarWidth);
   const isDraggingSidebar = useRef(false);
 
   // DB state
@@ -372,7 +375,7 @@ export function Finance() {
     <MainLayout agent="finance" noPadding defaultChatWidthPct={30}>
       <div className="flex flex-1 h-full overflow-hidden">
         {/* === SIDEBAR === */}
-        <aside className="shrink-0 border-r border-neutral-800 flex flex-col bg-neutral-950/50 overflow-hidden" style={{ width: sidebarWidth }}>
+        <aside className="shrink-0 border-r border-neutral-800 flex flex-col bg-neutral-950/50 overflow-hidden transition-[width] duration-200 ease-in-out" style={{ width: leftSidebar.width }}>
           <div className="px-3 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wider">Разделы</div>
           <nav className="px-2 space-y-0.5">
             {SECTIONS.map((s) => (
@@ -487,7 +490,11 @@ export function Finance() {
           </div>
         </aside>
 
-        <div onMouseDown={handleSidebarDragStart} className="w-1 shrink-0 cursor-col-resize hover:bg-blue-500/30 transition-colors" />
+        <SidebarToggle collapsed={leftSidebar.collapsed} onToggle={leftSidebar.toggle} side="left" />
+
+        {!leftSidebar.collapsed && (
+          <div onMouseDown={handleSidebarDragStart} className="w-1 shrink-0 cursor-col-resize hover:bg-blue-500/30 transition-colors" />
+        )}
 
         {/* === MAIN === */}
         <main className="flex-1 overflow-auto p-6">
