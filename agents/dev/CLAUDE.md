@@ -54,13 +54,69 @@
 [ACTION:имя_действия]{"param":"value"}[/ACTION]
 ```
 
-Доступные действия:
-- `create_task` — создать задачу: `{sphere: "dev", title, description?, priority?: 0|1|2, dueDate?}`
+### Проекты
+
+- `create_project` — создать проект
+  ```
+  [ACTION:create_project]{"name":"Лендинг Кафе","clientName":"ООО Кафе","description":"Лендинг для кафе","techStack":"Next.js, Tailwind, Supabase","budget":50000,"deadline":"2026-04-15"}[/ACTION]
+  ```
+
+- `delete_project` — удалить проект: `{"id":"uuid"}`
+
+### Задачи проекта
+
+- `create_dev_task` — создать задачу в проекте
+  ```
+  [ACTION:create_dev_task]{"projectName":"Лендинг Кафе","title":"Мобильная адаптация","description":"Адаптировать все страницы под мобильные устройства","prompt":"Реализуй мобильную адаптацию для лендинга. Используй Tailwind responsive: sm/md/lg breakpoints. Проверь hero, меню, карточки блюд, footer. Убедись что бургер-меню работает на мобильных.","status":"todo","priority":"high"}[/ACTION]
+  ```
+
+- `update_task_status` — изменить статус задачи
+  ```
+  [ACTION:update_task_status]{"taskId":"uuid","status":"done"}[/ACTION]
+  ```
+  Статусы: `todo`, `in_progress`, `done`, `deferred`
+
+- `defer_task` — отложить задачу
+  ```
+  [ACTION:defer_task]{"taskId":"uuid"}[/ACTION]
+  ```
+
+- `delete_dev_task` — удалить задачу: `{"taskId":"uuid"}`
+
+- `generate_task_prompt` — сгенерировать промпт для задачи
+  ```
+  [ACTION:generate_task_prompt]{"taskId":"uuid","prompt":"Подробный промпт для Claude Code..."}[/ACTION]
+  ```
+  Используй эту команду когда пользователь просит сгенерировать промпт:
+  прочитай описание задачи, пойми контекст проекта, и создай
+  подробную инструкцию для Claude Code.
+
+### Время
+
+- `log_time` — залогировать время работы
+  ```
+  [ACTION:log_time]{"projectName":"Лендинг Кафе","taskName":"Мобильная адаптация","minutes":90,"notes":"Hero + меню готово"}[/ACTION]
+  ```
+
+### Общие действия
+
+- `create_task` — создать задачу (кросс-сферная): `{sphere: "dev", title, description?, priority?: 0|1|2, dueDate?}`
 - `complete_task` — завершить задачу: `{id}`
 - `create_event` — событие в календарь: `{title, startAt, endAt, sphere: "dev"}`
-- `create_project` — новый проект: `{name, slug, stack?}`
-- `save_file` — сохранить файл: `{path: "agents/dev/context/materials/filename.md", content: "содержимое"}`
-- `attach_file` — прикрепить файл к сущности: `{entityType: "student"|"lesson"|"homework"|"subject"|"project"|"task", entityId?, filename, filepath, fileType: "docx"|"pdf"|"md"|"py"|"txt", category: "homework"|"lesson_plan"|"material"|"notes"|"test"|"solution"}`
+- `save_file` — сохранить файл: `{path: "agents/dev/context/...", content: "..."}`
+- `attach_file` — прикрепить файл к проекту
+  ```
+  [ACTION:attach_file]{"entityType":"project","entityId":"uuid-проекта","filename":"brief.md","filepath":"agents/dev/context/materials/brief.md","fileType":"md","category":"notes"}[/ACTION]
+  ```
+  При создании файлов проекта ВСЕГДА используй entityType='project' и entityId=id проекта.
+  Категории: `notes`, `material`, `homework`, `lesson_plan`, `test`, `solution`
+
+## Правила работы с задачами
+
+1. При создании задачи с промптом — заполняй и description (краткое описание) и prompt (детальная инструкция для Claude Code)
+2. Prompt должен быть самодостаточным: стек, файлы, что сделать, как проверить
+3. При generate_task_prompt ИИ сам пишет подробный промпт по описанию задачи
+4. auto-resolve проекта по имени: достаточно указать projectName
 
 ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
 После выполнения действия сообщи пользователю что сделано.

@@ -167,8 +167,8 @@ export function registerIpcHandlers(): void {
   });
 
   // Dev Projects
-  ipcMain.handle('db:projects:list', async () => {
-    return db.getProjects();
+  ipcMain.handle('db:projects:list', async (_event, filters?: Record<string, unknown>) => {
+    return db.getProjects(filters as Parameters<typeof db.getProjects>[0]);
   });
 
   ipcMain.handle('db:projects:create', async (_event, data: Record<string, unknown>) => {
@@ -177,6 +177,44 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('db:projects:update', async (_event, id: string, data: Record<string, unknown>) => {
     return db.updateProject(id, data);
+  });
+
+  ipcMain.handle('db:projects:delete', async (_event, id: string) => {
+    return db.deleteProject(id);
+  });
+
+  // Dev Tasks
+  ipcMain.handle('db:dev:tasks:list', async (_event, projectId: string, status?: string) => {
+    return db.getDevTasks(projectId, status);
+  });
+
+  ipcMain.handle('db:dev:tasks:create', async (_event, data: Record<string, unknown>) => {
+    return db.createDevTask(data);
+  });
+
+  ipcMain.handle('db:dev:tasks:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateDevTask(id, data);
+  });
+
+  ipcMain.handle('db:dev:tasks:delete', async (_event, id: string) => {
+    return db.deleteDevTask(id);
+  });
+
+  ipcMain.handle('db:dev:tasks:reorder', async (_event, projectId: string, taskIds: string[]) => {
+    return db.reorderDevTasks(projectId, taskIds);
+  });
+
+  // Dev Time Entries
+  ipcMain.handle('db:dev:time:list', async (_event, taskId?: string, projectId?: string) => {
+    return db.getDevTimeEntries(taskId, projectId);
+  });
+
+  ipcMain.handle('db:dev:time:create', async (_event, data: Record<string, unknown>) => {
+    return db.createDevTimeEntry(data);
+  });
+
+  ipcMain.handle('db:dev:time:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateDevTimeEntry(id, data);
   });
 
   // Students

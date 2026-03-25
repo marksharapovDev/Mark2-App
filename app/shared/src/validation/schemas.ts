@@ -6,7 +6,7 @@ export const sphereSchema = z.enum(['dev', 'teaching', 'study', 'health', 'finan
 
 export const taskStatusSchema = z.enum(['todo', 'in_progress', 'done', 'cancelled']);
 
-export const projectStatusSchema = z.enum(['active', 'paused', 'completed', 'archived']);
+export const projectStatusSchema = z.enum(['active', 'paused', 'completed', 'cancelled']);
 
 export const studentLevelSchema = z.enum(['beginner', 'intermediate', 'advanced']);
 

@@ -192,12 +192,36 @@ const dbApi = {
       ipcRenderer.invoke('db:events:delete', id),
   },
   projects: {
-    list: () =>
-      ipcRenderer.invoke('db:projects:list'),
+    list: (filters?: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:projects:list', filters),
     create: (data: Record<string, unknown>) =>
       ipcRenderer.invoke('db:projects:create', data),
     update: (id: string, data: Record<string, unknown>) =>
       ipcRenderer.invoke('db:projects:update', id, data),
+    delete: (id: string) =>
+      ipcRenderer.invoke('db:projects:delete', id),
+  },
+  dev: {
+    tasks: {
+      list: (projectId: string, status?: string) =>
+        ipcRenderer.invoke('db:dev:tasks:list', projectId, status),
+      create: (data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:dev:tasks:create', data),
+      update: (id: string, data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:dev:tasks:update', id, data),
+      delete: (id: string) =>
+        ipcRenderer.invoke('db:dev:tasks:delete', id),
+      reorder: (projectId: string, taskIds: string[]) =>
+        ipcRenderer.invoke('db:dev:tasks:reorder', projectId, taskIds),
+    },
+    time: {
+      list: (taskId?: string, projectId?: string) =>
+        ipcRenderer.invoke('db:dev:time:list', taskId, projectId),
+      create: (data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:dev:time:create', data),
+      update: (id: string, data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:dev:time:update', id, data),
+    },
   },
   students: {
     list: () =>

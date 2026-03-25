@@ -1,6 +1,7 @@
 // Types
 export type { Sphere, TaskStatus, Task } from './types/task.js';
 export type { ProjectStatus, DevProject } from './types/project.js';
+export type { DevProjectStatus, DevProjectV2, DevTaskStatus, DevTaskPriority, DevTask, DevTimeEntry } from './types/dev.js';
 export type { StudentLevel, Student } from './types/student.js';
 export type { Subject } from './types/subject.js';
 export type { TransactionType, Transaction, IncomeCategory, ExpenseCategory, SavingsCategory, TaxCategory, TransactionCategory, SavingsGoal, StudentRate, FinanceSummary } from './types/finance.js';

@@ -2,7 +2,9 @@ import { getSupabase, resetSupabase } from './supabase-client';
 import type {
   Task,
   CalendarEvent,
-  DevProject,
+  DevProjectV2,
+  DevTask,
+  DevTimeEntry,
   Student,
   Subject,
   Transaction,
@@ -177,27 +179,139 @@ export async function deleteCalendarEvent(id: string): Promise<void> {
 
 // --- Dev Projects ---
 
-export async function getProjects(): Promise<DevProject[]> {
-  const sb = getSupabase();
-  const { data, error } = await sb.from('dev_projects').select('*').order('created_at', { ascending: false });
-  if (error) throw error;
-  return mapRows<DevProject>(data);
+export async function getProjects(filters?: { status?: string }): Promise<DevProjectV2[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    let query = sb.from('dev_projects').select('*').order('created_at', { ascending: false });
+    if (filters?.status) query = query.eq('status', filters.status);
+    const { data, error } = await query;
+    if (error) throw error;
+    return mapRows<DevProjectV2>(data);
+  });
 }
 
-export async function createProject(input: Record<string, unknown>): Promise<DevProject> {
-  const sb = getSupabase();
-  const { data, error } = await sb.from('dev_projects').insert(toDbFields(input)).select().single();
-  if (error) throw error;
-  return mapRow<DevProject>(data);
+export async function createProject(input: Record<string, unknown>): Promise<DevProjectV2> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('dev_projects').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<DevProjectV2>(data);
+  });
 }
 
-export async function updateProject(id: string, input: Record<string, unknown>): Promise<DevProject> {
-  const sb = getSupabase();
-  const fields = toDbFields(input);
-  fields.updated_at = new Date().toISOString();
-  const { data, error } = await sb.from('dev_projects').update(fields).eq('id', id).select().single();
-  if (error) throw error;
-  return mapRow<DevProject>(data);
+export async function updateProject(id: string, input: Record<string, unknown>): Promise<DevProjectV2> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const fields = toDbFields(input);
+    fields.updated_at = new Date().toISOString();
+    const { data, error } = await sb.from('dev_projects').update(fields).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<DevProjectV2>(data);
+  });
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('dev_projects').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+export async function findProjectByName(name: string): Promise<DevProjectV2 | null> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('dev_projects').select('*').ilike('name', `%${name}%`).limit(1).maybeSingle();
+    if (error) throw error;
+    return data ? mapRow<DevProjectV2>(data) : null;
+  });
+}
+
+// --- Dev Tasks ---
+
+export async function getDevTasks(projectId: string, status?: string): Promise<DevTask[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    let query = sb.from('dev_tasks').select('*').eq('project_id', projectId).order('order_index', { ascending: true });
+    if (status) query = query.eq('status', status);
+    const { data, error } = await query;
+    if (error) throw error;
+    return mapRows<DevTask>(data);
+  });
+}
+
+export async function createDevTask(input: Record<string, unknown>): Promise<DevTask> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('dev_tasks').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<DevTask>(data);
+  });
+}
+
+export async function updateDevTask(id: string, input: Record<string, unknown>): Promise<DevTask> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const fields = toDbFields(input);
+    fields.updated_at = new Date().toISOString();
+    const { data, error } = await sb.from('dev_tasks').update(fields).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<DevTask>(data);
+  });
+}
+
+export async function deleteDevTask(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('dev_tasks').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+export async function reorderDevTasks(projectId: string, taskIds: string[]): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    for (let i = 0; i < taskIds.length; i++) {
+      const { error } = await sb
+        .from('dev_tasks')
+        .update({ order_index: i, updated_at: new Date().toISOString() })
+        .eq('id', taskIds[i])
+        .eq('project_id', projectId);
+      if (error) throw error;
+    }
+  });
+}
+
+// --- Dev Time Entries ---
+
+export async function getDevTimeEntries(taskId?: string, projectId?: string): Promise<DevTimeEntry[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    let query = sb.from('dev_time_entries').select('*').order('started_at', { ascending: false });
+    if (taskId) query = query.eq('task_id', taskId);
+    if (projectId) query = query.eq('project_id', projectId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return mapRows<DevTimeEntry>(data);
+  });
+}
+
+export async function createDevTimeEntry(input: Record<string, unknown>): Promise<DevTimeEntry> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('dev_time_entries').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<DevTimeEntry>(data);
+  });
+}
+
+export async function updateDevTimeEntry(id: string, input: Record<string, unknown>): Promise<DevTimeEntry> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('dev_time_entries').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<DevTimeEntry>(data);
+  });
 }
 
 // --- Students ---

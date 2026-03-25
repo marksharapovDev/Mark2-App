@@ -80,9 +80,24 @@ interface DbAPI {
     delete: (id: string) => Promise<void>;
   };
   projects: {
-    list: () => Promise<import('@mark2/shared').DevProject[]>;
-    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').DevProject>;
-    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').DevProject>;
+    list: (filters?: Record<string, unknown>) => Promise<import('@mark2/shared').DevProjectV2[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').DevProjectV2>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').DevProjectV2>;
+    delete: (id: string) => Promise<void>;
+  };
+  dev: {
+    tasks: {
+      list: (projectId: string, status?: string) => Promise<import('@mark2/shared').DevTask[]>;
+      create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').DevTask>;
+      update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').DevTask>;
+      delete: (id: string) => Promise<void>;
+      reorder: (projectId: string, taskIds: string[]) => Promise<void>;
+    };
+    time: {
+      list: (taskId?: string, projectId?: string) => Promise<import('@mark2/shared').DevTimeEntry[]>;
+      create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').DevTimeEntry>;
+      update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').DevTimeEntry>;
+    };
   };
   students: {
     list: () => Promise<import('@mark2/shared').Student[]>;
