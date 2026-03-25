@@ -88,6 +88,11 @@
   - Если `amount` не указан — используется ставка из student_rates × lessonsCount
   - Пример: `[ACTION:record_student_payment]{"studentName":"Лиза Морозова","lessonsCount":4}[/ACTION]`
 
+#### Ставка ученика
+- `set_student_rate` — установить/обновить ставку ученика:
+  `{studentName, rate}`
+  - Пример: `[ACTION:set_student_rate]{"studentName":"Даня Мудаков","rate":1200}[/ACTION]`
+
 #### Накопления
 - `create_savings_goal` — создать цель накоплений:
   `{name, targetAmount}`

@@ -547,6 +547,23 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     };
   },
 
+  // Set student rate
+  set_student_rate: async (params) => {
+    const resolved = await resolveStudentId(params);
+    if (typeof resolved === 'string') return { success: false, message: resolved, entity: '' };
+
+    const rate = Number(params.rate ?? 0);
+    if (!rate) return { success: false, message: 'rate обязателен', entity: '' };
+
+    await db.setStudentRate(resolved.id, rate);
+    console.log(`[AI Tools] Set rate for ${resolved.name}: ${rate}₽/урок`);
+    return {
+      success: true,
+      message: `Ставка ${resolved.name}: ${rate} ₽/урок`,
+      entity: 'finance',
+    };
+  },
+
   // Workouts
   add_workout: async (params) => {
     const result = await db.createWorkout(params);
