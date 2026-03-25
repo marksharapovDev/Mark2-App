@@ -206,16 +206,47 @@ export function registerIpcHandlers(): void {
   });
 
   // Transactions
-  ipcMain.handle('db:transactions:list', async (_event, month?: string) => {
-    return db.getTransactions(month);
+  ipcMain.handle('db:transactions:list', async (_event, filters?: Record<string, unknown>) => {
+    return db.getTransactions(filters as Parameters<typeof db.getTransactions>[0]);
   });
 
   ipcMain.handle('db:transactions:create', async (_event, data: Record<string, unknown>) => {
     return db.createTransaction(data);
   });
 
+  ipcMain.handle('db:transactions:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateTransaction(id, data);
+  });
+
   ipcMain.handle('db:transactions:delete', async (_event, id: string) => {
     return db.deleteTransaction(id);
+  });
+
+  // Finance Summary
+  ipcMain.handle('db:finance:summary', async (_event, dateFrom?: string, dateTo?: string) => {
+    return db.getFinanceSummary(dateFrom, dateTo);
+  });
+
+  // Savings Goals
+  ipcMain.handle('db:finance:savings:list', async () => {
+    return db.getSavingsGoals();
+  });
+
+  ipcMain.handle('db:finance:savings:create', async (_event, data: Record<string, unknown>) => {
+    return db.createSavingsGoal(data);
+  });
+
+  ipcMain.handle('db:finance:savings:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateSavingsGoal(id, data);
+  });
+
+  // Student Rates
+  ipcMain.handle('db:finance:rates:get', async (_event, studentId: string) => {
+    return db.getStudentRate(studentId);
+  });
+
+  ipcMain.handle('db:finance:rates:set', async (_event, studentId: string, rate: number, currency?: string, notes?: string) => {
+    return db.setStudentRate(studentId, rate, currency, notes);
   });
 
   // Workouts

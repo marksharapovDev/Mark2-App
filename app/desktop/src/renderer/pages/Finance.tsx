@@ -1,43 +1,18 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
-import type { TaskStatus } from '@mark2/shared';
-import { ArrowDownCircle, ArrowUpCircle, PieChart, TrendingUp, Utensils, Bus, Clapperboard, Smartphone, Home, Package, BookOpen, Code, Building2, Banknote, Laptop, Shield, Loader2 } from 'lucide-react';
+import type { Transaction, SavingsGoal, FinanceSummary, TaskStatus } from '@mark2/shared';
+import {
+  ArrowDownCircle, ArrowUpCircle, PiggyBank, Receipt, TrendingUp,
+  Utensils, Bus, Clapperboard, Smartphone, Home, Package, BookOpen,
+  Code, Banknote, Gift, Heart, GraduationCap, Plus, Loader2, Target,
+} from 'lucide-react';
 
 // --- Types ---
 
-type SectionId = 'expenses' | 'income' | 'budget' | 'analytics';
-type ExpenseCategory = 'food' | 'transport' | 'entertainment' | 'subscriptions' | 'housing' | 'other';
-type IncomeSource = 'tutoring' | 'freelance' | 'salary' | 'other';
+type SectionId = 'overview' | 'income' | 'expenses' | 'savings' | 'taxes';
+type IncomeCat = 'tutoring' | 'webdev' | 'freelance' | 'gift' | 'other';
+type ExpenseCat = 'food' | 'transport' | 'subscriptions' | 'housing' | 'education' | 'health' | 'entertainment' | 'other';
 type Priority = 'low' | 'medium' | 'high';
-
-interface Transaction {
-  id: string;
-  date: string;
-  amount: number;
-  description: string;
-  category: ExpenseCategory;
-}
-
-interface Income {
-  id: string;
-  date: string;
-  amount: number;
-  description: string;
-  source: IncomeSource;
-}
-
-interface BudgetCategory {
-  category: ExpenseCategory;
-  limit: number;
-}
-
-interface FinanceGoal {
-  id: string;
-  title: string;
-  target: number;
-  current: number;
-  icon: React.ReactNode;
-}
 
 interface FinanceTask {
   id: string;
@@ -51,103 +26,39 @@ interface FinanceTask {
 // --- Constants ---
 
 const SECTIONS: Array<{ id: SectionId; icon: React.ReactNode; label: string }> = [
-  { id: 'expenses', icon: <ArrowDownCircle size={16} strokeWidth={1.5} />, label: 'Расходы' },
+  { id: 'overview', icon: <TrendingUp size={16} strokeWidth={1.5} />, label: 'Обзор' },
   { id: 'income', icon: <ArrowUpCircle size={16} strokeWidth={1.5} />, label: 'Доходы' },
-  { id: 'budget', icon: <PieChart size={16} strokeWidth={1.5} />, label: 'Бюджет' },
-  { id: 'analytics', icon: <TrendingUp size={16} strokeWidth={1.5} />, label: 'Аналитика' },
+  { id: 'expenses', icon: <ArrowDownCircle size={16} strokeWidth={1.5} />, label: 'Расходы' },
+  { id: 'savings', icon: <PiggyBank size={16} strokeWidth={1.5} />, label: 'Накопления' },
+  { id: 'taxes', icon: <Receipt size={16} strokeWidth={1.5} />, label: 'Налоги' },
 ];
 
-const EXPENSE_CATEGORY_META: Record<ExpenseCategory, { icon: React.ReactNode; label: string; color: string; barColor: string }> = {
+const INCOME_CAT_META: Record<IncomeCat, { icon: React.ReactNode; label: string; color: string }> = {
+  tutoring: { icon: <BookOpen size={14} strokeWidth={1.5} />, label: 'Репетиторство', color: 'bg-blue-900/40 text-blue-300' },
+  webdev: { icon: <Code size={14} strokeWidth={1.5} />, label: 'Веб-разработка', color: 'bg-emerald-900/40 text-emerald-300' },
+  freelance: { icon: <Banknote size={14} strokeWidth={1.5} />, label: 'Фриланс', color: 'bg-yellow-900/40 text-yellow-300' },
+  gift: { icon: <Gift size={14} strokeWidth={1.5} />, label: 'Подарок', color: 'bg-pink-900/40 text-pink-300' },
+  other: { icon: <Package size={14} strokeWidth={1.5} />, label: 'Прочее', color: 'bg-neutral-700/40 text-neutral-300' },
+};
+
+const EXPENSE_CAT_META: Record<ExpenseCat, { icon: React.ReactNode; label: string; color: string; barColor: string }> = {
   food: { icon: <Utensils size={14} strokeWidth={1.5} />, label: 'Еда', color: 'bg-orange-900/40 text-orange-300', barColor: 'bg-orange-500' },
   transport: { icon: <Bus size={14} strokeWidth={1.5} />, label: 'Транспорт', color: 'bg-blue-900/40 text-blue-300', barColor: 'bg-blue-500' },
-  entertainment: { icon: <Clapperboard size={14} strokeWidth={1.5} />, label: 'Развлечения', color: 'bg-purple-900/40 text-purple-300', barColor: 'bg-purple-500' },
   subscriptions: { icon: <Smartphone size={14} strokeWidth={1.5} />, label: 'Подписки', color: 'bg-pink-900/40 text-pink-300', barColor: 'bg-pink-500' },
   housing: { icon: <Home size={14} strokeWidth={1.5} />, label: 'Жильё', color: 'bg-emerald-900/40 text-emerald-300', barColor: 'bg-emerald-500' },
+  education: { icon: <GraduationCap size={14} strokeWidth={1.5} />, label: 'Образование', color: 'bg-violet-900/40 text-violet-300', barColor: 'bg-violet-500' },
+  health: { icon: <Heart size={14} strokeWidth={1.5} />, label: 'Здоровье', color: 'bg-red-900/40 text-red-300', barColor: 'bg-red-500' },
+  entertainment: { icon: <Clapperboard size={14} strokeWidth={1.5} />, label: 'Развлечения', color: 'bg-purple-900/40 text-purple-300', barColor: 'bg-purple-500' },
   other: { icon: <Package size={14} strokeWidth={1.5} />, label: 'Прочее', color: 'bg-neutral-700/40 text-neutral-300', barColor: 'bg-neutral-500' },
 };
 
-const INCOME_SOURCE_META: Record<IncomeSource, { icon: React.ReactNode; label: string; color: string }> = {
-  tutoring: { icon: <BookOpen size={14} strokeWidth={1.5} />, label: 'Репетиторство', color: 'bg-blue-900/40 text-blue-300' },
-  freelance: { icon: <Code size={14} strokeWidth={1.5} />, label: 'Фриланс', color: 'bg-emerald-900/40 text-emerald-300' },
-  salary: { icon: <Building2 size={14} strokeWidth={1.5} />, label: 'Зарплата', color: 'bg-yellow-900/40 text-yellow-300' },
-  other: { icon: <Banknote size={14} strokeWidth={1.5} />, label: 'Прочее', color: 'bg-neutral-700/40 text-neutral-300' },
+const PRIORITY_COLORS: Record<Priority, { border: string; badge: string }> = {
+  high: { border: 'border-l-red-500', badge: 'bg-red-500/20 text-red-400' },
+  medium: { border: 'border-l-yellow-500', badge: 'bg-yellow-500/20 text-yellow-400' },
+  low: { border: 'border-l-neutral-600', badge: 'bg-neutral-700/50 text-neutral-400' },
 };
-
-const PRIORITY_COLORS: Record<Priority, { border: string; badge: string; label: string }> = {
-  high: { border: 'border-l-red-500', badge: 'bg-red-500/20 text-red-400', label: 'High' },
-  medium: { border: 'border-l-yellow-500', badge: 'bg-yellow-500/20 text-yellow-400', label: 'Medium' },
-  low: { border: 'border-l-neutral-600', badge: 'bg-neutral-700/50 text-neutral-400', label: 'Low' },
-};
-
-
-// --- Mock Data ---
-
-const MOCK_INCOMES: Income[] = [
-  { id: 'i1', date: '2026-03-20', amount: 2000, description: 'Урок с Мишей (ЕГЭ)', source: 'tutoring' },
-  { id: 'i2', date: '2026-03-18', amount: 2000, description: 'Урок с Аней (Python)', source: 'tutoring' },
-  { id: 'i3', date: '2026-03-15', amount: 25000, description: 'LI Group — лендинг (этап 2)', source: 'freelance' },
-  { id: 'i4', date: '2026-03-10', amount: 2000, description: 'Урок с Мишей (ЕГЭ)', source: 'tutoring' },
-  { id: 'i5', date: '2026-03-05', amount: 15000, description: 'Personal Site — доработки', source: 'freelance' },
-  { id: 'i6', date: '2026-03-03', amount: 2000, description: 'Урок с Аней (Python)', source: 'tutoring' },
-];
-
-const MOCK_BUDGET: BudgetCategory[] = [
-  { category: 'food', limit: 12000 },
-  { category: 'transport', limit: 3000 },
-  { category: 'entertainment', limit: 8000 },
-  { category: 'subscriptions', limit: 3000 },
-  { category: 'housing', limit: 20000 },
-];
-
-const MOCK_GOALS: FinanceGoal[] = [
-  { id: 'g1', title: 'Накопить на MacBook Pro', target: 200000, current: 85000, icon: <Laptop size={16} strokeWidth={1.5} /> },
-  { id: 'g2', title: 'Повысить доход до 150000₽/мес', target: 150000, current: 95000, icon: <TrendingUp size={16} strokeWidth={1.5} /> },
-  { id: 'g3', title: 'Подушка безопасности (3 мес)', target: 285000, current: 120000, icon: <Shield size={16} strokeWidth={1.5} /> },
-];
-
-const MONTHLY_INCOME_EXPENSE = [
-  { month: 'Окт', income: 78000, expense: 65000 },
-  { month: 'Ноя', income: 82000, expense: 70000 },
-  { month: 'Дек', income: 90000, expense: 85000 },
-  { month: 'Янв', income: 88000, expense: 68000 },
-  { month: 'Фев', income: 92000, expense: 72000 },
-  { month: 'Мар', income: 95000, expense: 62000 },
-];
-
-const SAVINGS_TREND = [
-  { month: 'Окт', amount: 45000 },
-  { month: 'Ноя', amount: 52000 },
-  { month: 'Дек', amount: 57000 },
-  { month: 'Янв', amount: 67000 },
-  { month: 'Фев', amount: 77000 },
-  { month: 'Мар', amount: 85000 },
-];
-
-// --- DB Mappers ---
 
 const PRIORITY_FROM_INT: Record<number, Priority> = { 0: 'low', 1: 'medium', 2: 'high' };
-
-function mapDbTransactionToLocal(t: Record<string, unknown>): Transaction {
-  return {
-    id: String(t.id),
-    date: t.date ? String(t.date) : new Date().toISOString().slice(0, 10),
-    amount: Number(t.amount) ?? 0,
-    description: String(t.description ?? ''),
-    category: (String((t as Record<string, unknown>).category ?? 'other')) as ExpenseCategory,
-  };
-}
-
-function mapDbTaskToFinance(t: Record<string, unknown>): FinanceTask {
-  const dueDate = t.dueDate ? new Date(t.dueDate as string).toISOString().slice(0, 10) : null;
-  return {
-    id: String(t.id),
-    title: String(t.title),
-    status: (t.status as TaskStatus) ?? 'todo',
-    priority: PRIORITY_FROM_INT[t.priority as number] ?? 'low',
-    context: String(t.description ?? ''),
-    deadline: dueDate,
-  };
-}
 
 // --- Helpers ---
 
@@ -163,87 +74,113 @@ function formatMoney(amount: number): string {
   return amount.toLocaleString('ru-RU') + ' \u20BD';
 }
 
-function spentByCategory(category: ExpenseCategory, txns: Transaction[]): number {
-  return txns
-    .filter((t) => t.category === category)
-    .reduce((s, t) => s + t.amount, 0);
+function getCurrentMonth(): string {
+  return new Date().toISOString().slice(0, 7);
 }
 
-function totalExpenses(txns: Transaction[]): number {
-  return txns.reduce((s, t) => s + t.amount, 0);
+function getMonthLabel(): string {
+  const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+  const now = new Date();
+  return `${months[now.getMonth()]} ${now.getFullYear()}`;
 }
 
-function totalIncome(): number {
-  return MOCK_INCOMES.reduce((s, i) => s + i.amount, 0);
+function getQuarterDates(): { from: string; to: string; label: string } {
+  const now = new Date();
+  const q = Math.floor(now.getMonth() / 3);
+  const year = now.getFullYear();
+  const from = `${year}-${String(q * 3 + 1).padStart(2, '0')}-01`;
+  const toMonth = q * 3 + 3;
+  const toDate = new Date(year, toMonth, 0);
+  const to = toDate.toISOString().slice(0, 10);
+  return { from, to, label: `Q${q + 1} ${year}` };
 }
 
-// --- Views ---
+function mapDbTaskToFinance(t: Record<string, unknown>): FinanceTask {
+  const dueDate = t.dueDate ? new Date(t.dueDate as string).toISOString().slice(0, 10) : null;
+  return {
+    id: String(t.id),
+    title: String(t.title),
+    status: (t.status as TaskStatus) ?? 'todo',
+    priority: PRIORITY_FROM_INT[t.priority as number] ?? 'low',
+    context: String(t.description ?? ''),
+    deadline: dueDate,
+  };
+}
 
-type MainView =
-  | { kind: 'expenses'; filter: ExpenseCategory | 'all' }
-  | { kind: 'income' }
-  | { kind: 'budget' }
-  | { kind: 'analytics' };
+function getCategoryMeta(type: string, category: string): { icon: React.ReactNode; label: string; color: string } {
+  if (type === 'income') {
+    return INCOME_CAT_META[category as IncomeCat] ?? INCOME_CAT_META.other;
+  }
+  return EXPENSE_CAT_META[category as ExpenseCat] ?? EXPENSE_CAT_META.other;
+}
 
 // --- Component ---
 
 export function Finance() {
-  const [activeSection, setActiveSection] = useState<SectionId>('expenses');
-  const [mainView, setMainView] = useState<MainView>({ kind: 'expenses', filter: 'all' });
+  const [activeSection, setActiveSection] = useState<SectionId>('overview');
   const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = localStorage.getItem('mark2-sidebar-width');
+    const saved = localStorage.getItem('mark2-finance-sidebar-width');
     if (saved) { const n = parseInt(saved, 10); if (n >= 200 && n <= 400) return n; }
     return Math.min(400, Math.max(200, Math.round(window.innerWidth * 0.2)));
   });
-  const [taskChecked, setTaskChecked] = useState<Record<string, boolean>>({});
   const isDraggingSidebar = useRef(false);
 
   // DB state
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [summary, setSummary] = useState<FinanceSummary | null>(null);
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [financeTasks, setFinanceTasks] = useState<FinanceTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [taskChecked, setTaskChecked] = useState<Record<string, boolean>>({});
+
+  // Add transaction form
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [formType, setFormType] = useState<'income' | 'expense'>('expense');
+  const [formAmount, setFormAmount] = useState('');
+  const [formCategory, setFormCategory] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10));
+  const [formSubmitting, setFormSubmitting] = useState(false);
 
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
+  const month = getCurrentMonth();
 
-  const selectSection = useCallback((id: SectionId) => {
-    setActiveSection(id);
-    switch (id) {
-      case 'expenses': setMainView({ kind: 'expenses', filter: 'all' }); break;
-      case 'income': setMainView({ kind: 'income' }); break;
-      case 'budget': setMainView({ kind: 'budget' }); break;
-      case 'analytics': setMainView({ kind: 'analytics' }); break;
-    }
-  }, []);
-
-  // Load data from DB
   const reloadData = useCallback(async () => {
     try {
-      const [dbTransactions, dbTasks] = await Promise.all([
-        window.db.transactions.list('2026-03'),
+      const monthStart = `${month}-01`;
+      const parts = month.split('-').map(Number);
+      const y = parts[0] ?? 0;
+      const m = parts[1] ?? 0;
+      const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+      const monthEnd = `${nextMonth}-00`;
+
+      const [dbTxns, dbSummary, dbGoals, dbTasks] = await Promise.all([
+        window.db.transactions.list({ month }),
+        window.db.finance.summary(monthStart, `${nextMonth}-01`),
+        window.db.finance.savings.list(),
         window.db.tasks.list('finance'),
       ]);
-      if (dbTransactions.length > 0) {
-        setTransactions(dbTransactions.map((t) => mapDbTransactionToLocal(t as unknown as Record<string, unknown>)));
-      }
+      setTransactions(dbTxns);
+      setSummary(dbSummary);
+      setSavingsGoals(dbGoals);
       if (dbTasks.length > 0) {
         setFinanceTasks(dbTasks.map((t) => mapDbTaskToFinance(t as unknown as Record<string, unknown>)));
       }
+      setDbError(null);
     } catch (err) {
       setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
     }
-  }, []);
+  }, [month]);
 
-  // Initial load
   useEffect(() => {
     reloadData().finally(() => setLoading(false));
   }, [reloadData]);
 
-  // Reload on data-changed from AI
   useEffect(() => {
     return window.dataEvents.onDataChanged((entities) => {
-      if (entities.includes('tasks') || entities.includes('transactions')) {
+      if (entities.some((e) => ['transactions', 'savings', 'tasks'].includes(e))) {
         reloadData();
       }
     });
@@ -253,12 +190,11 @@ export function Finance() {
     isDraggingSidebar.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-
     const onMove = (e: MouseEvent) => {
       if (!isDraggingSidebar.current) return;
       const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, e.clientX));
       setSidebarWidth(w);
-      localStorage.setItem('mark2-sidebar-width', String(w));
+      localStorage.setItem('mark2-finance-sidebar-width', String(w));
     };
     const onUp = () => {
       isDraggingSidebar.current = false;
@@ -274,17 +210,47 @@ export function Finance() {
   const toggleTaskChecked = useCallback((taskId: string) => {
     setTaskChecked((prev) => {
       const newChecked = !prev[taskId];
-      // Persist to DB (fire-and-forget)
       const newStatus = newChecked ? 'done' : 'todo';
       window.db.tasks.update(taskId, { status: newStatus }).catch(() => {});
       return { ...prev, [taskId]: newChecked };
     });
   }, []);
 
-  const getEffectiveStatus = useCallback((task: FinanceTask): TaskStatus => {
-    if (taskChecked[task.id]) return 'done';
-    return task.status;
-  }, [taskChecked]);
+  const handleAddTransaction = useCallback(async () => {
+    const amount = parseFloat(formAmount);
+    if (!amount || amount <= 0) return;
+    setFormSubmitting(true);
+    try {
+      await window.db.transactions.create({
+        type: formType,
+        amount,
+        category: formCategory || 'other',
+        description: formDescription || null,
+        date: formDate,
+      });
+      setShowAddForm(false);
+      setFormAmount('');
+      setFormCategory('');
+      setFormDescription('');
+      setFormDate(new Date().toISOString().slice(0, 10));
+      reloadData();
+    } catch (err) {
+      setDbError(err instanceof Error ? err.message : 'Ошибка создания транзакции');
+    } finally {
+      setFormSubmitting(false);
+    }
+  }, [formType, formAmount, formCategory, formDescription, formDate, reloadData]);
+
+  const handleDeleteTransaction = useCallback(async (id: string) => {
+    try {
+      await window.db.transactions.delete(id);
+      reloadData();
+    } catch { /* ignore */ }
+  }, [reloadData]);
+
+  // Derived data
+  const incomeTransactions = transactions.filter((t) => t.type === 'income');
+  const expenseTransactions = transactions.filter((t) => t.type === 'expense');
 
   const sendTaskToChat = useCallback((task: FinanceTask) => {
     const text = `Выполни задачу: ${task.title}\n${task.context}`;
@@ -313,123 +279,129 @@ export function Finance() {
             {SECTIONS.map((s) => (
               <button
                 key={s.id}
-                onClick={() => selectSection(s.id)}
-                className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors ${
+                onClick={() => setActiveSection(s.id)}
+                className={`w-full text-left px-3 py-1.5 rounded text-sm flex items-center gap-2 transition-colors ${
                   activeSection === s.id
                     ? 'bg-neutral-800 text-white'
                     : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
                 }`}
               >
-                <span className="mr-2">{s.icon}</span>
+                {s.icon}
                 {s.label}
               </button>
             ))}
           </nav>
 
-          {/* Goals */}
-          <div className="mt-2">
-            <div className="mx-3 border-t border-neutral-800" />
-          </div>
-          <div className="px-3 pt-3 pb-2">
-            <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-              Цели
-            </div>
-            <div className="space-y-2.5">
-              {MOCK_GOALS.map((goal) => {
-                const pct = Math.min(100, Math.round((goal.current / goal.target) * 100));
-                return (
-                  <div key={goal.id}>
-                    <div className="flex items-center gap-1.5 text-xs mb-1">
-                      <span className="shrink-0">{goal.icon}</span>
-                      <span className="text-neutral-400 truncate">{goal.title}</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-blue-500 transition-all"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                    <div className="text-[10px] text-neutral-600 mt-0.5">
-                      {formatMoney(goal.current)} / {formatMoney(goal.target)} ({pct}%)
-                    </div>
+          {/* Summary cards in sidebar */}
+          {summary && (
+            <>
+              <div className="mt-2"><div className="mx-3 border-t border-neutral-800" /></div>
+              <div className="px-3 pt-3 pb-2">
+                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                  {getMonthLabel()}
+                </div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500">Доход</span>
+                    <span className="text-emerald-400 font-mono">{formatMoney(summary.totalIncome)}</span>
                   </div>
-                );
-              })}
-            </div>
-            <button className="mt-2 w-full text-[11px] text-neutral-500 hover:text-blue-400 transition-colors text-center py-1 rounded hover:bg-neutral-800/50">
-              Отправить боту на анализ
-            </button>
-          </div>
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500">Расход</span>
+                    <span className="text-red-400 font-mono">{formatMoney(summary.totalExpense)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500">Баланс</span>
+                    <span className={`font-mono ${summary.netBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {formatMoney(summary.netBalance)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Tasks */}
-          <div>
-            <div className="mx-3 border-t border-neutral-800" />
-          </div>
-          <div className="px-3 pt-3 pb-2">
-            <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-              Задачи
-            </div>
-            <div className="space-y-1">
-              {financeTasks.map((task) => {
-                const effectiveStatus = getEffectiveStatus(task);
-                const pColor = PRIORITY_COLORS[task.priority];
-                const isDone = effectiveStatus === 'done';
-                return (
-                  <div
-                    key={task.id}
-                    className={`flex items-center gap-1.5 text-xs py-1 px-2 rounded border-l-2 ${pColor.border} hover:bg-neutral-800/50 transition-colors`}
-                  >
-                    <button
-                      onClick={() => toggleTaskChecked(task.id)}
-                      className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center transition-colors ${
-                        isDone ? 'bg-emerald-600 border-emerald-600' : 'border-neutral-600 hover:border-neutral-400'
-                      }`}
-                    >
-                      {isDone && (
-                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </button>
-                    <span className={`truncate flex-1 ${isDone ? 'text-neutral-500 line-through' : 'text-neutral-400'}`}>
-                      {task.title}
-                    </span>
-                    {task.deadline && (
-                      <span className="text-[10px] text-neutral-600 shrink-0">{formatDate(task.deadline)}</span>
-                    )}
-                    <button
-                      onClick={() => sendTaskToChat(task)}
-                      className="text-neutral-600 hover:text-blue-400 transition-colors shrink-0"
-                      title="Отправить боту"
-                    >
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
-                      </svg>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          {financeTasks.length > 0 && (
+            <>
+              <div><div className="mx-3 border-t border-neutral-800" /></div>
+              <div className="px-3 pt-3 pb-2">
+                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                  Задачи
+                </div>
+                <div className="space-y-1">
+                  {financeTasks.map((task) => {
+                    const isDone = taskChecked[task.id] || task.status === 'done';
+                    const pColor = PRIORITY_COLORS[task.priority];
+                    return (
+                      <div
+                        key={task.id}
+                        className={`flex items-center gap-1.5 text-xs py-1 px-2 rounded border-l-2 ${pColor.border} hover:bg-neutral-800/50 transition-colors`}
+                      >
+                        <button
+                          onClick={() => toggleTaskChecked(task.id)}
+                          className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center transition-colors ${
+                            isDone ? 'bg-emerald-600 border-emerald-600' : 'border-neutral-600 hover:border-neutral-400'
+                          }`}
+                        >
+                          {isDone && (
+                            <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+                        <span className={`truncate flex-1 ${isDone ? 'text-neutral-500 line-through' : 'text-neutral-400'}`}>
+                          {task.title}
+                        </span>
+                        {task.deadline && (
+                          <span className="text-[10px] text-neutral-600 shrink-0">{formatDate(task.deadline)}</span>
+                        )}
+                        <button
+                          onClick={() => sendTaskToChat(task)}
+                          className="text-neutral-600 hover:text-blue-400 transition-colors shrink-0"
+                          title="Отправить боту"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+                          </svg>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
 
-          {/* Section-specific sidebar content */}
+          {/* Recent transactions in sidebar */}
           <div className="flex-1 overflow-hidden flex flex-col">
             <div className="mx-3 border-t border-neutral-800" />
-
-            <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
-              {activeSection === 'expenses' && (
-                <ExpensesSidebar
-                  onTransactionClick={(cat) => setMainView({ kind: 'expenses', filter: cat })}
-                  transactions={transactions}
-                />
-              )}
-              {activeSection === 'income' && <IncomeSidebar />}
-              {activeSection === 'budget' && <BudgetSidebar transactions={transactions} />}
-              {activeSection === 'analytics' && (
-                <div className="px-3 pt-3 pb-2 text-xs text-neutral-500">
-                  Аналитика отображается в основной области
-                </div>
-              )}
+            <div className="px-3 pt-3 pb-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+              Последние транзакции
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin px-2">
+              <div className="space-y-0.5">
+                {transactions.slice(0, 15).map((t) => {
+                  const isIncome = t.type === 'income';
+                  const meta = getCategoryMeta(t.type, t.category);
+                  return (
+                    <div key={t.id} className="text-xs py-1.5 px-2 rounded hover:bg-neutral-800/50 transition-colors">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-neutral-600 text-[10px] shrink-0">{formatDate(t.date)}</span>
+                        <span className={`text-[10px] ml-auto font-mono ${isIncome ? 'text-emerald-400/80' : 'text-red-400/80'}`}>
+                          {isIncome ? '+' : '-'}{formatMoney(t.amount)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[10px]">{meta.icon}</span>
+                        <span className="text-neutral-400 truncate">{t.description ?? meta.label}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {transactions.length === 0 && !loading && (
+                  <div className="text-neutral-600 text-xs py-2 text-center">Нет транзакций</div>
+                )}
+              </div>
             </div>
           </div>
         </aside>
@@ -452,259 +424,246 @@ export function Finance() {
               {dbError}
             </div>
           )}
-          {!loading && mainView.kind === 'expenses' && (
-            <ExpensesMain
-              filter={mainView.filter}
-              onFilterChange={(f) => setMainView({ kind: 'expenses', filter: f })}
+
+          {!loading && activeSection === 'overview' && (
+            <OverviewMain
+              summary={summary}
               transactions={transactions}
+              savingsGoals={savingsGoals}
+              showAddForm={showAddForm}
+              onToggleAddForm={() => setShowAddForm((v) => !v)}
+              formType={formType} setFormType={setFormType}
+              formAmount={formAmount} setFormAmount={setFormAmount}
+              formCategory={formCategory} setFormCategory={setFormCategory}
+              formDescription={formDescription} setFormDescription={setFormDescription}
+              formDate={formDate} setFormDate={setFormDate}
+              formSubmitting={formSubmitting}
+              onSubmit={handleAddTransaction}
+              onDelete={handleDeleteTransaction}
             />
           )}
-          {!loading && mainView.kind === 'income' && <IncomeMain />}
-          {!loading && mainView.kind === 'budget' && <BudgetMain transactions={transactions} />}
-          {!loading && mainView.kind === 'analytics' && <AnalyticsMain transactions={transactions} />}
+          {!loading && activeSection === 'income' && (
+            <IncomeMain transactions={incomeTransactions} />
+          )}
+          {!loading && activeSection === 'expenses' && (
+            <ExpensesMain transactions={expenseTransactions} onDelete={handleDeleteTransaction} />
+          )}
+          {!loading && activeSection === 'savings' && (
+            <SavingsMain goals={savingsGoals} onReload={reloadData} />
+          )}
+          {!loading && activeSection === 'taxes' && (
+            <TaxMain />
+          )}
         </main>
       </div>
     </MainLayout>
   );
 }
 
-// --- Progress Bar ---
+// --- Overview ---
 
-function ProgressBar({ value, max, color, warn }: { value: number; max: number; color: string; warn?: boolean }) {
-  const pct = Math.min(100, (value / max) * 100);
-  const barColor = warn && pct > 90 ? 'bg-red-500' : color;
-  return (
-    <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
-      <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
-
-// --- Sidebar sub-components ---
-
-function ExpensesSidebar({ onTransactionClick, transactions }: { onTransactionClick: (cat: ExpenseCategory | 'all') => void; transactions: Transaction[] }) {
-  return (
-    <>
-      {/* Summary */}
-      <div className="px-3 pt-3 pb-2">
-        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-          Март — итого
-        </div>
-        <div className="text-lg font-bold text-red-400">{formatMoney(totalExpenses(transactions))}</div>
-      </div>
-
-      <div className="mx-3 border-t border-neutral-800" />
-
-      {/* Recent transactions */}
-      <div className="px-3 pt-3 pb-2">
-        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-          Последние траты
-        </div>
-        <div className="space-y-0.5">
-          {transactions.slice(0, 10).map((t) => (
-            <button
-              key={t.id}
-              onClick={() => onTransactionClick(t.category)}
-              className="w-full text-left text-xs py-1.5 px-2 rounded hover:bg-neutral-800/50 transition-colors group"
-            >
-              <div className="flex items-center gap-1.5">
-                <span className="text-neutral-600 text-[10px] shrink-0">{formatDate(t.date)}</span>
-                <span className="text-red-400/80 text-[10px] ml-auto">{formatMoney(t.amount)}</span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[10px]">{EXPENSE_CATEGORY_META[t.category].icon}</span>
-                <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors truncate">
-                  {t.description}
-                </span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
-function IncomeSidebar() {
-  return (
-    <>
-      <div className="px-3 pt-3 pb-2">
-        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-          Март — итого
-        </div>
-        <div className="text-lg font-bold text-emerald-400">{formatMoney(totalIncome())}</div>
-      </div>
-
-      <div className="mx-3 border-t border-neutral-800" />
-
-      <div className="px-3 pt-3 pb-2">
-        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-          Поступления
-        </div>
-        <div className="space-y-0.5">
-          {MOCK_INCOMES.map((inc) => (
-            <div
-              key={inc.id}
-              className="text-xs py-1.5 px-2 rounded"
-            >
-              <div className="flex items-center gap-1.5">
-                <span className="text-neutral-600 text-[10px] shrink-0">{formatDate(inc.date)}</span>
-                <span className="text-emerald-400/80 text-[10px] ml-auto">{formatMoney(inc.amount)}</span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[10px]">{INCOME_SOURCE_META[inc.source].icon}</span>
-                <span className="text-neutral-400 truncate">{inc.description}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
-function BudgetSidebar({ transactions }: { transactions: Transaction[] }) {
-  return (
-    <div className="px-3 pt-3 pb-2">
-      <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
-        Лимиты по категориям
-      </div>
-      <div className="space-y-3">
-        {MOCK_BUDGET.map((b) => {
-          const spent = spentByCategory(b.category, transactions);
-          const meta = EXPENSE_CATEGORY_META[b.category];
-          return (
-            <div key={b.category}>
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-neutral-400">
-                  {meta.icon} {meta.label}
-                </span>
-                <span className={`text-[10px] ${spent > b.limit ? 'text-red-400' : 'text-neutral-500'}`}>
-                  {formatMoney(spent)} / {formatMoney(b.limit)}
-                </span>
-              </div>
-              <ProgressBar value={spent} max={b.limit} color={meta.barColor} warn />
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// --- Main content sub-components ---
-
-function ExpensesMain({
-  filter,
-  onFilterChange,
-  transactions,
+function OverviewMain({
+  summary, transactions, savingsGoals, showAddForm, onToggleAddForm,
+  formType, setFormType, formAmount, setFormAmount, formCategory, setFormCategory,
+  formDescription, setFormDescription, formDate, setFormDate, formSubmitting, onSubmit, onDelete,
 }: {
-  filter: ExpenseCategory | 'all';
-  onFilterChange: (f: ExpenseCategory | 'all') => void;
+  summary: FinanceSummary | null;
   transactions: Transaction[];
+  savingsGoals: SavingsGoal[];
+  showAddForm: boolean;
+  onToggleAddForm: () => void;
+  formType: 'income' | 'expense';
+  setFormType: (v: 'income' | 'expense') => void;
+  formAmount: string; setFormAmount: (v: string) => void;
+  formCategory: string; setFormCategory: (v: string) => void;
+  formDescription: string; setFormDescription: (v: string) => void;
+  formDate: string; setFormDate: (v: string) => void;
+  formSubmitting: boolean;
+  onSubmit: () => void;
+  onDelete: (id: string) => void;
 }) {
-  const filtered = filter === 'all'
-    ? transactions
-    : transactions.filter((t) => t.category === filter);
-  const filteredTotal = filtered.reduce((s, t) => s + t.amount, 0);
-
-  const filters: Array<{ value: ExpenseCategory | 'all'; label: string }> = [
-    { value: 'all', label: 'Все' },
-    ...Object.entries(EXPENSE_CATEGORY_META).map(([key, meta]) => ({
-      value: key as ExpenseCategory,
-      label: `${meta.icon} ${meta.label}`,
-    })),
-  ];
+  const totalSavings = savingsGoals.reduce((s, g) => s + g.currentAmount, 0);
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold mb-1">Расходы</h1>
-      <p className="text-neutral-500 text-sm mb-6">Март 2026</p>
+    <div className="max-w-3xl">
+      <h1 className="text-2xl font-bold mb-1">Обзор</h1>
+      <p className="text-neutral-500 text-sm mb-6">{getMonthLabel()}</p>
 
-      {/* Summary */}
-      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
-        <div className="flex items-baseline gap-3">
-          <span className="text-3xl font-bold text-red-400">{formatMoney(filteredTotal)}</span>
-          {filter !== 'all' && (
-            <span className="text-sm text-neutral-500">
-              из {formatMoney(totalExpenses(transactions))} общих
-            </span>
-          )}
-        </div>
-        <div className="text-xs text-neutral-500 mt-1">
-          {filtered.length} транзакций
-          {filter !== 'all' && ` \u2014 ${EXPENSE_CATEGORY_META[filter].label}`}
-        </div>
+      {/* Summary cards */}
+      <div className="grid grid-cols-4 gap-3 mb-6">
+        <SummaryCard label="Доход" amount={summary?.totalIncome ?? 0} color="text-emerald-400" icon={<ArrowUpCircle size={18} />} />
+        <SummaryCard label="Расход" amount={summary?.totalExpense ?? 0} color="text-red-400" icon={<ArrowDownCircle size={18} />} />
+        <SummaryCard label="Баланс" amount={summary?.netBalance ?? 0} color={
+          (summary?.netBalance ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'
+        } icon={<TrendingUp size={18} />} />
+        <SummaryCard label="Накопления" amount={totalSavings} color="text-blue-400" icon={<PiggyBank size={18} />} />
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-1 mb-6">
-        {filters.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => onFilterChange(f.value)}
-            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-              filter === f.value
-                ? 'bg-neutral-700 text-white'
-                : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      {/* Add button + form */}
+      <div className="mb-6">
+        <button
+          onClick={onToggleAddForm}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm text-neutral-300 transition-colors"
+        >
+          <Plus size={14} /> Добавить транзакцию
+        </button>
 
-      {/* Transaction list */}
-      <div className="space-y-1">
-        {filtered.map((t) => (
-          <div
-            key={t.id}
-            className="flex items-center gap-3 px-3 py-2.5 rounded hover:bg-neutral-800/30 transition-colors"
-          >
-            <span className="text-sm shrink-0">{EXPENSE_CATEGORY_META[t.category].icon}</span>
-            <div className="flex-1 min-w-0">
-              <span className="text-sm text-neutral-300">{t.description}</span>
-              <div className="text-[11px] text-neutral-600 mt-0.5">
-                {formatDate(t.date)}
-                <span className={`ml-2 px-1 py-0.5 rounded text-[10px] ${EXPENSE_CATEGORY_META[t.category].color}`}>
-                  {EXPENSE_CATEGORY_META[t.category].label}
-                </span>
-              </div>
+        {showAddForm && (
+          <div className="mt-3 p-4 bg-neutral-900/50 border border-neutral-800 rounded-lg">
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => setFormType('expense')}
+                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                  formType === 'expense' ? 'bg-red-500/20 text-red-400' : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+              >Расход</button>
+              <button
+                onClick={() => setFormType('income')}
+                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                  formType === 'income' ? 'bg-emerald-500/20 text-emerald-400' : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+              >Доход</button>
             </div>
-            <span className="text-sm text-red-400 font-mono shrink-0">&minus;{formatMoney(t.amount)}</span>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="number"
+                placeholder="Сумма"
+                value={formAmount}
+                onChange={(e) => setFormAmount(e.target.value)}
+                className="px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500"
+              />
+              <select
+                value={formCategory}
+                onChange={(e) => setFormCategory(e.target.value)}
+                className="px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Категория</option>
+                {formType === 'expense'
+                  ? Object.entries(EXPENSE_CAT_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)
+                  : Object.entries(INCOME_CAT_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)
+                }
+              </select>
+              <input
+                type="text"
+                placeholder="Описание"
+                value={formDescription}
+                onChange={(e) => setFormDescription(e.target.value)}
+                className="px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500"
+              />
+              <input
+                type="date"
+                value={formDate}
+                onChange={(e) => setFormDate(e.target.value)}
+                className="px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="flex justify-end mt-3">
+              <button
+                onClick={onSubmit}
+                disabled={formSubmitting || !formAmount}
+                className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm text-white transition-colors"
+              >
+                {formSubmitting ? 'Сохраняю...' : 'Сохранить'}
+              </button>
+            </div>
           </div>
-        ))}
-        {filtered.length === 0 && (
-          <div className="text-neutral-600 text-sm py-4 text-center">Нет транзакций</div>
         )}
       </div>
+
+      {/* Recent transactions */}
+      <div>
+        <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mb-3">
+          Последние транзакции
+        </h2>
+        <div className="space-y-1">
+          {transactions.slice(0, 10).map((t) => (
+            <TransactionRow key={t.id} transaction={t} onDelete={onDelete} />
+          ))}
+          {transactions.length === 0 && (
+            <div className="text-neutral-600 text-sm py-4 text-center">Нет транзакций за этот месяц</div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function IncomeMain() {
-  const total = totalIncome();
-  const bySource = (Object.keys(INCOME_SOURCE_META) as IncomeSource[]).map((src) => {
-    const items = MOCK_INCOMES.filter((i) => i.source === src);
-    return { source: src, total: items.reduce((s, i) => s + i.amount, 0), count: items.length };
+function SummaryCard({ label, amount, color, icon }: { label: string; amount: number; color: string; icon: React.ReactNode }) {
+  return (
+    <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
+      <div className="flex items-center gap-2 text-neutral-500 text-xs mb-2">
+        {icon} {label}
+      </div>
+      <div className={`text-xl font-bold font-mono ${color}`}>{formatMoney(amount)}</div>
+    </div>
+  );
+}
+
+function TransactionRow({ transaction: t, onDelete }: { transaction: Transaction; onDelete: (id: string) => void }) {
+  const isIncome = t.type === 'income';
+  const isSavings = t.type === 'savings';
+  const isTax = t.type === 'tax';
+  const meta = getCategoryMeta(t.type, t.category);
+
+  let amountColor = 'text-red-400';
+  let prefix = '-';
+  if (isIncome) { amountColor = 'text-emerald-400'; prefix = '+'; }
+  if (isSavings) { amountColor = 'text-blue-400'; prefix = ''; }
+  if (isTax) { amountColor = 'text-yellow-400'; prefix = '-'; }
+
+  return (
+    <div className="flex items-center gap-3 px-3 py-2.5 rounded hover:bg-neutral-800/30 transition-colors group">
+      <span className="text-sm shrink-0">{meta.icon}</span>
+      <div className="flex-1 min-w-0">
+        <span className="text-sm text-neutral-300">{t.description ?? meta.label}</span>
+        <div className="text-[11px] text-neutral-600 mt-0.5">
+          {formatDate(t.date)}
+          <span className={`ml-2 px-1 py-0.5 rounded text-[10px] ${meta.color}`}>
+            {meta.label}
+          </span>
+        </div>
+      </div>
+      <span className={`text-sm font-mono shrink-0 ${amountColor}`}>
+        {prefix}{formatMoney(t.amount)}
+      </span>
+      <button
+        onClick={() => onDelete(t.id)}
+        className="text-neutral-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+        title="Удалить"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+// --- Income ---
+
+function IncomeMain({ transactions }: { transactions: Transaction[] }) {
+  const [filter, setFilter] = useState<IncomeCat | 'all'>('all');
+  const filtered = filter === 'all' ? transactions : transactions.filter((t) => t.category === filter);
+  const total = filtered.reduce((s, t) => s + t.amount, 0);
+
+  const byCategory = (Object.keys(INCOME_CAT_META) as IncomeCat[]).map((cat) => {
+    const items = transactions.filter((t) => t.category === cat);
+    return { category: cat, total: items.reduce((s, t) => s + t.amount, 0), count: items.length };
   }).filter((g) => g.count > 0);
 
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold mb-1">Доходы</h1>
-      <p className="text-neutral-500 text-sm mb-6">Март 2026</p>
+      <p className="text-neutral-500 text-sm mb-6">{getMonthLabel()}</p>
 
-      {/* Summary */}
-      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
-        <div className="text-3xl font-bold text-emerald-400">{formatMoney(total)}</div>
-        <div className="text-xs text-neutral-500 mt-1">{MOCK_INCOMES.length} поступлений</div>
-
-        {/* By source */}
-        <div className="flex gap-3 mt-4">
-          {bySource.map((g) => (
-            <div key={g.source} className="flex items-center gap-2">
-              <span className={`text-xs px-2 py-1 rounded font-medium ${INCOME_SOURCE_META[g.source].color}`}>
-                {INCOME_SOURCE_META[g.source].icon} {INCOME_SOURCE_META[g.source].label}
+      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6">
+        <div className="text-3xl font-bold text-emerald-400 font-mono">{formatMoney(total)}</div>
+        <div className="text-xs text-neutral-500 mt-1">{filtered.length} поступлений</div>
+        <div className="flex flex-wrap gap-2 mt-4">
+          {byCategory.map((g) => (
+            <div key={g.category} className="flex items-center gap-1.5">
+              <span className={`text-xs px-2 py-1 rounded font-medium ${INCOME_CAT_META[g.category].color}`}>
+                {INCOME_CAT_META[g.category].icon} {INCOME_CAT_META[g.category].label}
               </span>
               <span className="text-xs text-neutral-400">{formatMoney(g.total)}</span>
             </div>
@@ -712,302 +671,394 @@ function IncomeMain() {
         </div>
       </div>
 
-      {/* Income list */}
-      <div className="space-y-1">
-        {MOCK_INCOMES.map((inc) => (
-          <div
-            key={inc.id}
-            className="flex items-center gap-3 px-3 py-2.5 rounded hover:bg-neutral-800/30 transition-colors"
-          >
-            <span className="text-sm shrink-0">{INCOME_SOURCE_META[inc.source].icon}</span>
-            <div className="flex-1 min-w-0">
-              <span className="text-sm text-neutral-300">{inc.description}</span>
-              <div className="text-[11px] text-neutral-600 mt-0.5">
-                {formatDate(inc.date)}
-                <span className={`ml-2 px-1 py-0.5 rounded text-[10px] ${INCOME_SOURCE_META[inc.source].color}`}>
-                  {INCOME_SOURCE_META[inc.source].label}
-                </span>
-              </div>
-            </div>
-            <span className="text-sm text-emerald-400 font-mono shrink-0">+{formatMoney(inc.amount)}</span>
-          </div>
+      {/* Filters */}
+      <div className="flex flex-wrap gap-1 mb-4">
+        <FilterButton active={filter === 'all'} onClick={() => setFilter('all')}>Все</FilterButton>
+        {(Object.entries(INCOME_CAT_META) as [IncomeCat, typeof INCOME_CAT_META[IncomeCat]][]).map(([k, v]) => (
+          <FilterButton key={k} active={filter === k} onClick={() => setFilter(k)}>
+            {v.icon} {v.label}
+          </FilterButton>
         ))}
       </div>
-    </div>
-  );
-}
 
-function BudgetMain({ transactions }: { transactions: Transaction[] }) {
-  const totalBudget = MOCK_BUDGET.reduce((s, b) => s + b.limit, 0);
-  const totalSpent = MOCK_BUDGET.reduce((s, b) => s + spentByCategory(b.category, transactions), 0);
-
-  return (
-    <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold mb-1">Бюджет</h1>
-      <p className="text-neutral-500 text-sm mb-6">Март 2026</p>
-
-      {/* Total budget card */}
-      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
-        <div className="flex items-baseline gap-3 mb-2">
-          <span className="text-3xl font-bold text-neutral-200">{formatMoney(totalSpent)}</span>
-          <span className="text-neutral-500 text-sm">из {formatMoney(totalBudget)}</span>
-        </div>
-        <ProgressBar
-          value={totalSpent}
-          max={totalBudget}
-          color="bg-blue-500"
-          warn
-        />
-        <div className="text-xs text-neutral-500 mt-2">
-          Осталось: {formatMoney(totalBudget - totalSpent)}
-        </div>
-      </div>
-
-      {/* Category budgets */}
-      <div className="space-y-3">
-        {MOCK_BUDGET.map((b) => {
-          const spent = spentByCategory(b.category, transactions);
-          const meta = EXPENSE_CATEGORY_META[b.category];
-          const pct = Math.round((spent / b.limit) * 100);
-          const over = spent > b.limit;
-
+      <div className="space-y-1">
+        {filtered.map((t) => {
+          const meta = INCOME_CAT_META[t.category as IncomeCat] ?? INCOME_CAT_META.other;
           return (
-            <div
-              key={b.category}
-              className="bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-3 shadow-sm shadow-black/10"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-lg">{meta.icon}</span>
-                <div className="flex-1">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-sm text-neutral-300 font-medium">{meta.label}</span>
-                    <span className={`text-xs font-mono ${over ? 'text-red-400' : 'text-neutral-400'}`}>
-                      {formatMoney(spent)} / {formatMoney(b.limit)}
-                    </span>
-                  </div>
-                  <div className="mt-1.5">
-                    <ProgressBar value={spent} max={b.limit} color={meta.barColor} warn />
-                  </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className={`text-[10px] ${over ? 'text-red-400' : 'text-neutral-600'}`}>
-                      {pct}%
-                    </span>
-                    <span className={`text-[10px] ${over ? 'text-red-400' : 'text-neutral-600'}`}>
-                      {over
-                        ? `Перерасход: ${formatMoney(spent - b.limit)}`
-                        : `Осталось: ${formatMoney(b.limit - spent)}`}
-                    </span>
-                  </div>
+            <div key={t.id} className="flex items-center gap-3 px-3 py-2.5 rounded hover:bg-neutral-800/30 transition-colors">
+              <span className="text-sm shrink-0">{meta.icon}</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm text-neutral-300">{t.description ?? meta.label}</span>
+                <div className="text-[11px] text-neutral-600 mt-0.5">
+                  {formatDate(t.date)}
+                  <span className={`ml-2 px-1 py-0.5 rounded text-[10px] ${meta.color}`}>{meta.label}</span>
                 </div>
               </div>
+              <span className="text-sm text-emerald-400 font-mono shrink-0">+{formatMoney(t.amount)}</span>
             </div>
           );
         })}
+        {filtered.length === 0 && (
+          <div className="text-neutral-600 text-sm py-4 text-center">Нет доходов</div>
+        )}
       </div>
     </div>
   );
 }
 
-function AnalyticsMain({ transactions }: { transactions: Transaction[] }) {
-  const expenses = totalExpenses(transactions);
-  const income = totalIncome();
-  const balance = income - expenses;
-  const saved = 85000;
+// --- Expenses ---
 
-  // Spending by category
-  const categoryData = (Object.keys(EXPENSE_CATEGORY_META) as ExpenseCategory[]).map((cat) => ({
-    category: cat,
-    amount: spentByCategory(cat, transactions),
-  })).filter((d) => d.amount > 0).sort((a, b) => b.amount - a.amount);
-
-  const maxCategoryAmount = Math.max(...categoryData.map((d) => d.amount));
-
-  // Monthly chart max
-  const maxMonthlyValue = Math.max(...MONTHLY_INCOME_EXPENSE.map((m) => Math.max(m.income, m.expense)));
-
-  // Savings chart max
-  const maxSavings = Math.max(...SAVINGS_TREND.map((s) => s.amount));
+function ExpensesMain({ transactions, onDelete }: { transactions: Transaction[]; onDelete: (id: string) => void }) {
+  const [filter, setFilter] = useState<ExpenseCat | 'all'>('all');
+  const filtered = filter === 'all' ? transactions : transactions.filter((t) => t.category === filter);
+  const total = filtered.reduce((s, t) => s + t.amount, 0);
+  const overallTotal = transactions.reduce((s, t) => s + t.amount, 0);
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold mb-1">Аналитика</h1>
-      <p className="text-neutral-500 text-sm mb-6">Март 2026</p>
+      <h1 className="text-2xl font-bold mb-1">Расходы</h1>
+      <p className="text-neutral-500 text-sm mb-6">{getMonthLabel()}</p>
 
-      {/* Top cards — 4 cards */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
-        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 shadow-sm shadow-black/10">
-          <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">Доход</div>
-          <div className="text-2xl font-bold text-emerald-400">{formatMoney(income)}</div>
+      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6">
+        <div className="flex items-baseline gap-3">
+          <span className="text-3xl font-bold text-red-400 font-mono">{formatMoney(total)}</span>
+          {filter !== 'all' && (
+            <span className="text-sm text-neutral-500">из {formatMoney(overallTotal)} общих</span>
+          )}
         </div>
-        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 shadow-sm shadow-black/10">
-          <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">Расход</div>
-          <div className="text-2xl font-bold text-red-400">{formatMoney(expenses)}</div>
-        </div>
-        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 shadow-sm shadow-black/10">
-          <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">Баланс</div>
-          <div className={`text-2xl font-bold ${balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {balance >= 0 ? '+' : ''}{formatMoney(balance)}
-          </div>
-        </div>
-        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 shadow-sm shadow-black/10">
-          <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">Накоплено</div>
-          <div className="text-2xl font-bold text-blue-400">{formatMoney(saved)}</div>
+        <div className="text-xs text-neutral-500 mt-1">
+          {filtered.length} транзакций
+          {filter !== 'all' && ` — ${EXPENSE_CAT_META[filter].label}`}
         </div>
       </div>
 
-      {/* Income vs Expense bar */}
-      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
-        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-4">
-          Доход vs Расход
-        </h2>
-        <div className="space-y-3">
-          <div>
-            <div className="flex justify-between text-xs mb-1">
-              <span className="text-emerald-400">Доходы</span>
-              <span className="text-neutral-400">{formatMoney(income)}</span>
-            </div>
-            <div className="w-full h-4 bg-neutral-800 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full bg-emerald-500/70 transition-all"
-                style={{ width: `${(income / Math.max(income, expenses)) * 100}%` }}
-              />
-            </div>
-          </div>
-          <div>
-            <div className="flex justify-between text-xs mb-1">
-              <span className="text-red-400">Расходы</span>
-              <span className="text-neutral-400">{formatMoney(expenses)}</span>
-            </div>
-            <div className="w-full h-4 bg-neutral-800 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full bg-red-500/70 transition-all"
-                style={{ width: `${(expenses / Math.max(income, expenses)) * 100}%` }}
-              />
-            </div>
-          </div>
-        </div>
+      <div className="flex flex-wrap gap-1 mb-4">
+        <FilterButton active={filter === 'all'} onClick={() => setFilter('all')}>Все</FilterButton>
+        {(Object.entries(EXPENSE_CAT_META) as [ExpenseCat, typeof EXPENSE_CAT_META[ExpenseCat]][]).map(([k, v]) => (
+          <FilterButton key={k} active={filter === k} onClick={() => setFilter(k)}>
+            {v.icon} {v.label}
+          </FilterButton>
+        ))}
       </div>
 
-      {/* Spending by category bar chart */}
-      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
-        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-4">
-          Расходы по категориям
-        </h2>
-        <div className="space-y-3">
-          {categoryData.map((d) => {
-            const meta = EXPENSE_CATEGORY_META[d.category];
-            const pct = (d.amount / maxCategoryAmount) * 100;
-            return (
-              <div key={d.category}>
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-neutral-300">
-                    {meta.icon} {meta.label}
-                  </span>
-                  <span className="text-neutral-400 font-mono">{formatMoney(d.amount)}</span>
+      <div className="space-y-1">
+        {filtered.map((t) => (
+          <TransactionRow key={t.id} transaction={t} onDelete={onDelete} />
+        ))}
+        {filtered.length === 0 && (
+          <div className="text-neutral-600 text-sm py-4 text-center">Нет расходов</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- Savings ---
+
+function SavingsMain({ goals, onReload }: { goals: SavingsGoal[]; onReload: () => void }) {
+  const [depositGoalId, setDepositGoalId] = useState<string | null>(null);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [showNewGoal, setShowNewGoal] = useState(false);
+  const [newGoalName, setNewGoalName] = useState('');
+  const [newGoalTarget, setNewGoalTarget] = useState('');
+
+  const handleDeposit = async (goalId: string) => {
+    const amount = parseFloat(depositAmount);
+    if (!amount || amount <= 0) return;
+    setSubmitting(true);
+    try {
+      const goal = goals.find((g) => g.id === goalId);
+      if (!goal) return;
+      await window.db.finance.savings.update(goalId, {
+        currentAmount: goal.currentAmount + amount,
+      });
+      // Create savings transaction
+      await window.db.transactions.create({
+        type: 'savings',
+        amount,
+        category: 'savings_deposit',
+        description: `Пополнение: ${goal.name}`,
+        date: new Date().toISOString().slice(0, 10),
+      });
+      setDepositGoalId(null);
+      setDepositAmount('');
+      onReload();
+    } catch { /* ignore */ }
+    finally { setSubmitting(false); }
+  };
+
+  const handleCreateGoal = async () => {
+    if (!newGoalName) return;
+    setSubmitting(true);
+    try {
+      await window.db.finance.savings.create({
+        name: newGoalName,
+        targetAmount: newGoalTarget ? parseFloat(newGoalTarget) : null,
+      });
+      setShowNewGoal(false);
+      setNewGoalName('');
+      setNewGoalTarget('');
+      onReload();
+    } catch { /* ignore */ }
+    finally { setSubmitting(false); }
+  };
+
+  return (
+    <div className="max-w-2xl">
+      <h1 className="text-2xl font-bold mb-1">Накопления</h1>
+      <p className="text-neutral-500 text-sm mb-6">Цели и прогресс</p>
+
+      <div className="space-y-4">
+        {goals.map((goal) => {
+          const pct = goal.targetAmount ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100)) : null;
+          return (
+            <div key={goal.id} className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Target size={16} className="text-blue-400" />
+                  <span className="text-sm font-medium text-neutral-200">{goal.name}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                    goal.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' :
+                    goal.status === 'completed' ? 'bg-blue-500/20 text-blue-400' :
+                    'bg-neutral-700/50 text-neutral-400'
+                  }`}>{goal.status}</span>
                 </div>
-                <div className="w-full h-3 bg-neutral-800 rounded-full overflow-hidden">
+                <button
+                  onClick={() => setDepositGoalId(depositGoalId === goal.id ? null : goal.id)}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  Пополнить
+                </button>
+              </div>
+
+              {pct !== null && (
+                <div className="w-full h-2 bg-neutral-800 rounded-full overflow-hidden mb-2">
                   <div
-                    className={`h-full rounded-full ${meta.barColor} transition-all`}
+                    className="h-full rounded-full bg-blue-500 transition-all"
                     style={{ width: `${pct}%` }}
                   />
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+              )}
 
-      {/* Grouped bar chart: Income vs Expense for 6 months */}
-      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
-        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-4">
-          Доход vs Расход (6 мес)
-        </h2>
-        <div className="flex items-end gap-3 h-40">
-          {MONTHLY_INCOME_EXPENSE.map((m) => {
-            const incPct = (m.income / maxMonthlyValue) * 100;
-            const expPct = (m.expense / maxMonthlyValue) * 100;
-            return (
-              <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
-                <div className="flex items-end gap-0.5 flex-1 w-full justify-center">
-                  <div className="flex flex-col items-center justify-end h-full" style={{ width: '40%' }}>
-                    <div
-                      className="w-full bg-emerald-500/70 rounded-t transition-all"
-                      style={{ height: `${incPct}%` }}
-                      title={`Доход: ${formatMoney(m.income)}`}
-                    />
-                  </div>
-                  <div className="flex flex-col items-center justify-end h-full" style={{ width: '40%' }}>
-                    <div
-                      className="w-full bg-red-500/70 rounded-t transition-all"
-                      style={{ height: `${expPct}%` }}
-                      title={`Расход: ${formatMoney(m.expense)}`}
-                    />
-                  </div>
-                </div>
-                <span className="text-[10px] text-neutral-500">{m.month}</span>
+              <div className="flex justify-between text-xs text-neutral-500">
+                <span className="font-mono">{formatMoney(goal.currentAmount)}</span>
+                {goal.targetAmount && (
+                  <span>
+                    из {formatMoney(goal.targetAmount)} ({pct}%)
+                  </span>
+                )}
               </div>
-            );
-          })}
-        </div>
-        <div className="flex items-center gap-4 mt-3 justify-center">
-          <div className="flex items-center gap-1.5 text-[10px] text-neutral-400">
-            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500/70" />
-            Доход
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px] text-neutral-400">
-            <div className="w-2.5 h-2.5 rounded-sm bg-red-500/70" />
-            Расход
-          </div>
-        </div>
-      </div>
 
-      {/* Savings trend bar chart */}
-      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
-        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-4">
-          Динамика накоплений
-        </h2>
-        <div className="flex items-end gap-3 h-32">
-          {SAVINGS_TREND.map((s) => {
-            const pct = (s.amount / maxSavings) * 100;
-            return (
-              <div key={s.month} className="flex-1 flex flex-col items-center gap-1">
-                <div className="text-[10px] text-emerald-400/80 font-mono">
-                  {Math.round(s.amount / 1000)}k
-                </div>
-                <div className="flex items-end w-full justify-center flex-1">
-                  <div
-                    className="w-3/4 bg-emerald-500/60 rounded-t transition-all"
-                    style={{ height: `${pct}%` }}
-                    title={formatMoney(s.amount)}
+              {depositGoalId === goal.id && (
+                <div className="mt-3 flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="Сумма"
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                    className="flex-1 px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500"
                   />
+                  <button
+                    onClick={() => handleDeposit(goal.id)}
+                    disabled={submitting}
+                    className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm text-white transition-colors"
+                  >
+                    {submitting ? '...' : 'OK'}
+                  </button>
                 </div>
-                <span className="text-[10px] text-neutral-500">{s.month}</span>
-              </div>
-            );
-          })}
-        </div>
+              )}
+            </div>
+          );
+        })}
+
+        {goals.length === 0 && (
+          <div className="text-neutral-600 text-sm py-4 text-center">Нет целей накоплений</div>
+        )}
       </div>
 
-      {/* Share breakdown */}
-      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 shadow-lg shadow-black/20">
-        <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-4">
-          Доля расходов
-        </h2>
-        <div className="flex gap-2 flex-wrap">
-          {categoryData.map((d) => {
-            const meta = EXPENSE_CATEGORY_META[d.category];
-            const share = Math.round((d.amount / expenses) * 100);
-            return (
-              <div
-                key={d.category}
-                className={`text-xs px-3 py-1.5 rounded-lg border ${meta.color} border-current/20`}
+      {/* New goal */}
+      <div className="mt-4">
+        {!showNewGoal ? (
+          <button
+            onClick={() => setShowNewGoal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm text-neutral-300 transition-colors"
+          >
+            <Plus size={14} /> Новая цель
+          </button>
+        ) : (
+          <div className="p-4 bg-neutral-900/50 border border-neutral-800 rounded-lg">
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="text"
+                placeholder="Название цели"
+                value={newGoalName}
+                onChange={(e) => setNewGoalName(e.target.value)}
+                className="px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500"
+              />
+              <input
+                type="number"
+                placeholder="Целевая сумма (опц.)"
+                value={newGoalTarget}
+                onChange={(e) => setNewGoalTarget(e.target.value)}
+                className="px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2 mt-3">
+              <button onClick={() => setShowNewGoal(false)} className="px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200">
+                Отмена
+              </button>
+              <button
+                onClick={handleCreateGoal}
+                disabled={submitting || !newGoalName}
+                className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm text-white transition-colors"
               >
-                {meta.icon} {meta.label}: {share}%
-              </div>
-            );
-          })}
-        </div>
+                Создать
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+// --- Taxes ---
+
+function TaxMain() {
+  const [quarterSummary, setQuarterSummary] = useState<FinanceSummary | null>(null);
+  const [yearSummary, setYearSummary] = useState<FinanceSummary | null>(null);
+  const [taxTransactions, setTaxTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const q = getQuarterDates();
+        const year = new Date().getFullYear();
+        const [qSum, ySum, taxTxns] = await Promise.all([
+          window.db.finance.summary(q.from, q.to),
+          window.db.finance.summary(`${year}-01-01`, `${year}-12-31`),
+          window.db.transactions.list({ type: 'tax' }),
+        ]);
+        setQuarterSummary(qSum);
+        setYearSummary(ySum);
+        setTaxTransactions(taxTxns);
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
+    };
+    load();
+  }, []);
+
+  if (loading) return <Loader2 size={24} className="animate-spin text-neutral-500" />;
+
+  const q = getQuarterDates();
+  const quarterIncome = quarterSummary?.totalIncome ?? 0;
+  const yearIncome = yearSummary?.totalIncome ?? 0;
+
+  // Self-employed tax rates
+  const tax4pct = Math.round(quarterIncome * 0.04);
+  const tax6pct = Math.round(quarterIncome * 0.06);
+  const taxReserved = taxTransactions
+    .filter((t) => t.category === 'tax_reserve')
+    .reduce((s, t) => s + t.amount, 0);
+  const taxPaid = taxTransactions
+    .filter((t) => t.category === 'tax_payment')
+    .reduce((s, t) => s + t.amount, 0);
+
+  const needToPay = tax4pct - taxPaid;
+
+  return (
+    <div className="max-w-2xl">
+      <h1 className="text-2xl font-bold mb-1">Налоги</h1>
+      <p className="text-neutral-500 text-sm mb-6">Самозанятый — {q.label}</p>
+
+      {/* Tax summary */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
+          <div className="text-xs text-neutral-500 mb-1">Доход за квартал ({q.label})</div>
+          <div className="text-xl font-bold font-mono text-neutral-200">{formatMoney(quarterIncome)}</div>
+        </div>
+        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
+          <div className="text-xs text-neutral-500 mb-1">Доход за год</div>
+          <div className="text-xl font-bold font-mono text-neutral-200">{formatMoney(yearIncome)}</div>
+        </div>
+      </div>
+
+      {/* Tax calculation */}
+      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6">
+        <h2 className="text-sm font-semibold text-neutral-400 mb-4">Расчёт налога</h2>
+        <div className="space-y-3">
+          <div className="flex justify-between text-sm">
+            <span className="text-neutral-400">Ставка 4% (физлица)</span>
+            <span className="text-yellow-400 font-mono">{formatMoney(tax4pct)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-neutral-400">Ставка 6% (юрлица)</span>
+            <span className="text-yellow-400 font-mono">{formatMoney(tax6pct)}</span>
+          </div>
+          <div className="border-t border-neutral-800 pt-3 flex justify-between text-sm">
+            <span className="text-neutral-400">Зарезервировано</span>
+            <span className="text-blue-400 font-mono">{formatMoney(taxReserved)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-neutral-400">Оплачено</span>
+            <span className="text-emerald-400 font-mono">{formatMoney(taxPaid)}</span>
+          </div>
+        </div>
+
+        {needToPay > 0 && (
+          <div className="mt-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center gap-2">
+            <Receipt size={16} className="text-yellow-400" />
+            <span className="text-sm text-yellow-400">
+              Нужно заплатить: <span className="font-mono font-bold">{formatMoney(needToPay)}</span>
+            </span>
+          </div>
+        )}
+        {needToPay <= 0 && (
+          <div className="mt-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-400">
+            Налоги за квартал оплачены
+          </div>
+        )}
+      </div>
+
+      {/* Tax transactions */}
+      {taxTransactions.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mb-3">
+            Налоговые операции
+          </h2>
+          <div className="space-y-1">
+            {taxTransactions.map((t) => (
+              <div key={t.id} className="flex items-center gap-3 px-3 py-2 rounded hover:bg-neutral-800/30 transition-colors">
+                <Receipt size={14} className="text-yellow-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm text-neutral-300">{t.description ?? (t.category === 'tax_payment' ? 'Оплата налога' : 'Резерв на налоги')}</span>
+                  <div className="text-[11px] text-neutral-600 mt-0.5">{formatDate(t.date)}</div>
+                </div>
+                <span className="text-sm text-yellow-400 font-mono shrink-0">{formatMoney(t.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Shared UI ---
+
+function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+        active
+          ? 'bg-neutral-700 text-white'
+          : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+      }`}
+    >
+      {children}
+    </button>
   );
 }

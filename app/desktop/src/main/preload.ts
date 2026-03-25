@@ -216,12 +216,32 @@ const dbApi = {
       ipcRenderer.invoke('db:subjects:create', data),
   },
   transactions: {
-    list: (month?: string) =>
-      ipcRenderer.invoke('db:transactions:list', month),
+    list: (filters?: { type?: string; category?: string; dateFrom?: string; dateTo?: string; studentId?: string; month?: string }) =>
+      ipcRenderer.invoke('db:transactions:list', filters),
     create: (data: Record<string, unknown>) =>
       ipcRenderer.invoke('db:transactions:create', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:transactions:update', id, data),
     delete: (id: string) =>
       ipcRenderer.invoke('db:transactions:delete', id),
+  },
+  finance: {
+    summary: (dateFrom?: string, dateTo?: string) =>
+      ipcRenderer.invoke('db:finance:summary', dateFrom, dateTo),
+    savings: {
+      list: () =>
+        ipcRenderer.invoke('db:finance:savings:list'),
+      create: (data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:finance:savings:create', data),
+      update: (id: string, data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:finance:savings:update', id, data),
+    },
+    rates: {
+      get: (studentId: string) =>
+        ipcRenderer.invoke('db:finance:rates:get', studentId),
+      set: (studentId: string, rate: number, currency?: string, notes?: string) =>
+        ipcRenderer.invoke('db:finance:rates:set', studentId, rate, currency, notes),
+    },
   },
   workouts: {
     list: () =>

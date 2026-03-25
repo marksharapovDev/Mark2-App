@@ -12,6 +12,9 @@ import type {
   AttachedFile,
   Lesson,
   LearningPathTopic,
+  SavingsGoal,
+  StudentRate,
+  FinanceSummary,
 } from '@mark2/shared';
 
 // --- Retry wrapper for EPIPE/fetch errors ---
@@ -259,35 +262,147 @@ export async function createSubject(input: Record<string, unknown>): Promise<Sub
 
 // --- Transactions ---
 
-export async function getTransactions(month?: string): Promise<Transaction[]> {
-  const sb = getSupabase();
-  let query = sb.from('transactions').select('*').order('date', { ascending: false });
-  if (month) {
-    // month format: "2026-03"
-    const start = `${month}-01`;
-    const parts = month.split('-').map(Number);
-    const y = parts[0] ?? 0;
-    const m = parts[1] ?? 0;
-    const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
-    const end = `${nextMonth}-01`;
-    query = query.gte('date', start).lt('date', end);
-  }
-  const { data, error } = await query;
-  if (error) throw error;
-  return mapRows<Transaction>(data);
+export async function getTransactions(filters?: {
+  type?: string;
+  category?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  studentId?: string;
+  month?: string;
+}): Promise<Transaction[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    let query = sb.from('transactions').select('*').order('date', { ascending: false });
+    if (filters?.type) query = query.eq('type', filters.type);
+    if (filters?.category) query = query.eq('category', filters.category);
+    if (filters?.studentId) query = query.eq('student_id', filters.studentId);
+    if (filters?.dateFrom) query = query.gte('date', filters.dateFrom);
+    if (filters?.dateTo) query = query.lte('date', filters.dateTo);
+    if (filters?.month) {
+      const start = `${filters.month}-01`;
+      const parts = filters.month.split('-').map(Number);
+      const y = parts[0] ?? 0;
+      const m = parts[1] ?? 0;
+      const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+      query = query.gte('date', start).lt('date', `${nextMonth}-01`);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    return mapRows<Transaction>(data);
+  });
 }
 
 export async function createTransaction(input: Record<string, unknown>): Promise<Transaction> {
-  const sb = getSupabase();
-  const { data, error } = await sb.from('transactions').insert(toDbFields(input)).select().single();
-  if (error) throw error;
-  return mapRow<Transaction>(data);
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('transactions').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<Transaction>(data);
+  });
+}
+
+export async function updateTransaction(id: string, input: Record<string, unknown>): Promise<Transaction> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('transactions').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<Transaction>(data);
+  });
 }
 
 export async function deleteTransaction(id: string): Promise<void> {
-  const sb = getSupabase();
-  const { error } = await sb.from('transactions').delete().eq('id', id);
-  if (error) throw error;
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('transactions').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+export async function getFinanceSummary(dateFrom?: string, dateTo?: string): Promise<FinanceSummary> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    let query = sb.from('transactions').select('type, amount');
+    if (dateFrom) query = query.gte('date', dateFrom);
+    if (dateTo) query = query.lte('date', dateTo);
+    const { data, error } = await query;
+    if (error) throw error;
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+    let totalSavings = 0;
+    let taxReserve = 0;
+
+    for (const row of data) {
+      const amount = Number(row.amount) || 0;
+      switch (row.type) {
+        case 'income': totalIncome += amount; break;
+        case 'expense': totalExpense += amount; break;
+        case 'savings': totalSavings += amount; break;
+        case 'tax': taxReserve += amount; break;
+      }
+    }
+
+    const period = dateFrom && dateTo ? `${dateFrom} — ${dateTo}` : 'all';
+    return {
+      totalIncome,
+      totalExpense,
+      totalSavings,
+      taxReserve,
+      netBalance: totalIncome - totalExpense - taxReserve,
+      period,
+    };
+  });
+}
+
+// --- Savings Goals ---
+
+export async function getSavingsGoals(): Promise<SavingsGoal[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('savings_goals').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return mapRows<SavingsGoal>(data);
+  });
+}
+
+export async function createSavingsGoal(input: Record<string, unknown>): Promise<SavingsGoal> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('savings_goals').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<SavingsGoal>(data);
+  });
+}
+
+export async function updateSavingsGoal(id: string, input: Record<string, unknown>): Promise<SavingsGoal> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('savings_goals').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<SavingsGoal>(data);
+  });
+}
+
+// --- Student Rates ---
+
+export async function getStudentRate(studentId: string): Promise<StudentRate | null> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('student_rates').select('*').eq('student_id', studentId).maybeSingle();
+    if (error) throw error;
+    return data ? mapRow<StudentRate>(data) : null;
+  });
+}
+
+export async function setStudentRate(studentId: string, ratePerLesson: number, currency = 'RUB', notes?: string): Promise<StudentRate> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('student_rates')
+      .upsert({ student_id: studentId, rate_per_lesson: ratePerLesson, currency, notes: notes ?? null }, { onConflict: 'student_id' })
+      .select().single();
+    if (error) throw error;
+    return mapRow<StudentRate>(data);
+  });
 }
 
 // --- Workouts ---

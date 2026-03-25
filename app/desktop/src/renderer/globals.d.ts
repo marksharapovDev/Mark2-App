@@ -95,9 +95,22 @@ interface DbAPI {
     create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').Subject>;
   };
   transactions: {
-    list: (month?: string) => Promise<import('@mark2/shared').Transaction[]>;
+    list: (filters?: { type?: string; category?: string; dateFrom?: string; dateTo?: string; studentId?: string; month?: string }) => Promise<import('@mark2/shared').Transaction[]>;
     create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').Transaction>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').Transaction>;
     delete: (id: string) => Promise<void>;
+  };
+  finance: {
+    summary: (dateFrom?: string, dateTo?: string) => Promise<import('@mark2/shared').FinanceSummary>;
+    savings: {
+      list: () => Promise<import('@mark2/shared').SavingsGoal[]>;
+      create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').SavingsGoal>;
+      update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').SavingsGoal>;
+    };
+    rates: {
+      get: (studentId: string) => Promise<import('@mark2/shared').StudentRate | null>;
+      set: (studentId: string, rate: number, currency?: string, notes?: string) => Promise<import('@mark2/shared').StudentRate>;
+    };
   };
   workouts: {
     list: () => Promise<import('@mark2/shared').Workout[]>;

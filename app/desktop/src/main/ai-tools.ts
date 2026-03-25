@@ -422,8 +422,105 @@ const AI_TOOLS: Record<string, ActionHandler> = {
 
   // Transactions
   add_transaction: async (params) => {
-    const result = await db.createTransaction(params);
+    const txData: Record<string, unknown> = { ...params };
+
+    // For tutoring income: auto-resolve student
+    if (txData.type === 'income' && txData.category === 'tutoring' && !txData.studentId) {
+      const studentName = String(txData.studentName ?? '');
+      if (studentName) {
+        const found = await db.findStudentByName(studentName);
+        if (found) {
+          txData.studentId = found.id;
+          console.log('[AI Tools] Resolved student for transaction:', found.name, found.id);
+        }
+      }
+      delete txData.studentName;
+    }
+
+    if (!txData.date) txData.date = new Date().toISOString().slice(0, 10);
+    const result = await db.createTransaction(txData);
     return { success: true, message: `Транзакция записана: ${params.amount} ₽`, entity: 'transactions', data: result as unknown as Record<string, unknown> };
+  },
+
+  // Quick expense logging
+  log_expense: async (params) => {
+    const result = await db.createTransaction({
+      type: 'expense',
+      amount: params.amount,
+      category: params.category ?? 'other',
+      description: params.description ?? null,
+      date: params.date ?? new Date().toISOString().slice(0, 10),
+    });
+    return { success: true, message: `Расход записан: ${params.amount} ₽ (${params.category ?? 'other'})`, entity: 'transactions', data: result as unknown as Record<string, unknown> };
+  },
+
+  // Add to savings goal
+  add_savings: async (params) => {
+    const goalName = String(params.goalName ?? '');
+    const amount = Number(params.amount ?? 0);
+    if (!goalName || !amount) return { success: false, message: 'goalName и amount обязательны', entity: '' };
+
+    const goals = await db.getSavingsGoals();
+    const goal = goals.find((g) => g.name.toLowerCase().includes(goalName.toLowerCase()));
+    if (!goal) return { success: false, message: `Цель "${goalName}" не найдена`, entity: '' };
+
+    const newAmount = goal.currentAmount + amount;
+    await db.updateSavingsGoal(goal.id, { currentAmount: newAmount });
+
+    // Also create a savings transaction
+    await db.createTransaction({
+      type: 'savings',
+      amount,
+      category: 'savings_deposit',
+      description: `Пополнение: ${goal.name}`,
+      date: new Date().toISOString().slice(0, 10),
+    });
+
+    return {
+      success: true,
+      message: `Пополнена цель "${goal.name}": +${amount} ₽ (итого: ${newAmount} ₽)`,
+      entity: 'transactions',
+      entities: ['transactions', 'savings'],
+    };
+  },
+
+  // Record student payment (tutoring income + optional rate lookup)
+  record_student_payment: async (params) => {
+    const studentName = String(params.studentName ?? '');
+    if (!studentName) return { success: false, message: 'studentName обязателен', entity: '' };
+
+    const student = await db.findStudentByName(studentName);
+    if (!student) return { success: false, message: `Ученик "${studentName}" не найден`, entity: '' };
+
+    let amount = Number(params.amount ?? 0);
+    const lessonsCount = Number(params.lessonsCount ?? 1);
+
+    // If no amount, try to use rate
+    if (!amount) {
+      const rate = await db.getStudentRate(student.id);
+      if (rate) {
+        amount = rate.ratePerLesson * lessonsCount;
+        console.log(`[AI Tools] Using rate ${rate.ratePerLesson} × ${lessonsCount} lessons = ${amount}`);
+      } else {
+        return { success: false, message: `Сумма не указана и ставка для ${student.name} не найдена`, entity: '' };
+      }
+    }
+
+    const result = await db.createTransaction({
+      type: 'income',
+      amount,
+      category: 'tutoring',
+      description: `Оплата: ${student.name} (${lessonsCount} ${lessonsCount === 1 ? 'урок' : 'уроков'})`,
+      studentId: student.id,
+      date: params.date ?? new Date().toISOString().slice(0, 10),
+    });
+
+    return {
+      success: true,
+      message: `Оплата записана: ${student.name} — ${amount} ₽ (${lessonsCount} ур.)`,
+      entity: 'transactions',
+      data: result as unknown as Record<string, unknown>,
+    };
   },
 
   // Workouts

@@ -3,7 +3,7 @@ export type { Sphere, TaskStatus, Task } from './types/task.js';
 export type { ProjectStatus, DevProject } from './types/project.js';
 export type { StudentLevel, Student } from './types/student.js';
 export type { Subject } from './types/subject.js';
-export type { TransactionType, TransactionSource, Transaction } from './types/transaction.js';
+export type { TransactionType, Transaction, IncomeCategory, ExpenseCategory, SavingsCategory, TaxCategory, TransactionCategory, SavingsGoal, StudentRate, FinanceSummary } from './types/finance.js';
 export type { WorkoutType, Exercise, Workout } from './types/workout.js';
 export type { Recurrence, CalendarEvent } from './types/calendar.js';
 export type { NoteSource, DailyNote } from './types/note.js';
