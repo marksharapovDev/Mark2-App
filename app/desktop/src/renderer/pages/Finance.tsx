@@ -5,7 +5,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, PiggyBank, Receipt, TrendingUp,
   Utensils, Bus, Clapperboard, Smartphone, Home, Package, BookOpen,
   Code, Banknote, Gift, Heart, GraduationCap, Plus, Loader2, Target, Users,
-  ChevronUp, ChevronDown, BarChart3, Calendar,
+  ChevronUp, ChevronDown, BarChart3, Calendar, Pencil, Trash2, X,
 } from 'lucide-react';
 
 // --- Types ---
@@ -61,6 +61,27 @@ const EXPENSE_CAT_META: Record<ExpenseCat, { icon: React.ReactNode; label: strin
   entertainment: { icon: <Clapperboard size={14} strokeWidth={1.5} />, label: 'Развлечения', color: 'bg-purple-900/40 text-purple-300', barColor: 'bg-purple-500' },
   other: { icon: <Package size={14} strokeWidth={1.5} />, label: 'Прочее', color: 'bg-neutral-700/40 text-neutral-300', barColor: 'bg-neutral-500' },
 };
+
+const SAVINGS_CAT_META: Record<string, { label: string }> = {
+  savings_deposit: { label: 'Пополнение' },
+  savings_withdrawal: { label: 'Снятие' },
+};
+
+const TAX_CAT_META: Record<string, { label: string }> = {
+  tax_payment: { label: 'Оплата налога' },
+  tax_reserve: { label: 'Резерв' },
+};
+
+type TxType = 'income' | 'expense' | 'savings' | 'tax';
+
+function getCategoriesForType(type: TxType): Array<{ value: string; label: string }> {
+  switch (type) {
+    case 'income': return Object.entries(INCOME_CAT_META).map(([k, v]) => ({ value: k, label: v.label }));
+    case 'expense': return Object.entries(EXPENSE_CAT_META).map(([k, v]) => ({ value: k, label: v.label }));
+    case 'savings': return Object.entries(SAVINGS_CAT_META).map(([k, v]) => ({ value: k, label: v.label }));
+    case 'tax': return Object.entries(TAX_CAT_META).map(([k, v]) => ({ value: k, label: v.label }));
+  }
+}
 
 const EXPENSE_BAR_COLORS = ['bg-orange-500', 'bg-blue-500', 'bg-pink-500', 'bg-emerald-500', 'bg-violet-500', 'bg-red-500', 'bg-purple-500', 'bg-neutral-500'];
 
@@ -190,14 +211,10 @@ export function Finance() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [taskChecked, setTaskChecked] = useState<Record<string, boolean>>({});
 
-  // Add transaction form
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [formType, setFormType] = useState<'income' | 'expense'>('expense');
-  const [formAmount, setFormAmount] = useState('');
-  const [formCategory, setFormCategory] = useState('');
-  const [formDescription, setFormDescription] = useState('');
-  const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10));
-  const [formSubmitting, setFormSubmitting] = useState(false);
+  // Transaction popup state
+  const [popupTx, setPopupTx] = useState<{ tx: Transaction; rect: DOMRect } | null>(null);
+  const [editTx, setEditTx] = useState<{ tx: Transaction | null; rect: DOMRect } | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 400;
@@ -288,29 +305,42 @@ export function Finance() {
     });
   }, []);
 
-  const handleAddTransaction = useCallback(async () => {
-    const amount = parseFloat(formAmount);
-    if (!amount || amount <= 0) return;
-    setFormSubmitting(true);
+  const handleSaveTransaction = useCallback(async (data: Record<string, unknown>, id?: string) => {
     try {
-      await window.db.transactions.create({
-        type: formType, amount,
-        category: formCategory || 'other',
-        description: formDescription || null,
-        date: formDate,
-      });
-      setShowAddForm(false);
-      setFormAmount(''); setFormCategory(''); setFormDescription('');
-      setFormDate(new Date().toISOString().slice(0, 10));
+      if (id) {
+        await window.db.transactions.update(id, data);
+      } else {
+        await window.db.transactions.create(data);
+      }
+      window.dataEvents.emitDataChanged(['transactions', 'finance']);
+      setEditTx(null);
       reloadData();
     } catch (err) {
       setDbError(err instanceof Error ? err.message : 'Ошибка');
-    } finally { setFormSubmitting(false); }
-  }, [formType, formAmount, formCategory, formDescription, formDate, reloadData]);
+    }
+  }, [reloadData]);
 
   const handleDeleteTransaction = useCallback(async (id: string) => {
-    try { await window.db.transactions.delete(id); reloadData(); } catch { /* ignore */ }
+    try {
+      await window.db.transactions.delete(id);
+      window.dataEvents.emitDataChanged(['transactions', 'finance']);
+      setPopupTx(null);
+      setConfirmDeleteId(null);
+      reloadData();
+    } catch { /* ignore */ }
   }, [reloadData]);
+
+  const handleTxClick = useCallback((tx: Transaction, e: React.MouseEvent) => {
+    e.preventDefault();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setPopupTx({ tx, rect });
+    setConfirmDeleteId(null);
+  }, []);
+
+  const handleAddClick = useCallback((e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setEditTx({ tx: null, rect });
+  }, []);
 
   // Derived
   const filteredTransactions = studentFilter ? transactions.filter((t) => t.studentId === studentFilter) : transactions;
@@ -427,14 +457,19 @@ export function Finance() {
           {/* Recent transactions */}
           <div className="flex-1 overflow-hidden flex flex-col">
             <div className="mx-3 border-t border-neutral-800" />
-            <div className="px-3 pt-3 pb-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">Последние</div>
+            <div className="flex items-center justify-between px-3 pt-3 pb-2">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Последние</span>
+              <button onClick={handleAddClick} className="w-5 h-5 flex items-center justify-center rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-500 hover:text-neutral-300 transition-colors" title="Добавить">
+                <Plus size={12} />
+              </button>
+            </div>
             <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin px-2">
               <div className="space-y-0.5">
                 {transactions.slice(0, 15).map((t) => {
                   const isIncome = t.type === 'income';
                   const meta = getCategoryMeta(t.type, t.category);
                   return (
-                    <div key={t.id} className="text-xs py-1.5 px-2 rounded hover:bg-neutral-800/50 transition-colors">
+                    <div key={t.id} onClick={(e) => handleTxClick(t, e)} className="text-xs py-1.5 px-2 rounded hover:bg-neutral-800/50 transition-colors cursor-pointer">
                       <div className="flex items-center gap-1.5">
                         <span className="text-neutral-600 text-[10px] shrink-0">{formatDate(t.date)}</span>
                         <span className={`text-[10px] ml-auto font-mono ${isIncome ? 'text-emerald-400/80' : 'text-red-400/80'}`}>{isIncome ? '+' : '-'}{formatMoney(t.amount)}</span>
@@ -463,19 +498,37 @@ export function Finance() {
             <OverviewMain
               summary={summary} transactions={filteredTransactions} allTransactions={allTransactions}
               savingsGoals={savingsGoals} period={period} periodDates={periodDates} onPeriodChange={setPeriod}
-              showAddForm={showAddForm} onToggleAddForm={() => setShowAddForm((v) => !v)}
-              formType={formType} setFormType={setFormType} formAmount={formAmount} setFormAmount={setFormAmount}
-              formCategory={formCategory} setFormCategory={setFormCategory} formDescription={formDescription}
-              setFormDescription={setFormDescription} formDate={formDate} setFormDate={setFormDate}
-              formSubmitting={formSubmitting} onSubmit={handleAddTransaction} onDelete={handleDeleteTransaction}
+              onTxClick={handleTxClick} onAddClick={handleAddClick}
             />
           )}
           {!loading && activeSection === 'income' && <IncomeMain transactions={incomeTransactions} students={students} studentRates={studentRates} periodLabel={periodDates.label} />}
-          {!loading && activeSection === 'expenses' && <ExpensesMain transactions={expenseTransactions} onDelete={handleDeleteTransaction} periodLabel={periodDates.label} />}
+          {!loading && activeSection === 'expenses' && <ExpensesMain transactions={expenseTransactions} onTxClick={handleTxClick} periodLabel={periodDates.label} />}
           {!loading && activeSection === 'savings' && <SavingsMain goals={savingsGoals} allTransactions={allTransactions} onReload={reloadData} />}
           {!loading && activeSection === 'taxes' && <TaxMain />}
         </main>
       </div>
+      {/* Context menu popup */}
+      {popupTx && (
+        <ContextMenuPopup
+          rect={popupTx.rect}
+          onEdit={() => { setEditTx({ tx: popupTx.tx, rect: popupTx.rect }); setPopupTx(null); }}
+          onDelete={() => setConfirmDeleteId(popupTx.tx.id)}
+          confirmDelete={confirmDeleteId === popupTx.tx.id}
+          onConfirmDelete={() => handleDeleteTransaction(popupTx.tx.id)}
+          onClose={() => { setPopupTx(null); setConfirmDeleteId(null); }}
+        />
+      )}
+
+      {/* Edit/Create popup */}
+      {editTx && (
+        <TransactionFormPopup
+          transaction={editTx.tx}
+          rect={editTx.rect}
+          students={students}
+          onSave={handleSaveTransaction}
+          onClose={() => setEditTx(null)}
+        />
+      )}
     </MainLayout>
   );
 }
@@ -486,20 +539,13 @@ export function Finance() {
 
 function OverviewMain({
   summary, transactions, allTransactions, savingsGoals, period, periodDates, onPeriodChange,
-  showAddForm, onToggleAddForm, formType, setFormType, formAmount, setFormAmount,
-  formCategory, setFormCategory, formDescription, setFormDescription, formDate, setFormDate,
-  formSubmitting, onSubmit, onDelete,
+  onTxClick, onAddClick,
 }: {
   summary: FinanceSummary | null; transactions: Transaction[]; allTransactions: Transaction[];
   savingsGoals: SavingsGoal[]; period: PeriodId; periodDates: { from: string; to: string; label: string };
   onPeriodChange: (p: PeriodId) => void;
-  showAddForm: boolean; onToggleAddForm: () => void;
-  formType: 'income' | 'expense'; setFormType: (v: 'income' | 'expense') => void;
-  formAmount: string; setFormAmount: (v: string) => void;
-  formCategory: string; setFormCategory: (v: string) => void;
-  formDescription: string; setFormDescription: (v: string) => void;
-  formDate: string; setFormDate: (v: string) => void;
-  formSubmitting: boolean; onSubmit: () => void; onDelete: (id: string) => void;
+  onTxClick: (tx: Transaction, e: React.MouseEvent) => void;
+  onAddClick: (e: React.MouseEvent) => void;
 }) {
   const totalSavings = savingsGoals.reduce((s, g) => s + g.currentAmount, 0);
 
@@ -544,39 +590,15 @@ function OverviewMain({
       {/* Statistics */}
       <StatisticsBlock allTransactions={allTransactions} transactions={transactions} />
 
-      {/* Add button + form */}
-      <div className="mb-6 mt-6">
-        <button onClick={onToggleAddForm} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm text-neutral-300 transition-colors">
-          <Plus size={14} /> Добавить транзакцию
-        </button>
-        {showAddForm && (
-          <div className="mt-3 p-4 bg-neutral-900/50 border border-neutral-800 rounded-lg">
-            <div className="flex gap-2 mb-3">
-              <button onClick={() => setFormType('expense')} className={`px-3 py-1 rounded text-xs font-medium transition-colors ${formType === 'expense' ? 'bg-red-500/20 text-red-400' : 'text-neutral-500 hover:text-neutral-300'}`}>Расход</button>
-              <button onClick={() => setFormType('income')} className={`px-3 py-1 rounded text-xs font-medium transition-colors ${formType === 'income' ? 'bg-emerald-500/20 text-emerald-400' : 'text-neutral-500 hover:text-neutral-300'}`}>Доход</button>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <input type="number" placeholder="Сумма" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} className="px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500" />
-              <select value={formCategory} onChange={(e) => setFormCategory(e.target.value)} className="px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500">
-                <option value="">Категория</option>
-                {formType === 'expense'
-                  ? Object.entries(EXPENSE_CAT_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)
-                  : Object.entries(INCOME_CAT_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-              <input type="text" placeholder="Описание" value={formDescription} onChange={(e) => setFormDescription(e.target.value)} className="px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500" />
-              <input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} className="px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500" />
-            </div>
-            <div className="flex justify-end mt-3">
-              <button onClick={onSubmit} disabled={formSubmitting || !formAmount} className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm text-white transition-colors">{formSubmitting ? 'Сохраняю...' : 'Сохранить'}</button>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Recent transactions */}
-      <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mb-3">Последние транзакции</h2>
+      <div className="flex items-center justify-between mb-3 mt-6">
+        <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider">Последние транзакции</h2>
+        <button onClick={onAddClick} className="w-6 h-6 flex items-center justify-center rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors" title="Добавить транзакцию">
+          <Plus size={14} />
+        </button>
+      </div>
       <div className="space-y-1">
-        {transactions.slice(0, 10).map((t) => <TransactionRow key={t.id} transaction={t} onDelete={onDelete} />)}
+        {transactions.slice(0, 10).map((t) => <TransactionRow key={t.id} transaction={t} onClick={onTxClick} />)}
         {transactions.length === 0 && <div className="text-neutral-600 text-sm py-4 text-center">Нет транзакций</div>}
       </div>
     </div>
@@ -770,7 +792,7 @@ function SummaryCard({ label, amount, color, icon, change, invertChange }: {
   );
 }
 
-function TransactionRow({ transaction: t, onDelete }: { transaction: Transaction; onDelete: (id: string) => void }) {
+function TransactionRow({ transaction: t, onClick }: { transaction: Transaction; onClick: (tx: Transaction, e: React.MouseEvent) => void }) {
   const meta = getCategoryMeta(t.type, t.category);
   const cfg: Record<string, { color: string; prefix: string }> = {
     income: { color: 'text-emerald-400', prefix: '+' },
@@ -781,16 +803,13 @@ function TransactionRow({ transaction: t, onDelete }: { transaction: Transaction
   const { color, prefix } = cfg[t.type] ?? cfg.expense!;
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 rounded hover:bg-neutral-800/30 transition-colors group">
+    <div onClick={(e) => onClick(t, e)} className="flex items-center gap-3 px-3 py-2.5 rounded hover:bg-neutral-800/30 transition-colors cursor-pointer">
       <span className="text-sm shrink-0">{meta.icon}</span>
       <div className="flex-1 min-w-0">
         <span className="text-sm text-neutral-300">{t.description ?? meta.label}</span>
         <div className="text-[11px] text-neutral-600 mt-0.5">{formatDate(t.date)}<span className={`ml-2 px-1 py-0.5 rounded text-[10px] ${meta.color}`}>{meta.label}</span></div>
       </div>
       <span className={`text-sm font-mono shrink-0 ${color}`}>{prefix}{formatMoney(t.amount)}</span>
-      <button onClick={() => onDelete(t.id)} className="text-neutral-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0" title="Удалить">
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-      </button>
     </div>
   );
 }
@@ -798,6 +817,181 @@ function TransactionRow({ transaction: t, onDelete }: { transaction: Transaction
 function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button onClick={onClick} className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${active ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'}`}>{children}</button>
+  );
+}
+
+// =========================================================
+// Context Menu Popup
+// =========================================================
+
+function ContextMenuPopup({ rect, onEdit, onDelete, confirmDelete, onConfirmDelete, onClose }: {
+  rect: DOMRect;
+  onEdit: () => void;
+  onDelete: () => void;
+  confirmDelete: boolean;
+  onConfirmDelete: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleEsc);
+    return () => { document.removeEventListener('mousedown', handleClick); document.removeEventListener('keydown', handleEsc); };
+  }, [onClose]);
+
+  const top = rect.bottom + 4;
+  const left = Math.min(rect.left, window.innerWidth - 160);
+
+  return (
+    <div ref={ref} className="fixed z-50 animate-in fade-in duration-150" style={{ top, left }}>
+      <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[140px]">
+        <button onClick={onEdit} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-700 transition-colors">
+          <Pencil size={14} /> Редактировать
+        </button>
+        {!confirmDelete ? (
+          <button onClick={onDelete} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-neutral-700 transition-colors">
+            <Trash2 size={14} /> Удалить
+          </button>
+        ) : (
+          <button onClick={onConfirmDelete} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-colors">
+            <Trash2 size={14} /> Точно удалить?
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =========================================================
+// Transaction Form Popup (Edit / Create)
+// =========================================================
+
+function TransactionFormPopup({ transaction, rect, students, onSave, onClose }: {
+  transaction: Transaction | null;
+  rect: DOMRect;
+  students: Student[];
+  onSave: (data: Record<string, unknown>, id?: string) => void;
+  onClose: () => void;
+}) {
+  const isEdit = !!transaction;
+  const ref = useRef<HTMLDivElement>(null);
+
+  const [type, setType] = useState<TxType>(transaction?.type as TxType ?? 'expense');
+  const [amount, setAmount] = useState(transaction ? String(transaction.amount) : '');
+  const [category, setCategory] = useState(transaction?.category ?? '');
+  const [description, setDescription] = useState(transaction?.description ?? '');
+  const [date, setDate] = useState(transaction?.date ?? new Date().toISOString().slice(0, 10));
+  const [studentId, setStudentId] = useState(transaction?.studentId ?? '');
+  const [isRecurring, setIsRecurring] = useState(transaction?.isRecurring ?? false);
+  const [recurringPeriod, setRecurringPeriod] = useState(transaction?.recurringPeriod ?? 'monthly');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleEsc);
+    return () => { document.removeEventListener('mousedown', handleClick); document.removeEventListener('keydown', handleEsc); };
+  }, [onClose]);
+
+  // Reset category when type changes (only for new transactions)
+  useEffect(() => {
+    if (!isEdit) setCategory('');
+  }, [type, isEdit]);
+
+  const categories = getCategoriesForType(type);
+  const showStudentSelect = type === 'income' && category === 'tutoring';
+
+  const handleSubmit = async () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) return;
+    setSubmitting(true);
+    const data: Record<string, unknown> = {
+      type, amount: amt,
+      category: category || 'other',
+      description: description || null,
+      date,
+      studentId: showStudentSelect && studentId ? studentId : null,
+      isRecurring,
+      recurringPeriod: isRecurring ? recurringPeriod : null,
+    };
+    await onSave(data, transaction?.id);
+    setSubmitting(false);
+  };
+
+  // Position: try below the element, clamp to viewport
+  const popupHeight = 380;
+  const spaceBelow = window.innerHeight - rect.bottom - 8;
+  const top = spaceBelow >= popupHeight ? rect.bottom + 4 : Math.max(8, rect.top - popupHeight - 4);
+  const left = Math.min(rect.left, window.innerWidth - 360);
+
+  const inputCls = 'w-full px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500';
+
+  return (
+    <div ref={ref} className="fixed z-50 animate-in fade-in duration-150" style={{ top, left, width: 340 }}>
+      <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-medium text-neutral-200">{isEdit ? 'Редактировать' : 'Новая транзакция'}</span>
+          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-300 transition-colors"><X size={16} /></button>
+        </div>
+
+        {/* Type selector */}
+        <div className="flex gap-1 mb-3">
+          {([['expense', 'Расход', 'bg-red-500/20 text-red-400'], ['income', 'Доход', 'bg-emerald-500/20 text-emerald-400'], ['savings', 'Накопл.', 'bg-blue-500/20 text-blue-400'], ['tax', 'Налог', 'bg-yellow-500/20 text-yellow-400']] as const).map(([t, label, activeColor]) => (
+            <button key={t} onClick={() => setType(t)} className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${type === t ? activeColor : 'text-neutral-500 hover:text-neutral-300'}`}>{label}</button>
+          ))}
+        </div>
+
+        <div className="space-y-2.5">
+          <input type="text" placeholder="Описание" value={description} onChange={(e) => setDescription(e.target.value)} className={inputCls} />
+
+          <div className="grid grid-cols-2 gap-2">
+            <input type="number" placeholder="Сумма" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputCls} />
+            <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
+              <option value="">Категория</option>
+              {categories.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </div>
+
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} />
+
+          {showStudentSelect && (
+            <select value={studentId} onChange={(e) => setStudentId(e.target.value)} className={inputCls}>
+              <option value="">Ученик</option>
+              {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          )}
+
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer">
+              <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} className="rounded border-neutral-600 bg-neutral-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0" />
+              Регулярный
+            </label>
+            {isRecurring && (
+              <select value={recurringPeriod} onChange={(e) => setRecurringPeriod(e.target.value)} className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-xs text-neutral-200 focus:outline-none focus:border-blue-500">
+                <option value="weekly">Еженедельно</option>
+                <option value="monthly">Ежемесячно</option>
+                <option value="yearly">Ежегодно</option>
+              </select>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200 transition-colors">Отмена</button>
+          <button onClick={handleSubmit} disabled={submitting || !amount} className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm text-white transition-colors">
+            {submitting ? '...' : isEdit ? 'Сохранить' : 'Добавить'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -886,7 +1080,7 @@ function IncomeMain({ transactions, students, studentRates, periodLabel }: {
 // Expenses
 // =========================================================
 
-function ExpensesMain({ transactions, onDelete, periodLabel }: { transactions: Transaction[]; onDelete: (id: string) => void; periodLabel: string }) {
+function ExpensesMain({ transactions, onTxClick, periodLabel }: { transactions: Transaction[]; onTxClick: (tx: Transaction, e: React.MouseEvent) => void; periodLabel: string }) {
   const [filter, setFilter] = useState<ExpenseCat | 'all'>('all');
   const filtered = filter === 'all' ? transactions : transactions.filter((t) => t.category === filter);
   const total = filtered.reduce((s, t) => s + t.amount, 0);
@@ -913,7 +1107,7 @@ function ExpensesMain({ transactions, onDelete, periodLabel }: { transactions: T
       </div>
 
       <div className="space-y-1">
-        {filtered.map((t) => <TransactionRow key={t.id} transaction={t} onDelete={onDelete} />)}
+        {filtered.map((t) => <TransactionRow key={t.id} transaction={t} onClick={onTxClick} />)}
         {filtered.length === 0 && <div className="text-neutral-600 text-sm py-4 text-center">Нет расходов</div>}
       </div>
     </div>
