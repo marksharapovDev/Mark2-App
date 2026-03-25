@@ -454,6 +454,22 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     return { success: true, message: `Расход записан: ${params.amount} ₽ (${params.category ?? 'other'})`, entity: 'transactions', data: result as unknown as Record<string, unknown> };
   },
 
+  // Create savings goal
+  create_savings_goal: async (params) => {
+    const name = String(params.name ?? '');
+    const targetAmount = Number(params.targetAmount ?? 0);
+    if (!name) return { success: false, message: 'name обязателен', entity: '' };
+
+    const result = await db.createSavingsGoal({ name, targetAmount, currentAmount: 0, status: 'active' });
+    console.log(`[AI Tools] Created savings goal: ${name} — ${targetAmount}₽`);
+    return {
+      success: true,
+      message: `Создана цель накоплений "${name}" на ${targetAmount} ₽`,
+      entity: 'savings',
+      data: result as unknown as Record<string, unknown>,
+    };
+  },
+
   // Add to savings goal
   add_savings: async (params) => {
     const goalName = String(params.goalName ?? '');
@@ -461,8 +477,13 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     if (!goalName || !amount) return { success: false, message: 'goalName и amount обязательны', entity: '' };
 
     const goals = await db.getSavingsGoals();
-    const goal = goals.find((g) => g.name.toLowerCase().includes(goalName.toLowerCase()));
-    if (!goal) return { success: false, message: `Цель "${goalName}" не найдена`, entity: '' };
+    let goal = goals.find((g) => g.name.toLowerCase().includes(goalName.toLowerCase()));
+
+    // Auto-create goal if not found
+    if (!goal) {
+      goal = await db.createSavingsGoal({ name: goalName, targetAmount: 0, currentAmount: 0, status: 'active' });
+      console.log(`[AI Tools] Auto-created savings goal: ${goalName}`);
+    }
 
     const newAmount = goal.currentAmount + amount;
     await db.updateSavingsGoal(goal.id, { currentAmount: newAmount });

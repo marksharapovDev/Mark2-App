@@ -89,8 +89,13 @@
   - Пример: `[ACTION:record_student_payment]{"studentName":"Лиза Морозова","lessonsCount":4}[/ACTION]`
 
 #### Накопления
+- `create_savings_goal` — создать цель накоплений:
+  `{name, targetAmount}`
+  - Пример: `[ACTION:create_savings_goal]{"name":"MacBook","targetAmount":150000}[/ACTION]`
+  - ВАЖНО: при создании цели с первым взносом — сначала `create_savings_goal`, потом `add_savings`
 - `add_savings` — пополнить цель накоплений:
   `{goalName, amount}`
+  - Если цель не найдена — создаётся автоматически с targetAmount=0
   - Пример: `[ACTION:add_savings]{"goalName":"MacBook","amount":5000}[/ACTION]`
 
 #### Задачи и события
