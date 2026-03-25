@@ -743,6 +743,7 @@ export function Teaching() {
                         <div className="text-neutral-500 text-[11px] mt-1">
                           {student.schedule.map((s) => `${s.day} ${s.time}`).join(', ')}
                         </div>
+                        <NextLessonLabel schedule={student.schedule} />
                       </div>
                     </div>
 
@@ -814,8 +815,13 @@ export function Teaching() {
 
                     {/* Homeworks — DB files */}
                     <div className="px-3 pt-3 pb-2">
-                      <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                      <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                         Домашки
+                        {sidebarHomeworkFiles.filter((f) => f.status === 'pending').length > 0 && (
+                          <span className="text-[10px] font-bold bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full leading-none">
+                            {sidebarHomeworkFiles.filter((f) => f.status === 'pending').length}
+                          </span>
+                        )}
                       </div>
                       <div className="space-y-1">
                         {sidebarHomeworkFiles.map((file) => (
@@ -864,7 +870,17 @@ export function Teaching() {
                               topic.status === 'in_progress' ? 'text-neutral-200' : 'text-neutral-400'
                             }`}
                           >
-                            <span className="text-[11px] shrink-0">{LP_STATUS_ICON[topic.status]}</span>
+                            {topic.status === 'completed' ? (
+                              <span className="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0 flex items-center justify-center text-[7px] text-white font-bold">✓</span>
+                            ) : topic.status === 'in_progress' ? (
+                              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                            ) : topic.status === 'skipped' ? (
+                              <span className="w-2.5 h-2.5 rounded-0 bg-yellow-500 shrink-0 relative">
+                                <span className="absolute inset-0 flex items-center justify-center text-[8px] text-neutral-900 font-bold leading-none">–</span>
+                              </span>
+                            ) : (
+                              <span className="w-2.5 h-2.5 rounded-full bg-gray-500 shrink-0" />
+                            )}
                             <span className="truncate">{topic.title}</span>
                           </button>
                         )) : topics.map((topic) => (
@@ -1318,6 +1334,30 @@ function StudentOverview({
         )}
       </div>
 
+      {/* Learning path progress */}
+      {dbLearningPath.length > 0 && (() => {
+        const lpCompleted = dbLearningPath.filter((t) => t.status === 'completed').length;
+        const lpTotal = dbLearningPath.length;
+        const lpPct = Math.round((lpCompleted / lpTotal) * 100);
+        return (
+          <button
+            onClick={onLearningPathClick}
+            className="w-full mb-6 px-4 py-3 rounded-lg border border-neutral-800 bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors text-left"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Прогресс плана</span>
+              <span className="text-xs text-neutral-500">{lpCompleted} из {lpTotal} тем &middot; {lpPct}%</span>
+            </div>
+            <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-500 rounded-full transition-all"
+                style={{ width: `${lpPct}%` }}
+              />
+            </div>
+          </button>
+        );
+      })()}
+
       {/* Tasks for this student */}
       {tasks.length > 0 && (
         <div className="mb-6">
@@ -1514,6 +1554,46 @@ function StudentOverview({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const DAY_MAP: Record<string, number> = { 'Пн': 1, 'Вт': 2, 'Ср': 3, 'Чт': 4, 'Пт': 5, 'Сб': 6, 'Вс': 0 };
+const DAY_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+const MONTH_NAMES = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
+function NextLessonLabel({ schedule }: { schedule: Array<{ day: string; time: string }> }) {
+  if (schedule.length === 0) return null;
+
+  const now = new Date();
+  const todayDow = now.getDay();
+  let closest: Date | null = null;
+
+  for (const slot of schedule) {
+    const targetDow = DAY_MAP[slot.day];
+    if (targetDow === undefined) continue;
+    const [h, m] = slot.time.split(':').map(Number);
+    let daysAhead = (targetDow - todayDow + 7) % 7;
+    const candidate = new Date(now);
+    candidate.setDate(candidate.getDate() + daysAhead);
+    candidate.setHours(h, m, 0, 0);
+    if (candidate <= now) {
+      candidate.setDate(candidate.getDate() + 7);
+    }
+    if (!closest || candidate < closest) closest = candidate;
+  }
+
+  if (!closest) return null;
+
+  const isToday = closest.toDateString() === now.toDateString();
+  const time = `${closest.getHours()}:${String(closest.getMinutes()).padStart(2, '0')}`;
+
+  return (
+    <div className={`text-[11px] mt-1.5 font-medium ${isToday ? 'text-yellow-400' : 'text-neutral-400'}`}>
+      {isToday
+        ? `Сегодня в ${time}`
+        : `Следующий: ${DAY_NAMES[closest.getDay()]} ${closest.getDate()} ${MONTH_NAMES[closest.getMonth()]}, ${time}`
+      }
     </div>
   );
 }
