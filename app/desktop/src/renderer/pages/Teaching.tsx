@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
-import type { TaskStatus, LearningPathTopic, LearningPathStatus } from '@mark2/shared';
-import { CheckCircle2, RefreshCw, Clock, XCircle, FileText, FileType, FileCode, PenLine, ClipboardList, BarChart3, Loader2 } from 'lucide-react';
+import type { TaskStatus, LearningPathTopic, LearningPathStatus, StudentRate, Transaction } from '@mark2/shared';
+import { CheckCircle2, RefreshCw, Clock, XCircle, FileText, FileType, FileCode, PenLine, ClipboardList, BarChart3, Loader2, Banknote } from 'lucide-react';
 
 // --- Types ---
 
@@ -1260,10 +1260,18 @@ function StudentOverview({
 
   const [dbFiles, setDbFiles] = useState<Array<{id: string; filename: string; filepath: string; fileType: string; category: string; createdAt: string}>>([]);
 
+  // Finance state
+  const [studentRate, setStudentRate] = useState<StudentRate | null>(null);
+  const [tutoringTxns, setTutoringTxns] = useState<Transaction[]>([]);
+  const [editingRate, setEditingRate] = useState(false);
+  const [rateInput, setRateInput] = useState('');
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentLessons, setPaymentLessons] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+
   const loadFiles = useCallback(() => {
-    console.log('[Teaching] Loading files for student:', student.id);
     window.db.files.list('student', student.id).then((files) => {
-      console.log('[Teaching] Files result:', files);
       setDbFiles(files.map((f) => ({
         id: f.id,
         filename: f.filename,
@@ -1277,17 +1285,66 @@ function StudentOverview({
     });
   }, [student.id]);
 
+  const loadFinanceData = useCallback(() => {
+    window.db.finance.rates.get(student.id).then((rate) => {
+      setStudentRate(rate);
+      if (rate) setRateInput(String(rate.ratePerLesson));
+    }).catch(() => {});
+    window.db.transactions.list({ type: 'income', category: 'tutoring', studentId: student.id }).then((txns) => {
+      setTutoringTxns(txns);
+    }).catch(() => {});
+  }, [student.id]);
+
   useEffect(() => {
     loadFiles();
-  }, [loadFiles]);
+    loadFinanceData();
+  }, [loadFiles, loadFinanceData]);
 
   useEffect(() => {
     return window.dataEvents.onDataChanged((entities) => {
-      if (entities.includes('files')) {
-        loadFiles();
-      }
+      if (entities.includes('files')) loadFiles();
+      if (entities.includes('transactions')) loadFinanceData();
     });
-  }, [student.id]);
+  }, [student.id, loadFiles, loadFinanceData]);
+
+  const handleSaveRate = useCallback(async () => {
+    const rate = parseFloat(rateInput);
+    if (!rate || rate <= 0) return;
+    await window.db.finance.rates.set(student.id, rate);
+    setEditingRate(false);
+    loadFinanceData();
+  }, [student.id, rateInput, loadFinanceData]);
+
+  const handleRecordPayment = useCallback(async () => {
+    const lessons = parseInt(paymentLessons) || 0;
+    let amount = parseFloat(paymentAmount) || 0;
+    if (!amount && lessons && studentRate) {
+      amount = lessons * studentRate.ratePerLesson;
+    }
+    if (!amount || amount <= 0) return;
+    setPaymentSubmitting(true);
+    try {
+      const lessonsLabel = lessons || (studentRate ? Math.round(amount / studentRate.ratePerLesson) : '?');
+      await window.db.transactions.create({
+        type: 'income',
+        category: 'tutoring',
+        amount,
+        studentId: student.id,
+        description: `Оплата: ${student.name} (${lessonsLabel} ур.)`,
+        date: new Date().toISOString().slice(0, 10),
+      });
+      setShowPaymentForm(false);
+      setPaymentLessons('');
+      setPaymentAmount('');
+      loadFinanceData();
+    } catch { /* ignore */ }
+    finally { setPaymentSubmitting(false); }
+  }, [student.id, student.name, paymentLessons, paymentAmount, studentRate, loadFinanceData]);
+
+  // Finance derived
+  const totalPaid = tutoringTxns.reduce((s, t) => s + t.amount, 0);
+  const paidLessons = studentRate ? Math.floor(totalPaid / studentRate.ratePerLesson) : 0;
+  const lessonBalance = paidLessons - realLessonCount;
 
   // Collect all files from lessons and homeworks
   const attachedFiles: Array<{ file: MockFile; source: string }> = [];
@@ -1331,6 +1388,123 @@ function StudentOverview({
         <StatBadge label="ДЗ предстоит" count={realHwPending} color="text-yellow-400 bg-yellow-400/10" onClick={() => onHomeworkFilesClick('pending')} />
         {(stats.overdue ?? 0) > 0 && (
           <StatBadge label="Просрочено" count={stats.overdue ?? 0} color="text-red-400 bg-red-400/10" />
+        )}
+      </div>
+
+      {/* Finance: Rate & Balance */}
+      <div className="mb-6 bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Banknote size={16} className="text-emerald-400" />
+          <h2 className="text-sm font-semibold text-neutral-300">Оплата</h2>
+        </div>
+
+        {/* Rate */}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs text-neutral-500">Ставка за урок</span>
+          {editingRate ? (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                value={rateInput}
+                onChange={(e) => setRateInput(e.target.value)}
+                className="w-24 px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-xs text-neutral-200 focus:outline-none focus:border-blue-500"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveRate(); if (e.key === 'Escape') setEditingRate(false); }}
+              />
+              <span className="text-xs text-neutral-500">₽</span>
+              <button onClick={handleSaveRate} className="text-xs text-blue-400 hover:text-blue-300">OK</button>
+            </div>
+          ) : studentRate ? (
+            <button
+              onClick={() => { setRateInput(String(studentRate.ratePerLesson)); setEditingRate(true); }}
+              className="text-sm font-mono text-neutral-200 hover:text-blue-400 transition-colors"
+            >
+              {studentRate.ratePerLesson.toLocaleString('ru-RU')} ₽
+            </button>
+          ) : (
+            <button
+              onClick={() => setEditingRate(true)}
+              className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              Установить
+            </button>
+          )}
+        </div>
+
+        {/* Balance */}
+        {studentRate && (
+          <div className="space-y-1.5 text-xs mb-3">
+            <div className="flex justify-between">
+              <span className="text-neutral-500">Оплачено уроков</span>
+              <span className="text-neutral-300 font-mono">{paidLessons}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-500">Проведено уроков</span>
+              <span className="text-neutral-300 font-mono">{realLessonCount}</span>
+            </div>
+            <div className="flex justify-between pt-1.5 border-t border-neutral-800">
+              <span className="text-neutral-500">Баланс</span>
+              {lessonBalance > 0 ? (
+                <span className="text-emerald-400 font-mono">Оплачено вперёд: +{lessonBalance} ур.</span>
+              ) : lessonBalance < 0 ? (
+                <span className="text-red-400 font-mono">Должен за {Math.abs(lessonBalance)} ур.</span>
+              ) : (
+                <span className="text-neutral-400 font-mono">0</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Record payment */}
+        {!showPaymentForm ? (
+          <button
+            onClick={() => setShowPaymentForm(true)}
+            className="w-full text-xs text-center py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors"
+          >
+            Записать оплату
+          </button>
+        ) : (
+          <div className="space-y-2 pt-2 border-t border-neutral-800">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-neutral-600 block mb-0.5">Уроков</label>
+                <input
+                  type="number"
+                  placeholder="Кол-во"
+                  value={paymentLessons}
+                  onChange={(e) => {
+                    setPaymentLessons(e.target.value);
+                    if (studentRate && e.target.value) {
+                      setPaymentAmount(String(parseInt(e.target.value) * studentRate.ratePerLesson));
+                    }
+                  }}
+                  className="w-full px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-xs text-neutral-200 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-neutral-600 block mb-0.5">Сумма ₽</label>
+                <input
+                  type="number"
+                  placeholder={studentRate ? String(studentRate.ratePerLesson) : 'Сумма'}
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  className="w-full px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-xs text-neutral-200 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowPaymentForm(false)} className="flex-1 text-xs py-1 text-neutral-500 hover:text-neutral-300">
+                Отмена
+              </button>
+              <button
+                onClick={handleRecordPayment}
+                disabled={paymentSubmitting || (!paymentAmount && !paymentLessons)}
+                className="flex-1 text-xs py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white transition-colors"
+              >
+                {paymentSubmitting ? '...' : 'Записать'}
+              </button>
+            </div>
+          </div>
         )}
       </div>
 

@@ -496,28 +496,31 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     const lessonsCount = Number(params.lessonsCount ?? 1);
 
     // If no amount, try to use rate
+    const rate = await db.getStudentRate(student.id);
     if (!amount) {
-      const rate = await db.getStudentRate(student.id);
       if (rate) {
         amount = rate.ratePerLesson * lessonsCount;
-        console.log(`[AI Tools] Using rate ${rate.ratePerLesson} × ${lessonsCount} lessons = ${amount}`);
       } else {
-        return { success: false, message: `Сумма не указана и ставка для ${student.name} не найдена`, entity: '' };
+        return { success: false, message: `Сумма не указана и ставка для ${student.name} не найдена. Укажи сумму или установи ставку.`, entity: '' };
       }
     }
 
+    const rateInfo = rate ? `${rate.ratePerLesson}₽` : 'нет ставки';
+    console.log(`[AI Tools] Student payment: ${student.name} — ${amount}₽ (${lessonsCount} уроков по ${rateInfo})`);
+
+    const pluralLesson = lessonsCount === 1 ? 'урок' : lessonsCount < 5 ? 'урока' : 'уроков';
     const result = await db.createTransaction({
       type: 'income',
       amount,
       category: 'tutoring',
-      description: `Оплата: ${student.name} (${lessonsCount} ${lessonsCount === 1 ? 'урок' : 'уроков'})`,
+      description: `Оплата: ${student.name} (${lessonsCount} ${pluralLesson})`,
       studentId: student.id,
       date: params.date ?? new Date().toISOString().slice(0, 10),
     });
 
     return {
       success: true,
-      message: `Оплата записана: ${student.name} — ${amount} ₽ (${lessonsCount} ур.)`,
+      message: `Оплата записана: ${student.name} — ${amount} ₽ (${lessonsCount} ${pluralLesson}${rate ? ` по ${rate.ratePerLesson}₽` : ''})`,
       entity: 'transactions',
       data: result as unknown as Record<string, unknown>,
     };

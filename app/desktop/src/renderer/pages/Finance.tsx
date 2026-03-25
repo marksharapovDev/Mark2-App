@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
-import type { Transaction, SavingsGoal, FinanceSummary, TaskStatus } from '@mark2/shared';
+import type { Transaction, SavingsGoal, FinanceSummary, TaskStatus, Student, StudentRate } from '@mark2/shared';
 import {
   ArrowDownCircle, ArrowUpCircle, PiggyBank, Receipt, TrendingUp,
   Utensils, Bus, Clapperboard, Smartphone, Home, Package, BookOpen,
-  Code, Banknote, Gift, Heart, GraduationCap, Plus, Loader2, Target,
+  Code, Banknote, Gift, Heart, GraduationCap, Plus, Loader2, Target, Users,
 } from 'lucide-react';
 
 // --- Types ---
@@ -130,6 +130,10 @@ export function Finance() {
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [financeTasks, setFinanceTasks] = useState<FinanceTask[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [studentRates, setStudentRates] = useState<Map<string, StudentRate>>(new Map());
+  const [studentLessonCounts, setStudentLessonCounts] = useState<Map<string, number>>(new Map());
+  const [studentFilter, setStudentFilter] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [taskChecked, setTaskChecked] = useState<Record<string, boolean>>({});
@@ -154,20 +158,36 @@ export function Finance() {
       const y = parts[0] ?? 0;
       const m = parts[1] ?? 0;
       const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
-      const monthEnd = `${nextMonth}-00`;
 
-      const [dbTxns, dbSummary, dbGoals, dbTasks] = await Promise.all([
+      const [dbTxns, dbSummary, dbGoals, dbTasks, dbStudents] = await Promise.all([
         window.db.transactions.list({ month }),
         window.db.finance.summary(monthStart, `${nextMonth}-01`),
         window.db.finance.savings.list(),
         window.db.tasks.list('finance'),
+        window.db.students.list(),
       ]);
       setTransactions(dbTxns);
       setSummary(dbSummary);
       setSavingsGoals(dbGoals);
+      setStudents(dbStudents);
       if (dbTasks.length > 0) {
         setFinanceTasks(dbTasks.map((t) => mapDbTaskToFinance(t as unknown as Record<string, unknown>)));
       }
+
+      // Load rates and lesson counts for each student
+      const ratesMap = new Map<string, StudentRate>();
+      const lessonCountsMap = new Map<string, number>();
+      await Promise.all(dbStudents.map(async (s) => {
+        const [rate, lessons] = await Promise.all([
+          window.db.finance.rates.get(s.id).catch(() => null),
+          window.db.lessons.list(s.id).catch(() => []),
+        ]);
+        if (rate) ratesMap.set(s.id, rate);
+        lessonCountsMap.set(s.id, lessons.length);
+      }));
+      setStudentRates(ratesMap);
+      setStudentLessonCounts(lessonCountsMap);
+
       setDbError(null);
     } catch (err) {
       setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
@@ -180,7 +200,7 @@ export function Finance() {
 
   useEffect(() => {
     return window.dataEvents.onDataChanged((entities) => {
-      if (entities.some((e) => ['transactions', 'savings', 'tasks'].includes(e))) {
+      if (entities.some((e) => ['transactions', 'savings', 'tasks', 'students', 'lessons'].includes(e))) {
         reloadData();
       }
     });
@@ -249,8 +269,21 @@ export function Finance() {
   }, [reloadData]);
 
   // Derived data
-  const incomeTransactions = transactions.filter((t) => t.type === 'income');
-  const expenseTransactions = transactions.filter((t) => t.type === 'expense');
+  const filteredTransactions = studentFilter
+    ? transactions.filter((t) => t.studentId === studentFilter)
+    : transactions;
+  const incomeTransactions = filteredTransactions.filter((t) => t.type === 'income');
+  const expenseTransactions = filteredTransactions.filter((t) => t.type === 'expense');
+
+  // Student balance helper
+  const getStudentBalance = useCallback((studentId: string): { paid: number; conducted: number; balance: number } => {
+    const tutoringTxns = transactions.filter((t) => t.type === 'income' && t.category === 'tutoring' && t.studentId === studentId);
+    const totalPaid = tutoringTxns.reduce((s, t) => s + t.amount, 0);
+    const rate = studentRates.get(studentId);
+    const paidLessons = rate ? Math.floor(totalPaid / rate.ratePerLesson) : 0;
+    const conducted = studentLessonCounts.get(studentId) ?? 0;
+    return { paid: paidLessons, conducted, balance: paidLessons - conducted };
+  }, [transactions, studentRates, studentLessonCounts]);
 
   const sendTaskToChat = useCallback((task: FinanceTask) => {
     const text = `Выполни задачу: ${task.title}\n${task.context}`;
@@ -372,6 +405,57 @@ export function Finance() {
             </>
           )}
 
+          {/* Students payment status */}
+          {students.length > 0 && (
+            <>
+              <div><div className="mx-3 border-t border-neutral-800" /></div>
+              <div className="px-3 pt-3 pb-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                  <Users size={12} /> Ученики
+                </div>
+                <div className="space-y-0.5">
+                  {students.map((s) => {
+                    const bal = getStudentBalance(s.id);
+                    const rate = studentRates.get(s.id);
+                    const isFiltered = studentFilter === s.id;
+                    let dotColor = 'bg-neutral-600';
+                    if (rate) {
+                      if (bal.balance > 0) dotColor = 'bg-emerald-500';
+                      else if (bal.balance < 0) dotColor = 'bg-red-500';
+                    }
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => setStudentFilter(isFiltered ? null : s.id)}
+                        className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors ${
+                          isFiltered ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                        <span className="truncate flex-1">{s.name}</span>
+                        {rate && (
+                          <span className={`text-[10px] font-mono shrink-0 ${
+                            bal.balance > 0 ? 'text-emerald-400' : bal.balance < 0 ? 'text-red-400' : 'text-neutral-600'
+                          }`}>
+                            {bal.balance > 0 ? `+${bal.balance}` : bal.balance < 0 ? String(bal.balance) : '0'}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {studentFilter && (
+                  <button
+                    onClick={() => setStudentFilter(null)}
+                    className="mt-1 w-full text-[10px] text-neutral-600 hover:text-neutral-400 text-center py-0.5"
+                  >
+                    Сбросить фильтр
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+
           {/* Recent transactions in sidebar */}
           <div className="flex-1 overflow-hidden flex flex-col">
             <div className="mx-3 border-t border-neutral-800" />
@@ -443,7 +527,7 @@ export function Finance() {
             />
           )}
           {!loading && activeSection === 'income' && (
-            <IncomeMain transactions={incomeTransactions} />
+            <IncomeMain transactions={incomeTransactions} students={students} studentRates={studentRates} />
           )}
           {!loading && activeSection === 'expenses' && (
             <ExpensesMain transactions={expenseTransactions} onDelete={handleDeleteTransaction} />
@@ -641,15 +725,27 @@ function TransactionRow({ transaction: t, onDelete }: { transaction: Transaction
 
 // --- Income ---
 
-function IncomeMain({ transactions }: { transactions: Transaction[] }) {
+function IncomeMain({ transactions, students, studentRates }: {
+  transactions: Transaction[];
+  students: Student[];
+  studentRates: Map<string, StudentRate>;
+}) {
   const [filter, setFilter] = useState<IncomeCat | 'all'>('all');
-  const filtered = filter === 'all' ? transactions : transactions.filter((t) => t.category === filter);
+  const [studentFilter, setStudentFilter] = useState<string | null>(null);
+
+  let filtered = filter === 'all' ? transactions : transactions.filter((t) => t.category === filter);
+  if (studentFilter) filtered = filtered.filter((t) => t.studentId === studentFilter);
   const total = filtered.reduce((s, t) => s + t.amount, 0);
+
+  const studentMap = new Map(students.map((s) => [s.id, s.name]));
 
   const byCategory = (Object.keys(INCOME_CAT_META) as IncomeCat[]).map((cat) => {
     const items = transactions.filter((t) => t.category === cat);
     return { category: cat, total: items.reduce((s, t) => s + t.amount, 0), count: items.length };
   }).filter((g) => g.count > 0);
+
+  // Students with tutoring income
+  const tutoringStudents = [...new Set(transactions.filter((t) => t.category === 'tutoring' && t.studentId).map((t) => t.studentId!))];
 
   return (
     <div className="max-w-2xl">
@@ -672,7 +768,7 @@ function IncomeMain({ transactions }: { transactions: Transaction[] }) {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-1 mb-4">
+      <div className="flex flex-wrap gap-1 mb-2">
         <FilterButton active={filter === 'all'} onClick={() => setFilter('all')}>Все</FilterButton>
         {(Object.entries(INCOME_CAT_META) as [IncomeCat, typeof INCOME_CAT_META[IncomeCat]][]).map(([k, v]) => (
           <FilterButton key={k} active={filter === k} onClick={() => setFilter(k)}>
@@ -681,9 +777,27 @@ function IncomeMain({ transactions }: { transactions: Transaction[] }) {
         ))}
       </div>
 
+      {/* Student filter for tutoring */}
+      {(filter === 'all' || filter === 'tutoring') && tutoringStudents.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-4">
+          <span className="text-[10px] text-neutral-600 self-center mr-1">Ученик:</span>
+          <FilterButton active={!studentFilter} onClick={() => setStudentFilter(null)}>Все</FilterButton>
+          {tutoringStudents.map((sid) => (
+            <FilterButton key={sid} active={studentFilter === sid} onClick={() => setStudentFilter(sid)}>
+              {studentMap.get(sid) ?? sid}
+            </FilterButton>
+          ))}
+        </div>
+      )}
+
       <div className="space-y-1">
         {filtered.map((t) => {
           const meta = INCOME_CAT_META[t.category as IncomeCat] ?? INCOME_CAT_META.other;
+          const isTutoring = t.category === 'tutoring';
+          const studentName = t.studentId ? studentMap.get(t.studentId) : null;
+          const rate = t.studentId ? studentRates.get(t.studentId) : null;
+          const lessonsCount = rate ? Math.round(t.amount / rate.ratePerLesson) : null;
+
           return (
             <div key={t.id} className="flex items-center gap-3 px-3 py-2.5 rounded hover:bg-neutral-800/30 transition-colors">
               <span className="text-sm shrink-0">{meta.icon}</span>
@@ -692,6 +806,12 @@ function IncomeMain({ transactions }: { transactions: Transaction[] }) {
                 <div className="text-[11px] text-neutral-600 mt-0.5">
                   {formatDate(t.date)}
                   <span className={`ml-2 px-1 py-0.5 rounded text-[10px] ${meta.color}`}>{meta.label}</span>
+                  {isTutoring && studentName && (
+                    <span className="ml-2 text-blue-400/70">{studentName}</span>
+                  )}
+                  {isTutoring && lessonsCount !== null && lessonsCount > 0 && (
+                    <span className="ml-1 text-neutral-600">({lessonsCount} ур.)</span>
+                  )}
                 </div>
               </div>
               <span className="text-sm text-emerald-400 font-mono shrink-0">+{formatMoney(t.amount)}</span>
