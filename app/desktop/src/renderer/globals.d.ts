@@ -178,11 +178,27 @@ interface ElectronAPI {
   openFile: (filePath: string) => Promise<string>;
 }
 
+interface StudyFileEntry {
+  name: string;
+  path: string;
+}
+
+interface StudyAPI {
+  files: {
+    list: (subjectSlug: string, folder: string) => Promise<StudyFileEntry[]>;
+    read: (filePath: string) => Promise<string>;
+    write: (filePath: string, content: string) => Promise<void>;
+    create: (subjectSlug: string, folder: string, filename: string) => Promise<StudyFileEntry>;
+    delete: (filePath: string) => Promise<void>;
+  };
+}
+
 interface Window {
   chat: ChatAPI;
   claude: ClaudeAPI;
   calendar: CalendarAPI;
   db: DbAPI;
+  study: StudyAPI;
   dataEvents: DataEventsAPI;
   electronAPI: ElectronAPI;
 }

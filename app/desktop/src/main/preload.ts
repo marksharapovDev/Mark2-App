@@ -335,6 +335,21 @@ const dbApi = {
   },
 };
 
+const studyApi = {
+  files: {
+    list: (subjectSlug: string, folder: string) =>
+      ipcRenderer.invoke('study:files:list', subjectSlug, folder),
+    read: (filePath: string) =>
+      ipcRenderer.invoke('study:files:read', filePath),
+    write: (filePath: string, content: string) =>
+      ipcRenderer.invoke('study:files:write', filePath, content),
+    create: (subjectSlug: string, folder: string, filename: string) =>
+      ipcRenderer.invoke('study:files:create', subjectSlug, folder, filename),
+    delete: (filePath: string) =>
+      ipcRenderer.invoke('study:files:delete', filePath),
+  },
+};
+
 const dataEvents = {
   onDataChanged: (callback: (entities: string[]) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, entities: string[]) => {
@@ -353,4 +368,5 @@ contextBridge.exposeInMainWorld('claude', claudeApi);
 contextBridge.exposeInMainWorld('calendar', calendarApi);
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
 contextBridge.exposeInMainWorld('db', dbApi);
+contextBridge.exposeInMainWorld('study', studyApi);
 contextBridge.exposeInMainWorld('dataEvents', dataEvents);

@@ -4,7 +4,7 @@ import type { Subject, StudyAssignment, StudyExam, TaskStatus } from '@mark2/sha
 import {
   BookOpen, PenLine, ClipboardList, BarChart3, FileText, MapPin, NotebookText,
   CheckCircle2, Clock, RefreshCw, Loader2, Plus, Trash2,
-  GraduationCap, Calendar, FolderOpen, FileQuestion,
+  GraduationCap, Calendar, FolderOpen, FileQuestion, Save, Sparkles,
 } from 'lucide-react';
 
 // --- Types ---
@@ -127,6 +127,19 @@ function getSubjectColor(subject: Subject, index: number): string {
   return subject.color ?? DEFAULT_SUBJECT_COLORS[index % DEFAULT_SUBJECT_COLORS.length] ?? '#3b82f6';
 }
 
+// --- Semester helpers ---
+
+function getCurrentSemester(): number {
+  const month = new Date().getMonth() + 1; // 1-12
+  // Sep-Jan = odd semesters (1,3,5...), Feb-Jun = even (2,4,6...)
+  return month >= 9 || month <= 1 ? 3 : 4; // Default to 3 or 4 for 2nd year
+}
+
+function getAvailableSemesters(subjects: Subject[]): number[] {
+  const set = new Set(subjects.map((s) => s.semester));
+  return Array.from(set).sort((a, b) => a - b);
+}
+
 // --- Views ---
 
 type MainView =
@@ -143,6 +156,7 @@ type MainView =
 
 export function Study() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('subjects');
+  const [selectedSemester, setSelectedSemester] = useState<number | 'all'>('all');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [mainView, setMainView] = useState<MainView>({ kind: 'empty' });
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -192,6 +206,20 @@ export function Study() {
       }
     });
   }, [reloadData]);
+
+  // Auto-set semester to the latest available when data loads
+  useEffect(() => {
+    if (subjects.length > 0 && selectedSemester === 'all') {
+      const semesters = getAvailableSemesters(subjects);
+      const current = getCurrentSemester();
+      const best = semesters.includes(current) ? current : semesters[semesters.length - 1] ?? 'all';
+      setSelectedSemester(best);
+    }
+  }, [subjects, selectedSemester]);
+
+  const filteredSubjects = selectedSemester === 'all'
+    ? subjects
+    : subjects.filter((s) => s.semester === selectedSemester);
 
   const subject = selectedSubjectId ? subjects.find((s) => s.id === selectedSubjectId) ?? null : null;
   const subjectAssignments = subject ? assignments.filter((a) => a.subjectId === subject.id) : [];
@@ -272,8 +300,27 @@ export function Study() {
 
           {sidebarTab === 'subjects' && (
             <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
+              {/* Semester selector */}
+              <div className="px-3 pt-3 pb-2">
+                <select
+                  value={String(selectedSemester)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedSemester(val === 'all' ? 'all' : parseInt(val, 10));
+                    setSelectedSubjectId(null);
+                    setMainView({ kind: 'empty' });
+                  }}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-sm text-neutral-200 focus:outline-none focus:border-blue-500/50"
+                >
+                  <option value="all">Все семестры</option>
+                  {getAvailableSemesters(subjects).map((sem) => (
+                    <option key={sem} value={sem}>Семестр {sem}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* Subjects header + add */}
-              <div className="px-3 pt-3 pb-1 flex items-center justify-between">
+              <div className="px-3 pb-1 flex items-center justify-between">
                 <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Предметы</span>
                 <button
                   onClick={() => { setSelectedSubjectId(null); setMainView({ kind: 'add-subject' }); }}
@@ -286,7 +333,7 @@ export function Study() {
 
               {/* Subject list */}
               <nav className="px-2 space-y-0.5 mb-2">
-                {subjects.filter((s) => s.status !== 'dropped').map((s, idx) => {
+                {filteredSubjects.filter((s) => s.status !== 'dropped').map((s, idx) => {
                   const color = getSubjectColor(s, idx);
                   return (
                     <button
@@ -309,7 +356,7 @@ export function Study() {
                     </button>
                   );
                 })}
-                {subjects.length === 0 && !loading && (
+                {filteredSubjects.length === 0 && !loading && (
                   <div className="text-xs text-neutral-600 px-3 py-2">Нет предметов</div>
                 )}
               </nav>
@@ -582,6 +629,7 @@ export function Study() {
 
           {!loading && mainView.kind === 'add-subject' && (
             <AddSubjectView
+              defaultSemester={typeof selectedSemester === 'number' ? selectedSemester : getCurrentSemester()}
               onSave={async (data) => {
                 await window.db.subjects.create(data);
                 await reloadData();
@@ -929,85 +977,356 @@ function SubjectView({
       )}
 
       {activeTab === 'files' && (
-        <FilesView subjectName={subject.name} />
+        <FilesView subjectName={subject.name} onSwitchToNotes={() => onTabChange('notes')} />
       )}
 
       {activeTab === 'notes' && (
-        <NotesView subjectName={subject.name} />
+        <NotesEditorView subjectName={subject.name} />
       )}
     </div>
   );
 }
 
-// --- Files view (reads folder structure) ---
+// --- Files view ---
 
-function FilesView({ subjectName }: { subjectName: string }) {
+const FOLDER_META: Record<string, string> = {
+  notes: 'Заметки с пар',
+  summaries: 'AI-конспекты',
+  assignments: 'Задания и решения',
+  materials: 'Учебные материалы',
+  exams: 'Подготовка к экзаменам',
+  templates: 'Шаблоны документов',
+};
+
+function FilesView({ subjectName, onSwitchToNotes }: { subjectName: string; onSwitchToNotes: () => void }) {
+  const slug = toSlug(subjectName);
   return (
     <div>
       <p className="text-sm text-neutral-400 mb-4">
-        Файлы предмета хранятся в <code className="text-neutral-300 bg-neutral-800 px-1 rounded text-xs">agents/study/context/subjects/</code>
+        Файлы предмета в <code className="text-neutral-300 bg-neutral-800 px-1 rounded text-xs">agents/study/context/subjects/{slug}/</code>
       </p>
       <div className="grid grid-cols-2 gap-3">
-        {['notes', 'summaries', 'assignments', 'materials', 'exams', 'templates'].map((folder) => (
+        {Object.entries(FOLDER_META).map(([folder, desc]) => (
           <button
             key={folder}
             onClick={() => {
-              window.electronAPI.openFile(`agents/study/context/subjects/${toSlug(subjectName)}/${folder}`);
+              if (folder === 'notes' || folder === 'summaries') {
+                onSwitchToNotes();
+              } else {
+                window.electronAPI.openFile(`agents/study/context/subjects/${slug}/${folder}`);
+              }
             }}
             className="text-left bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-3 hover:bg-neutral-800/50 transition-colors"
           >
             <div className="flex items-center gap-2">
               <FolderOpen size={16} className="text-neutral-500" />
               <span className="text-sm text-neutral-300 capitalize">{folder}</span>
+              {(folder === 'notes' || folder === 'summaries') && (
+                <span className="text-[9px] text-blue-400 ml-auto">Встроенный редактор</span>
+              )}
             </div>
-            <div className="text-[11px] text-neutral-600 mt-1">
-              {folder === 'notes' && 'Заметки с пар'}
-              {folder === 'summaries' && 'AI-конспекты'}
-              {folder === 'assignments' && 'Задания и решения'}
-              {folder === 'materials' && 'Учебные материалы'}
-              {folder === 'exams' && 'Подготовка к экзаменам'}
-              {folder === 'templates' && 'Шаблоны документов'}
-            </div>
+            <div className="text-[11px] text-neutral-600 mt-1">{desc}</div>
           </button>
         ))}
-      </div>
-      <div className="mt-4 bg-neutral-900/50 border border-neutral-800 rounded-lg p-3">
-        <p className="text-xs text-neutral-500">
-          Попросите бота: <span className="text-neutral-400">"Сохрани заметку по матану — Интегралы"</span>
-        </p>
       </div>
     </div>
   );
 }
 
-function NotesView({ subjectName }: { subjectName: string }) {
+// --- Notes Editor View ---
+
+interface NoteFile {
+  name: string;
+  path: string;
+}
+
+function NotesEditorView({ subjectName }: { subjectName: string }) {
+  const slug = toSlug(subjectName);
+  const [notes, setNotes] = useState<NoteFile[]>([]);
+  const [summaries, setSummaries] = useState<NoteFile[]>([]);
+  const [selectedFile, setSelectedFile] = useState<NoteFile | null>(null);
+  const [content, setContent] = useState('');
+  const [originalContent, setOriginalContent] = useState('');
+  const [summaryContent, setSummaryContent] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'original' | 'summary'>('original');
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
+  const [creating, setCreating] = useState(false);
+  const [newFileName, setNewFileName] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const loadFiles = useCallback(async () => {
+    const [noteFiles, summaryFiles] = await Promise.all([
+      window.study.files.list(slug, 'notes'),
+      window.study.files.list(slug, 'summaries'),
+    ]);
+    setNotes(noteFiles);
+    setSummaries(summaryFiles);
+  }, [slug]);
+
+  useEffect(() => {
+    loadFiles();
+  }, [loadFiles]);
+
+  const openFile = useCallback(async (file: NoteFile) => {
+    const text = await window.study.files.read(file.path);
+    setSelectedFile(file);
+    setContent(text);
+    setOriginalContent(text);
+    setSaveStatus('saved');
+    setViewMode('original');
+    // Check for matching summary
+    const summaryName = file.name.replace(/\.md$/, '') + '_summary.md';
+    const match = summaries.find((s) => s.name === summaryName);
+    if (match) {
+      const summaryText = await window.study.files.read(match.path);
+      setSummaryContent(summaryText);
+    } else {
+      setSummaryContent(null);
+    }
+  }, [summaries]);
+
+  const saveFile = useCallback(async () => {
+    if (!selectedFile || content === originalContent) return;
+    setSaveStatus('saving');
+    await window.study.files.write(selectedFile.path, content);
+    setOriginalContent(content);
+    setSaveStatus('saved');
+  }, [selectedFile, content, originalContent]);
+
+  // Ctrl+S handler
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        saveFile();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [saveFile]);
+
+  // Track unsaved changes
+  useEffect(() => {
+    if (selectedFile && content !== originalContent) {
+      setSaveStatus('unsaved');
+    }
+  }, [content, originalContent, selectedFile]);
+
+  const handleCreateNote = useCallback(async () => {
+    const name = newFileName.trim();
+    if (!name) return;
+    const filename = name.endsWith('.md') ? name : `${name}.md`;
+    const file = await window.study.files.create(slug, 'notes', filename);
+    setCreating(false);
+    setNewFileName('');
+    await loadFiles();
+    openFile(file);
+  }, [newFileName, slug, loadFiles, openFile]);
+
+  const handleDeleteNote = useCallback(async (file: NoteFile) => {
+    await window.study.files.delete(file.path);
+    if (selectedFile?.path === file.path) {
+      setSelectedFile(null);
+      setContent('');
+      setOriginalContent('');
+    }
+    await loadFiles();
+  }, [selectedFile, loadFiles]);
+
+  const sendToChat = useCallback(() => {
+    if (!selectedFile) return;
+    const text = `Создай конспект из заметки ${selectedFile.name} по предмету ${subjectName}`;
+    const inputEl = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Message..."]');
+    if (inputEl) {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(inputEl, text);
+      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      inputEl.focus();
+    }
+  }, [selectedFile, subjectName]);
+
   return (
-    <div>
-      <p className="text-sm text-neutral-400 mb-4">
-        Заметки из <code className="text-neutral-300 bg-neutral-800 px-1 rounded text-xs">notes/</code>.
-        Конспекты генерируются в <code className="text-neutral-300 bg-neutral-800 px-1 rounded text-xs">summaries/</code>.
-      </p>
-      <div className="flex gap-3">
-        <button
-          onClick={() => window.electronAPI.openFile(`agents/study/context/subjects/${toSlug(subjectName)}/notes`)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors"
-        >
-          <NotebookText size={16} /> Открыть notes/
-        </button>
-        <button
-          onClick={() => window.electronAPI.openFile(`agents/study/context/subjects/${toSlug(subjectName)}/summaries`)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors"
-        >
-          <BookOpen size={16} /> Открыть summaries/
-        </button>
+    <div className="flex gap-4 h-[calc(100vh-280px)] min-h-[400px]">
+      {/* Left panel — file list */}
+      <div className="w-56 shrink-0 flex flex-col border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden">
+        <div className="px-3 py-2 border-b border-neutral-800 flex items-center justify-between">
+          <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Заметки</span>
+          <button
+            onClick={() => setCreating(true)}
+            className="w-5 h-5 flex items-center justify-center rounded bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors text-sm"
+            title="Новая заметка"
+          >
+            +
+          </button>
+        </div>
+
+        {creating && (
+          <div className="px-2 py-2 border-b border-neutral-800">
+            <input
+              type="text"
+              value={newFileName}
+              onChange={(e) => setNewFileName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreateNote();
+                if (e.key === 'Escape') { setCreating(false); setNewFileName(''); }
+              }}
+              placeholder="имя_файла.md"
+              autoFocus
+              className="w-full bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-300 focus:outline-none focus:border-blue-500/50"
+            />
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto scrollbar-thin">
+          {notes.length === 0 && !creating && (
+            <div className="px-3 py-4 text-xs text-neutral-600 text-center">Нет заметок</div>
+          )}
+          {notes.map((file) => (
+            <div
+              key={file.path}
+              className={`group flex items-center gap-1 px-2 py-1.5 text-xs cursor-pointer transition-colors ${
+                selectedFile?.path === file.path
+                  ? 'bg-neutral-800 text-neutral-200'
+                  : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
+              }`}
+            >
+              <button
+                onClick={() => openFile(file)}
+                className="flex-1 text-left truncate"
+              >
+                <NotebookText size={12} className="inline mr-1.5 text-neutral-500" />
+                {file.name}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDeleteNote(file); }}
+                className="opacity-0 group-hover:opacity-100 shrink-0 text-neutral-600 hover:text-red-400 transition-all"
+                title="Удалить"
+              >
+                <Trash2 size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Summaries section */}
+        {summaries.length > 0 && (
+          <>
+            <div className="px-3 py-1.5 border-t border-neutral-800">
+              <span className="text-[10px] font-semibold text-neutral-600 uppercase tracking-wider">Конспекты</span>
+            </div>
+            <div className="overflow-y-auto scrollbar-thin max-h-32">
+              {summaries.map((file) => (
+                <button
+                  key={file.path}
+                  onClick={async () => {
+                    const text = await window.study.files.read(file.path);
+                    setSelectedFile(file);
+                    setContent(text);
+                    setOriginalContent(text);
+                    setSummaryContent(null);
+                    setViewMode('original');
+                    setSaveStatus('saved');
+                  }}
+                  className={`w-full text-left px-2 py-1 text-xs transition-colors ${
+                    selectedFile?.path === file.path
+                      ? 'bg-neutral-800 text-neutral-200'
+                      : 'text-neutral-500 hover:bg-neutral-800/50 hover:text-neutral-300'
+                  }`}
+                >
+                  <Sparkles size={10} className="inline mr-1 text-blue-400/50" />
+                  {file.name}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
-      <div className="mt-6 bg-neutral-900/50 border border-neutral-800 rounded-lg p-3 space-y-2">
-        <p className="text-xs text-neutral-500">
-          <span className="text-neutral-400">Сохранить заметку:</span> попросите бота <span className="text-neutral-300">"Запиши заметку по [предмет]: [текст]"</span>
-        </p>
-        <p className="text-xs text-neutral-500">
-          <span className="text-neutral-400">Создать конспект:</span> попросите бота <span className="text-neutral-300">"Сделай конспект из заметки [файл]"</span>
-        </p>
+
+      {/* Right panel — editor */}
+      <div className="flex-1 flex flex-col border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden">
+        {!selectedFile ? (
+          <div className="flex-1 flex items-center justify-center text-neutral-600 text-sm">
+            Выберите заметку или создайте новую
+          </div>
+        ) : (
+          <>
+            {/* Toolbar */}
+            <div className="px-3 py-2 border-b border-neutral-800 flex items-center gap-3">
+              <span className="text-xs text-neutral-300 font-medium truncate">{selectedFile.name}</span>
+
+              {/* Save status */}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                saveStatus === 'saved' ? 'text-emerald-400/70 bg-emerald-900/20' :
+                saveStatus === 'saving' ? 'text-blue-400/70 bg-blue-900/20' :
+                'text-yellow-400/70 bg-yellow-900/20'
+              }`}>
+                {saveStatus === 'saved' ? 'Сохранено' : saveStatus === 'saving' ? 'Сохранение...' : 'Не сохранено'}
+              </span>
+
+              <div className="ml-auto flex items-center gap-2">
+                {/* Original / Summary toggle */}
+                {summaryContent !== null && (
+                  <div className="flex gap-0.5 bg-neutral-900 rounded p-0.5 border border-neutral-800">
+                    <button
+                      onClick={() => setViewMode('original')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        viewMode === 'original' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
+                      }`}
+                    >
+                      Оригинал
+                    </button>
+                    <button
+                      onClick={() => setViewMode('summary')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        viewMode === 'summary' ? 'bg-blue-600 text-white' : 'text-neutral-500 hover:text-neutral-300'
+                      }`}
+                    >
+                      Конспект
+                    </button>
+                  </div>
+                )}
+
+                {saveStatus === 'unsaved' && (
+                  <button
+                    onClick={saveFile}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-blue-400 hover:bg-blue-900/30 transition-colors"
+                  >
+                    <Save size={10} /> Сохранить
+                  </button>
+                )}
+
+                <button
+                  onClick={sendToChat}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-purple-400 hover:bg-purple-900/30 transition-colors"
+                  title="Создать конспект через AI"
+                >
+                  <Sparkles size={10} /> Конспект
+                </button>
+              </div>
+            </div>
+
+            {/* Editor area */}
+            {viewMode === 'original' ? (
+              <textarea
+                ref={textareaRef}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                onBlur={saveFile}
+                className="flex-1 w-full bg-gray-900 text-neutral-300 text-sm font-mono leading-relaxed p-4 resize-none focus:outline-none scrollbar-thin"
+                spellCheck={false}
+              />
+            ) : (
+              <div className="flex-1 overflow-auto p-4 bg-gray-900">
+                <div className="flex items-center gap-1.5 mb-3 text-[10px] text-blue-400/70 uppercase tracking-wider">
+                  <Sparkles size={12} /> AI-конспект
+                </div>
+                <pre className="text-sm text-neutral-300 leading-relaxed whitespace-pre-wrap font-mono">
+                  {summaryContent}
+                </pre>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -1462,14 +1781,15 @@ function AddExamView({
 // --- Add Subject ---
 
 function AddSubjectView({
-  onSave, onBack,
+  defaultSemester, onSave, onBack,
 }: {
+  defaultSemester: number;
   onSave: (data: Record<string, unknown>) => Promise<void>;
   onBack: () => void;
 }) {
   const [name, setName] = useState('');
   const [professor, setProfessor] = useState('');
-  const [semester, setSemester] = useState(4);
+  const [semester, setSemester] = useState(defaultSemester);
   const [schedule, setSchedule] = useState('');
   const [type, setType] = useState('lecture');
   const [color, setColor] = useState(DEFAULT_SUBJECT_COLORS[0]);

@@ -3,6 +3,7 @@ import { ChildProcess } from 'child_process';
 import crypto from 'crypto';
 import path from 'path';
 import os from 'os';
+import fs from 'fs';
 import { claude, AgentName } from './claude-bridge';
 import {
   sendMessage,
@@ -407,6 +408,52 @@ export function registerIpcHandlers(): void {
       : path.resolve(os.homedir(), 'mark2', filePath);
     console.log('[File] Opening:', resolved, '(original:', filePath, ')');
     return shell.openPath(resolved);
+  });
+
+  // === Study file operations ===
+
+  const studyBasePath = path.resolve(os.homedir(), 'mark2', 'agents', 'study', 'context', 'subjects');
+
+  ipcMain.handle('study:files:list', async (_event, subjectSlug: string, folder: string) => {
+    const dirPath = path.resolve(studyBasePath, subjectSlug, folder);
+    try {
+      fs.mkdirSync(dirPath, { recursive: true });
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      return entries
+        .filter((e) => e.isFile())
+        .map((e) => ({ name: e.name, path: path.resolve(dirPath, e.name) }));
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.handle('study:files:read', async (_event, filePath: string) => {
+    try {
+      return fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      return '';
+    }
+  });
+
+  ipcMain.handle('study:files:write', async (_event, filePath: string, content: string) => {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content, 'utf-8');
+  });
+
+  ipcMain.handle('study:files:create', async (_event, subjectSlug: string, folder: string, filename: string) => {
+    const dirPath = path.resolve(studyBasePath, subjectSlug, folder);
+    fs.mkdirSync(dirPath, { recursive: true });
+    const filePath = path.resolve(dirPath, filename);
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, '', 'utf-8');
+    }
+    return { name: filename, path: filePath };
+  });
+
+  ipcMain.handle('study:files:delete', async (_event, filePath: string) => {
+    try {
+      fs.unlinkSync(filePath);
+    } catch { /* ignore */ }
   });
 
   ipcMain.handle('claude:stop-session', (_event, sessionId: string) => {
