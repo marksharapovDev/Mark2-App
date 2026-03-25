@@ -1051,6 +1051,7 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
   const [viewMode, setViewMode] = useState<'original' | 'summary'>('original');
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
   const [creating, setCreating] = useState(false);
+  const [noteType, setNoteType] = useState<'лекция' | 'семинар' | 'лаба' | null>(null);
   const [newFileName, setNewFileName] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -1113,15 +1114,37 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
   }, [content, originalContent, selectedFile]);
 
   const handleCreateNote = useCallback(async () => {
-    const name = newFileName.trim();
-    if (!name) return;
-    const filename = name.endsWith('.md') ? name : `${name}.md`;
+    let filename: string;
+    const customName = newFileName.trim();
+
+    if (customName) {
+      filename = customName.endsWith('.md') ? customName : `${customName}.md`;
+    } else if (noteType) {
+      const now = new Date();
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const yy = String(now.getFullYear()).slice(-2);
+      const base = `${dd}-${mm}-${yy}-${noteType}`;
+      // Check for duplicates
+      let candidate = `${base}.md`;
+      let counter = 2;
+      const existingNames = new Set(notes.map((n) => n.name));
+      while (existingNames.has(candidate)) {
+        candidate = `${base}-${counter}.md`;
+        counter++;
+      }
+      filename = candidate;
+    } else {
+      return; // No type selected and no name — do nothing
+    }
+
     const file = await window.study.files.create(slug, 'notes', filename);
     setCreating(false);
+    setNoteType(null);
     setNewFileName('');
     await loadFiles();
     openFile(file);
-  }, [newFileName, slug, loadFiles, openFile]);
+  }, [newFileName, noteType, notes, slug, loadFiles, openFile]);
 
   const handleDeleteNote = useCallback(async (file: NoteFile) => {
     await window.study.files.delete(file.path);
@@ -1152,28 +1175,55 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
         <div className="px-3 py-2 border-b border-neutral-800 flex items-center justify-between">
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Заметки</span>
           <button
-            onClick={() => setCreating(true)}
+            onClick={() => { setCreating(!creating); setNoteType(null); setNewFileName(''); }}
             className="w-5 h-5 flex items-center justify-center rounded bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors text-sm"
             title="Новая заметка"
           >
-            +
+            {creating ? '×' : '+'}
           </button>
         </div>
 
         {creating && (
-          <div className="px-2 py-2 border-b border-neutral-800">
-            <input
-              type="text"
-              value={newFileName}
-              onChange={(e) => setNewFileName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreateNote();
-                if (e.key === 'Escape') { setCreating(false); setNewFileName(''); }
-              }}
-              placeholder="имя_файла.md"
-              autoFocus
-              className="w-full bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-300 focus:outline-none focus:border-blue-500/50"
-            />
+          <div className="px-2 py-2 border-b border-neutral-800 space-y-2">
+            {/* Type selector */}
+            <div className="flex gap-1">
+              {(['лекция', 'семинар', 'лаба'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setNoteType(t)}
+                  className={`flex-1 px-1 py-1 rounded text-[10px] font-medium transition-colors ${
+                    noteType === t
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                  }`}
+                >
+                  {t === 'лекция' ? 'Лекция' : t === 'семинар' ? 'Семинар' : 'Лаба'}
+                </button>
+              ))}
+            </div>
+            {/* Name input + create button (shown after type selected) */}
+            {noteType && (
+              <div className="flex gap-1">
+                <input
+                  type="text"
+                  value={newFileName}
+                  onChange={(e) => setNewFileName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreateNote();
+                    if (e.key === 'Escape') { setCreating(false); setNoteType(null); setNewFileName(''); }
+                  }}
+                  placeholder="Название (необязательно)"
+                  autoFocus
+                  className="flex-1 min-w-0 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-300 focus:outline-none focus:border-blue-500/50 placeholder:text-neutral-600"
+                />
+                <button
+                  onClick={handleCreateNote}
+                  className="shrink-0 px-2 py-1 rounded text-[10px] font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+                >
+                  Создать
+                </button>
+              </div>
+            )}
           </div>
         )}
 
