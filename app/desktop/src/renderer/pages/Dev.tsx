@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import type { DevProjectV2, DevTask, DevTaskStatus, DevTaskPriority, DevTimeEntry, AttachedFile } from '@mark2/shared';
-import { Plus, ArrowLeft, Play, Square, Clock, ChevronDown, ChevronRight, GripVertical, Send, Trash2, ExternalLink, FileText, AlertTriangle, Calendar } from 'lucide-react';
+import { Plus, ArrowLeft, Play, Square, Clock, ChevronDown, ChevronRight, GripVertical, Send, Trash2, ExternalLink, FileText, Calendar, ClipboardList, ListFilter } from 'lucide-react';
 
 // --- Constants ---
 
@@ -25,6 +25,22 @@ const PRIORITY_BADGE: Record<DevTaskPriority, { cls: string; label: string }> = 
   low: { cls: 'bg-neutral-700/50 text-neutral-400', label: 'Low' },
 };
 
+const PRIORITY_DOT: Record<DevTaskPriority, string> = {
+  urgent: 'bg-red-400',
+  high: 'bg-orange-400',
+  medium: 'bg-blue-400',
+  low: 'bg-neutral-500',
+};
+
+const STATUS_BADGE: Record<DevTaskStatus, { cls: string; label: string }> = {
+  todo: { cls: 'bg-neutral-700/50 text-neutral-400', label: 'Todo' },
+  in_progress: { cls: 'bg-blue-500/20 text-blue-400', label: 'В работе' },
+  done: { cls: 'bg-emerald-500/20 text-emerald-400', label: 'Готово' },
+  deferred: { cls: 'bg-yellow-500/20 text-yellow-400', label: 'Отложено' },
+};
+
+const PRIORITY_ORDER: Record<DevTaskPriority, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+
 const PROJECT_STATUSES: { value: DevProjectV2['status']; label: string }[] = [
   { value: 'active', label: 'Активный' },
   { value: 'paused', label: 'На паузе' },
@@ -43,23 +59,32 @@ function formatMinutes(m: number): string {
   return min ? `${h}ч ${min}м` : `${h}ч`;
 }
 
-function deadlineInfo(deadline: string | null): { label: string; cls: string } | null {
+function deadlineInfo(deadline: string | null): { label: string; cls: string; diff: number } | null {
   if (!deadline) return null;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dl = new Date(deadline + 'T00:00:00');
   const diff = Math.floor((dl.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  if (diff < 0) return { label: 'Просрочено', cls: 'text-red-400' };
-  if (diff === 0) return { label: 'Сегодня', cls: 'text-yellow-400' };
-  if (diff <= 3) return { label: deadline.slice(5), cls: 'text-orange-400' };
-  return { label: deadline.slice(5), cls: 'text-neutral-600' };
+  if (diff < 0) return { label: 'Просрочено', cls: 'text-red-400', diff };
+  if (diff === 0) return { label: 'Сегодня', cls: 'text-yellow-400', diff };
+  if (diff <= 3) return { label: deadline.slice(5), cls: 'text-orange-400', diff };
+  return { label: deadline.slice(5), cls: 'text-neutral-600', diff };
+}
+
+function daysLeftLabel(diff: number): string {
+  if (diff < 0) return `${Math.abs(diff)}д просрочено`;
+  if (diff === 0) return 'сегодня';
+  if (diff === 1) return '1 день';
+  if (diff <= 4) return `${diff} дня`;
+  return `${diff} дней`;
 }
 
 // --- Views ---
 
 type MainView =
   | { kind: 'project' }
-  | { kind: 'task-detail'; taskId: string };
+  | { kind: 'task-detail'; taskId: string }
+  | { kind: 'tasks-list' };
 
 // --- Component ---
 
@@ -325,18 +350,91 @@ export function Dev() {
           </nav>
 
           {/* Sidebar sections */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin mt-2">
+          <div className="flex-1 overflow-y-auto scrollbar-thin mt-1">
+            {/* Project summary */}
+            {project && (
+              <>
+                <div className="mx-3 border-t border-neutral-800" />
+                <div className="px-3 pt-3 pb-2">
+                  <div className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">Сводка проекта</div>
+                  <div className="space-y-1.5 text-xs">
+                    {project.clientName && (
+                      <div className="flex justify-between py-0.5 px-1">
+                        <span className="text-neutral-600">Клиент</span>
+                        <span className="text-neutral-300">{project.clientName}</span>
+                      </div>
+                    )}
+                    {project.deadline && (() => {
+                      const dl = deadlineInfo(project.deadline);
+                      return (
+                        <div className="flex justify-between py-0.5 px-1">
+                          <span className="text-neutral-600">Дедлайн</span>
+                          <span className={dl?.cls ?? 'text-neutral-300'}>
+                            {project.deadline.slice(5)} {dl ? `(${daysLeftLabel(dl.diff)})` : ''}
+                          </span>
+                        </div>
+                      );
+                    })()}
+                    {project.budget && (
+                      <div className="flex justify-between py-0.5 px-1">
+                        <span className="text-neutral-600">Бюджет</span>
+                        <span className="text-neutral-300">{Number(project.budget).toLocaleString('ru')} ₽</span>
+                      </div>
+                    )}
+                    {/* Progress */}
+                    <div className="px-1 pt-1">
+                      <div className="flex justify-between mb-1">
+                        <span className="text-neutral-600">Прогресс</span>
+                        <span className="text-neutral-400">{doneCount} из {totalCount}</span>
+                      </div>
+                      <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${progressPct}%` }} />
+                      </div>
+                    </div>
+                    {totalTimeSpent > 0 && (
+                      <div className="flex justify-between py-0.5 px-1">
+                        <span className="text-neutral-600">Время</span>
+                        <span className="text-neutral-300 flex items-center gap-1"><Clock size={10} />{formatMinutes(totalTimeSpent)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Sidebar tasks for selected project */}
+            {project && (
+              <>
+                <div className="mx-3 border-t border-neutral-800" />
+                <div className="px-3 pt-3 pb-2">
+                  <button
+                    onClick={() => setMainView({ kind: 'tasks-list' })}
+                    className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2 flex items-center gap-1 hover:text-neutral-300 transition-colors w-full text-left"
+                  >
+                    <ListFilter size={10} />
+                    Задачи
+                    {totalCount > 0 && <span className="text-neutral-600 ml-auto normal-case font-normal">{totalCount}</span>}
+                  </button>
+                  {tasks.length === 0 ? (
+                    <div className="text-[10px] text-neutral-700 px-1">Нет задач</div>
+                  ) : (
+                    <SidebarTasksList
+                      tasks={tasks}
+                      onTaskClick={(id) => setMainView({ kind: 'task-detail', taskId: id })}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+
             {/* Upcoming deadlines */}
             {upcomingDeadlines.length > 0 && (
               <>
                 <div className="mx-3 border-t border-neutral-800" />
                 <div className="px-3 pt-3 pb-2">
-                  <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-2 flex items-center gap-1">
-                    <AlertTriangle size={10} />
-                    Ближайшие дедлайны
-                  </div>
-                  <div className="space-y-1">
-                    {upcomingDeadlines.slice(0, 5).map((t) => {
+                  <div className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">Ближайшие дедлайны</div>
+                  <div className="space-y-0.5">
+                    {upcomingDeadlines.slice(0, 6).map((t) => {
                       const dl = deadlineInfo(t.deadline);
                       return (
                         <button
@@ -345,11 +443,10 @@ export function Dev() {
                             setActiveProjectId(t.projectId);
                             setMainView({ kind: 'task-detail', taskId: t.id });
                           }}
-                          className="w-full text-left text-xs py-1 px-2 rounded hover:bg-neutral-800/50 transition-colors flex items-center gap-1.5"
+                          className="w-full text-left py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors flex items-center gap-1.5"
                         >
-                          <span className={`shrink-0 ${dl?.cls ?? ''}`}>{dl?.label}</span>
-                          <span className="text-neutral-400 truncate">{t.title}</span>
-                          <span className="text-neutral-700 text-[10px] ml-auto shrink-0">{projectNameById[t.projectId] ?? ''}</span>
+                          <span className="text-xs text-neutral-400 truncate flex-1">{t.title}</span>
+                          <span className={`text-[10px] shrink-0 ${dl?.cls ?? 'text-neutral-600'}`}>{t.deadline?.slice(5)}</span>
                         </button>
                       );
                     })}
@@ -363,22 +460,24 @@ export function Dev() {
               <>
                 <div className="mx-3 border-t border-neutral-800" />
                 <div className="px-3 pt-3 pb-2">
-                  <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-2 flex items-center gap-1">
-                    <Play size={10} />
-                    В работе
-                  </div>
-                  <div className="space-y-1">
-                    {inProgressTasks.slice(0, 5).map((t) => (
+                  <div className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">В работе</div>
+                  <div className="space-y-0.5">
+                    {inProgressTasks.slice(0, 6).map((t) => (
                       <button
                         key={t.id}
                         onClick={() => {
                           setActiveProjectId(t.projectId);
                           setMainView({ kind: 'task-detail', taskId: t.id });
                         }}
-                        className="w-full text-left text-xs py-1 px-2 rounded hover:bg-neutral-800/50 transition-colors flex items-center gap-1.5"
+                        className="w-full text-left py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors"
                       >
-                        <span className="text-blue-400 truncate">{t.title}</span>
-                        <span className="text-neutral-700 text-[10px] ml-auto shrink-0">{projectNameById[t.projectId] ?? ''}</span>
+                        <div className="text-xs text-neutral-300 truncate">{t.title}</div>
+                        <div className="flex items-center gap-2 text-[10px] text-neutral-600">
+                          <span>{projectNameById[t.projectId] ?? ''}</span>
+                          {t.timeSpentMinutes > 0 && (
+                            <span className="flex items-center gap-0.5"><Clock size={8} />{formatMinutes(t.timeSpentMinutes)}</span>
+                          )}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -413,10 +512,6 @@ export function Dev() {
               <ProjectHeader
                 project={project}
                 onUpdate={(data) => handleUpdateProject(project.id, data)}
-                doneCount={doneCount}
-                totalCount={totalCount}
-                progressPct={progressPct}
-                totalTimeSpent={totalTimeSpent}
               />
 
               {/* Tabs */}
@@ -446,6 +541,15 @@ export function Dev() {
               {/* Tab content */}
               {projectTab === 'kanban' && (
                 <div className="flex-1 overflow-x-auto p-4">
+                  <div className="flex items-center justify-between mb-3 px-1">
+                    <span className="text-xs text-neutral-600">{totalCount} задач</span>
+                    <button
+                      onClick={() => setMainView({ kind: 'tasks-list' })}
+                      className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
+                    >
+                      Все задачи &rarr;
+                    </button>
+                  </div>
                   <div className="flex gap-4 h-full min-w-0">
                     {STATUS_COLUMNS.map((col) => (
                       <KanbanColumn
@@ -514,6 +618,19 @@ export function Dev() {
               }}
             />
           )}
+
+          {!loading && project && mainView.kind === 'tasks-list' && (
+            <TasksListView
+              project={project}
+              tasks={tasks}
+              onBack={() => setMainView({ kind: 'project' })}
+              onTaskClick={(id) => setMainView({ kind: 'task-detail', taskId: id })}
+              onCreateTask={async (data) => {
+                const created = await window.db.dev.tasks.create({ ...data, projectId: project.id });
+                setTasks((prev) => [...prev, created]);
+              }}
+            />
+          )}
         </main>
       </div>
     </MainLayout>
@@ -522,13 +639,9 @@ export function Dev() {
 
 // --- Project Header ---
 
-function ProjectHeader({ project, onUpdate, doneCount, totalCount, progressPct, totalTimeSpent }: {
+function ProjectHeader({ project, onUpdate }: {
   project: DevProjectV2;
   onUpdate: (data: Record<string, unknown>) => void;
-  doneCount: number;
-  totalCount: number;
-  progressPct: number;
-  totalTimeSpent: number;
 }) {
   const [editingDesc, setEditingDesc] = useState(false);
   const [desc, setDesc] = useState(project.description ?? '');
@@ -550,12 +663,7 @@ function ProjectHeader({ project, onUpdate, doneCount, totalCount, progressPct, 
   return (
     <div className="border-b border-neutral-800 px-6 py-4">
       <div className="flex items-start justify-between mb-2">
-        <div>
-          <h1 className="text-xl font-bold">{project.name}</h1>
-          {project.clientName && (
-            <span className="text-sm text-neutral-500">Клиент: {project.clientName}</span>
-          )}
-        </div>
+        <h1 className="text-xl font-bold">{project.name}</h1>
         <select
           value={project.status}
           onChange={(e) => onUpdate({ status: e.target.value })}
@@ -567,15 +675,8 @@ function ProjectHeader({ project, onUpdate, doneCount, totalCount, progressPct, 
         </select>
       </div>
 
-      {/* Meta row */}
+      {/* Links row */}
       <div className="flex flex-wrap items-center gap-4 text-xs text-neutral-500 mb-3">
-        {project.deadline && (
-          <span>Дедлайн: <span className="text-neutral-300">{project.deadline}</span></span>
-        )}
-        {project.budget && (
-          <span>Бюджет: <span className="text-neutral-300">{Number(project.budget).toLocaleString('ru')} ₽</span></span>
-        )}
-
         {/* Repo link */}
         {editingRepo ? (
           <input
@@ -658,41 +759,16 @@ function ProjectHeader({ project, onUpdate, doneCount, totalCount, progressPct, 
           onChange={(e) => setDesc(e.target.value)}
           onBlur={() => { onUpdate({ description: desc || null }); setEditingDesc(false); }}
           rows={3}
-          className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-600 resize-none mb-3"
+          className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-600 resize-none"
         />
       ) : (
         <div
           onClick={() => setEditingDesc(true)}
-          className="text-sm text-neutral-500 mb-3 cursor-pointer hover:text-neutral-400 transition-colors min-h-[20px]"
+          className="text-sm text-neutral-500 cursor-pointer hover:text-neutral-400 transition-colors min-h-[20px]"
         >
           {project.description || 'Нажмите чтобы добавить описание...'}
         </div>
       )}
-
-      {/* Progress + Time row */}
-      <div className="flex items-center gap-6">
-        {/* Progress bar */}
-        <div className="flex-1 max-w-xs">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] text-neutral-500 uppercase tracking-wider">Прогресс</span>
-            <span className="text-[10px] text-neutral-500">{doneCount} из {totalCount} задач &middot; {progressPct}%</span>
-          </div>
-          <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-emerald-500 rounded-full transition-all"
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Total time */}
-        {totalTimeSpent > 0 && (
-          <div className="flex items-center gap-1 text-xs text-neutral-500">
-            <Clock size={12} />
-            Потрачено: <span className="text-neutral-300">{formatMinutes(totalTimeSpent)}</span>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -862,6 +938,266 @@ function TaskCard({ task, onClick, onDragStart }: {
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Sidebar Tasks List ---
+
+function SidebarTasksList({ tasks, onTaskClick }: {
+  tasks: DevTask[];
+  onTaskClick: (id: string) => void;
+}) {
+  const [deferredOpen, setDeferredOpen] = useState(false);
+  const [doneOpen, setDoneOpen] = useState(false);
+
+  const inProgress = tasks.filter((t) => t.status === 'in_progress');
+  const todo = tasks.filter((t) => t.status === 'todo');
+  const deferred = tasks.filter((t) => t.status === 'deferred');
+  const done = tasks.filter((t) => t.status === 'done');
+
+  const renderTask = (t: DevTask) => {
+    const dl = deadlineInfo(t.deadline);
+    return (
+      <button
+        key={t.id}
+        onClick={() => onTaskClick(t.id)}
+        className="w-full text-left py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors flex items-center gap-1.5"
+      >
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${PRIORITY_DOT[t.priority]}`} />
+        <span className="text-xs text-neutral-400 truncate flex-1">{t.title}</span>
+        {dl && <span className={`text-[10px] shrink-0 ${dl.cls}`}>{t.deadline?.slice(5)}</span>}
+      </button>
+    );
+  };
+
+  return (
+    <div className="space-y-1">
+      {inProgress.length > 0 && (
+        <div>
+          <div className="text-[10px] text-blue-400/70 uppercase tracking-wider px-1 mb-0.5">В работе</div>
+          {inProgress.map(renderTask)}
+        </div>
+      )}
+      {todo.length > 0 && (
+        <div>
+          <div className="text-[10px] text-neutral-600 uppercase tracking-wider px-1 mb-0.5 mt-1">Todo</div>
+          {todo.map(renderTask)}
+        </div>
+      )}
+      {deferred.length > 0 && (
+        <button
+          onClick={() => setDeferredOpen(!deferredOpen)}
+          className="flex items-center gap-1 text-[10px] text-neutral-600 hover:text-neutral-400 transition-colors px-1 mt-1"
+        >
+          {deferredOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+          Отложено ({deferred.length})
+        </button>
+      )}
+      {deferredOpen && deferred.map(renderTask)}
+      {done.length > 0 && (
+        <button
+          onClick={() => setDoneOpen(!doneOpen)}
+          className="flex items-center gap-1 text-[10px] text-neutral-600 hover:text-neutral-400 transition-colors px-1 mt-1"
+        >
+          {doneOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+          Готово ({done.length})
+        </button>
+      )}
+      {doneOpen && done.map(renderTask)}
+    </div>
+  );
+}
+
+// --- Tasks List View ---
+
+type TasksSort = 'priority' | 'deadline' | 'status';
+
+function TasksListView({ project, tasks, onBack, onTaskClick, onCreateTask }: {
+  project: DevProjectV2;
+  tasks: DevTask[];
+  onBack: () => void;
+  onTaskClick: (id: string) => void;
+  onCreateTask: (data: Record<string, unknown>) => Promise<void>;
+}) {
+  const [statusFilter, setStatusFilter] = useState<DevTaskStatus | 'all'>('all');
+  const [priorityFilter, setPriorityFilter] = useState<DevTaskPriority | 'all'>('all');
+  const [sort, setSort] = useState<TasksSort>('priority');
+  const [adding, setAdding] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+
+  const filtered = useMemo(() => {
+    let list = [...tasks];
+    if (statusFilter !== 'all') list = list.filter((t) => t.status === statusFilter);
+    if (priorityFilter !== 'all') list = list.filter((t) => t.priority === priorityFilter);
+
+    list.sort((a, b) => {
+      if (sort === 'priority') return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+      if (sort === 'deadline') {
+        if (!a.deadline && !b.deadline) return 0;
+        if (!a.deadline) return 1;
+        if (!b.deadline) return -1;
+        return a.deadline.localeCompare(b.deadline);
+      }
+      // status
+      const SO: Record<DevTaskStatus, number> = { in_progress: 0, todo: 1, deferred: 2, done: 3 };
+      return SO[a.status] - SO[b.status];
+    });
+    return list;
+  }, [tasks, statusFilter, priorityFilter, sort]);
+
+  const handleAdd = useCallback(async () => {
+    if (!newTitle.trim()) return;
+    await onCreateTask({ title: newTitle, status: 'todo', priority: 'medium' });
+    setNewTitle('');
+    setAdding(false);
+  }, [newTitle, onCreateTask]);
+
+  const statusFilters: { value: DevTaskStatus | 'all'; label: string }[] = [
+    { value: 'all', label: 'Все' },
+    { value: 'todo', label: 'Todo' },
+    { value: 'in_progress', label: 'В работе' },
+    { value: 'done', label: 'Готово' },
+    { value: 'deferred', label: 'Отложено' },
+  ];
+
+  const priorityFilters: { value: DevTaskPriority | 'all'; label: string }[] = [
+    { value: 'all', label: 'Все' },
+    { value: 'urgent', label: 'Urgent' },
+    { value: 'high', label: 'High' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'low', label: 'Low' },
+  ];
+
+  const sortOptions: { value: TasksSort; label: string }[] = [
+    { value: 'priority', label: 'По приоритету' },
+    { value: 'deadline', label: 'По дедлайну' },
+    { value: 'status', label: 'По статусу' },
+  ];
+
+  return (
+    <div className="p-6 max-w-4xl">
+      <button
+        onClick={onBack}
+        className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4"
+      >
+        <ArrowLeft size={14} />
+        Назад к проекту
+      </button>
+
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="text-xl font-bold">Задачи: {project.name}</h1>
+        <button
+          onClick={() => setAdding(true)}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+        >
+          <Plus size={12} />
+          Добавить задачу
+        </button>
+      </div>
+
+      {adding && (
+        <div className="mb-4">
+          <input
+            autoFocus
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleAdd();
+              if (e.key === 'Escape') { setAdding(false); setNewTitle(''); }
+            }}
+            placeholder="Название задачи..."
+            className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-neutral-500"
+          />
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex gap-0.5">
+          {statusFilters.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setStatusFilter(f.value)}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                statusFilter === f.value ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="w-px h-4 bg-neutral-800" />
+        <div className="flex gap-0.5">
+          {priorityFilters.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setPriorityFilter(f.value)}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                priorityFilter === f.value ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="w-px h-4 bg-neutral-800" />
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as TasksSort)}
+          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-[11px] text-neutral-400 focus:outline-none"
+        >
+          {sortOptions.map((s) => (
+            <option key={s.value} value={s.value}>{s.label}</option>
+          ))}
+        </select>
+        <span className="text-[10px] text-neutral-600 ml-auto">{filtered.length} задач</span>
+      </div>
+
+      {/* Task rows */}
+      <div className="space-y-1">
+        {filtered.map((task) => {
+          const pBadge = PRIORITY_BADGE[task.priority];
+          const sBadge = STATUS_BADGE[task.status];
+          const dl = deadlineInfo(task.deadline);
+          return (
+            <button
+              key={task.id}
+              onClick={() => onTaskClick(task.id)}
+              className="w-full text-left bg-neutral-900/50 border border-neutral-800/50 rounded-lg px-4 py-3 hover:border-neutral-700 hover:bg-neutral-800/30 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm text-neutral-200">{task.title}</span>
+                    {task.prompt && <ClipboardList size={12} className="text-neutral-600 shrink-0" title="Промпт написан" />}
+                  </div>
+                  {task.description && (
+                    <div className="text-[11px] text-neutral-600 truncate">{task.description.slice(0, 100)}</div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {(task.timeEstimateMinutes || task.timeSpentMinutes > 0) && (
+                    <span className="text-[10px] text-neutral-600 flex items-center gap-0.5">
+                      <Clock size={10} />
+                      {task.timeSpentMinutes > 0 ? formatMinutes(task.timeSpentMinutes) : ''}
+                      {task.timeEstimateMinutes ? `/${formatMinutes(task.timeEstimateMinutes)}` : ''}
+                    </span>
+                  )}
+                  {dl && (
+                    <span className={`text-[10px] ${dl.cls}`}>{task.deadline?.slice(5)}</span>
+                  )}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${sBadge.cls}`}>{sBadge.label}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${pBadge.cls}`}>{pBadge.label}</span>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className="text-neutral-600 text-sm py-8 text-center">Нет задач с такими фильтрами</div>
+        )}
       </div>
     </div>
   );
