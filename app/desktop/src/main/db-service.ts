@@ -348,7 +348,7 @@ export async function getFinanceSummary(dateFrom?: string, dateTo?: string): Pro
       totalExpense,
       totalSavings,
       taxReserve,
-      netBalance: totalIncome - totalExpense - taxReserve,
+      netBalance: totalIncome - totalExpense - totalSavings - taxReserve,
       period,
     };
   });
