@@ -607,11 +607,11 @@ function OverviewView({ workouts, todayLogs, allLogs, thisMonthCount, latestWeig
       <div className="grid grid-cols-4 gap-3">
         <StatCard label="Тренировок" value={String(thisMonthCount)} sub="этот месяц" icon={<Dumbbell size={16} />} color="text-blue-400"
           trend={workoutTrend !== 0 ? workoutTrend : undefined} />
-        <StatCard label="Средний сон" value={avgSleep != null ? `${avgSleep.toFixed(1)}ч` : '\u2014'} sub="за неделю" icon={<Moon size={16} />} color="text-purple-400"
+        <StatCard label="Средний сон" value={avgSleep != null ? `${avgSleep.toFixed(1)}ч` : '—'} sub="за неделю" icon={<Moon size={16} />} color="text-purple-400"
           trend={sleepTrend != null ? Math.round(sleepTrend * 10) / 10 : undefined} trendUnit="ч" />
-        <StatCard label="Текущий вес" value={latestWeight ? `${latestWeight.value}кг` : '\u2014'} sub="последний замер" icon={<Scale size={16} />} color="text-emerald-400"
+        <StatCard label="Текущий вес" value={latestWeight ? `${latestWeight.value}кг` : '—'} sub="последний замер" icon={<Scale size={16} />} color="text-emerald-400"
           trend={weightChange != null ? Math.round(weightChange * 10) / 10 : undefined} trendUnit="кг" />
-        <StatCard label="Вода" value={avgWater != null ? `${avgWater.toFixed(1)}л` : '\u2014'} sub="среднее за неделю" icon={<Droplets size={16} />} color="text-cyan-400" />
+        <StatCard label="Вода" value={avgWater != null ? `${avgWater.toFixed(1)}л` : '—'} sub="среднее за неделю" icon={<Droplets size={16} />} color="text-cyan-400" />
       </div>
 
       <div>
@@ -958,19 +958,19 @@ function NutritionView({ todayMeals, activePlan, onChanged }: {
           <div className="grid grid-cols-4 gap-3 text-center text-xs">
             <div>
               <div className="text-neutral-500">Калории</div>
-              <div className="text-white font-medium">{activePlan.dailyCalories ?? '\u2014'}</div>
+              <div className="text-white font-medium">{activePlan.dailyCalories ?? '—'}</div>
             </div>
             <div>
               <div className="text-neutral-500">Белки</div>
-              <div className="text-white font-medium">{activePlan.proteinG ? `${activePlan.proteinG}г` : '\u2014'}</div>
+              <div className="text-white font-medium">{activePlan.proteinG ? `${activePlan.proteinG}г` : '—'}</div>
             </div>
             <div>
               <div className="text-neutral-500">Углеводы</div>
-              <div className="text-white font-medium">{activePlan.carbsG ? `${activePlan.carbsG}г` : '\u2014'}</div>
+              <div className="text-white font-medium">{activePlan.carbsG ? `${activePlan.carbsG}г` : '—'}</div>
             </div>
             <div>
               <div className="text-neutral-500">Жиры</div>
-              <div className="text-white font-medium">{activePlan.fatG ? `${activePlan.fatG}г` : '\u2014'}</div>
+              <div className="text-white font-medium">{activePlan.fatG ? `${activePlan.fatG}г` : '—'}</div>
             </div>
           </div>
           {calTarget > 0 && (
@@ -1025,12 +1025,12 @@ function NutritionView({ todayMeals, activePlan, onChanged }: {
             )}
 
             {mealsOfType.length === 0 && addingMeal !== type ? (
-              <div className="text-xs text-neutral-600 pl-7 mb-2">\u2014</div>
+              <div className="text-xs text-neutral-600 pl-7 mb-2">Ещё не записано</div>
             ) : (
               <div className="space-y-1 mb-2">
                 {mealsOfType.map((meal) => (
                   <div key={meal.id} className="flex items-center gap-3 px-3 py-2 rounded bg-neutral-900/30 text-xs group">
-                    <span className="text-neutral-200 flex-1 truncate">{meal.title ?? '\u2014'}</span>
+                    <span className="text-neutral-200 flex-1 truncate">{meal.title ?? 'Без названия'}</span>
                     {meal.calories != null && <span className="text-neutral-400">{meal.calories} ккал</span>}
                     {meal.proteinG != null && <span className="text-neutral-500">Б{meal.proteinG}</span>}
                     {meal.carbsG != null && <span className="text-neutral-500">У{meal.carbsG}</span>}
