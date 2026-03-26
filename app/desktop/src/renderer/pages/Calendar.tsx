@@ -1479,15 +1479,16 @@ function WeekView({
                       key={`rem-${r.id}`}
                       className={`text-[10px] px-1.5 py-0.5 truncate flex items-center gap-1 cursor-pointer hover:bg-neutral-800/40 transition-all
                         border-l-2 ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
-                      onClick={() => { onCompleteReminder(r.id); }}
                     >
-                      {r.status === 'done'
-                        ? <svg className="w-2.5 h-2.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
-                        : <svg className={`w-2.5 h-2.5 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
-                      }
+                      <span className="shrink-0" onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}>
+                        {r.status === 'done'
+                          ? <svg className="w-2.5 h-2.5 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                          : <svg className={`w-2.5 h-2.5 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                        }
+                      </span>
                       <Bell size={9} strokeWidth={1.5} className={r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color} />
                       {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={9} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
-                      <span className={`truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>{r.title}</span>
+                      <span className={`truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`} onClick={(e) => { e.stopPropagation(); onEditReminder(r, e); }}>{r.title}</span>
                     </div>
                   ))}
                 </div>
@@ -1680,15 +1681,16 @@ function WeekView({
                         border-l-2 ${SPHERE_META[r.sphere].border} hover:bg-neutral-800/50 transition-all cursor-pointer
                         ${r.status === 'done' ? 'opacity-40' : ''}`}
                       style={{ top, height: 20, left: '2%', width: '96%', zIndex: 2 }}
-                      onClick={() => onCompleteReminder(r.id)}
                     >
-                      {r.status === 'done'
-                        ? <svg className="w-2.5 h-2.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
-                        : <svg className={`w-2.5 h-2.5 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
-                      }
+                      <span className="shrink-0" onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}>
+                        {r.status === 'done'
+                          ? <svg className="w-2.5 h-2.5 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                          : <svg className={`w-2.5 h-2.5 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                        }
+                      </span>
                       <Bell size={10} strokeWidth={1.5} className={r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color} />
                       {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={9} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
-                      <span className={`text-[9px] truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>{r.title}</span>
+                      <span className={`text-[9px] truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`} onClick={(e) => { e.stopPropagation(); onEditReminder(r, e); }}>{r.title}</span>
                     </div>
                   );
                 })}
@@ -2149,15 +2151,16 @@ function DayView({
               key={`rem-${r.id}`}
               className={`text-xs px-2 py-1 border-l-2 flex items-center gap-1 cursor-pointer hover:bg-neutral-800/40 transition-all
                 ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
-              onClick={() => { onCompleteReminder(r.id); }}
             >
-              {r.status === 'done'
-                ? <svg className="w-3 h-3 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
-                : <svg className={`w-3 h-3 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
-              }
+              <span className="shrink-0" onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}>
+                {r.status === 'done'
+                  ? <svg className="w-3 h-3 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                  : <svg className={`w-3 h-3 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                }
+              </span>
               <Bell size={10} strokeWidth={1.5} className={r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color} />
               {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={10} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
-              <span className={`${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>{r.title}</span>
+              <span className={`${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`} onClick={(e) => { e.stopPropagation(); onEditReminder(r, e); }}>{r.title}</span>
             </div>
           ))}
         </div>
@@ -2330,15 +2333,16 @@ function DayView({
                     border-l-2 ${SPHERE_META[r.sphere].border} hover:bg-neutral-800/50 transition-all cursor-pointer
                     ${r.status === 'done' ? 'opacity-40' : ''}`}
                   style={{ top, height: 22, left: 0, right: 0, zIndex: 2 }}
-                  onClick={() => onCompleteReminder(r.id)}
                 >
-                  {r.status === 'done'
-                    ? <svg className="w-3 h-3 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
-                    : <svg className={`w-3 h-3 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
-                  }
+                  <span className="shrink-0" onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}>
+                    {r.status === 'done'
+                      ? <svg className="w-3 h-3 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                      : <svg className={`w-3 h-3 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                    }
+                  </span>
                   <Bell size={11} strokeWidth={1.5} className={r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color} />
                   {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={10} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
-                  <span className={`text-[10px] truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>
+                  <span className={`text-[10px] truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`} onClick={(e) => { e.stopPropagation(); onEditReminder(r, e); }}>
                     {fmtTime(rHour, rMin)} {r.title}
                   </span>
                 </div>
@@ -2485,19 +2489,20 @@ function ListView({
                     key={`rem-${r.id}`}
                     className={`flex items-center gap-3 px-3 py-1.5 border-l-2 cursor-pointer hover:bg-neutral-800/40 transition-all
                       ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
-                    onClick={() => { onCompleteReminder(r.id); }}
                   >
                     <span className="text-xs text-neutral-500 w-24 shrink-0">
                       {r.time ? r.time.slice(0, 5) : 'Весь день'}
                     </span>
                     <div className="flex-1 min-w-0 flex items-center gap-1.5">
-                      {r.status === 'done'
-                        ? <svg className="w-3.5 h-3.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
-                        : <svg className={`w-3.5 h-3.5 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
-                      }
+                      <span className="shrink-0" onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}>
+                        {r.status === 'done'
+                          ? <svg className="w-3.5 h-3.5 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                          : <svg className={`w-3.5 h-3.5 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                        }
+                      </span>
                       <Bell size={12} strokeWidth={1.5} className={r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color} />
                       {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={12} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
-                      <span className={`text-sm ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>{r.title}</span>
+                      <span className={`text-sm ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`} onClick={(e) => { e.stopPropagation(); onEditReminder(r, e); }}>{r.title}</span>
                       {r.description && <span className="text-[11px] text-neutral-600 truncate ml-1">{r.description}</span>}
                     </div>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded ${SPHERE_META[r.sphere].bg} ${SPHERE_META[r.sphere].color}`}>
@@ -2637,13 +2642,14 @@ function CalendarSidebar({
                     key={`rem-${r.id}`}
                     className={`flex items-center gap-1.5 py-0.5 border-l-2 pl-2 rounded-r cursor-pointer hover:bg-neutral-800/30 transition-all
                       ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
-                    onClick={() => { onCompleteReminder(r.id); }}
                   >
-                    {r.status === 'done'
-                      ? <svg className="w-2.5 h-2.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
-                      : <svg className={`w-2.5 h-2.5 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
-                    }
-                    <div className="flex-1 min-w-0">
+                    <span className="shrink-0" onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}>
+                      {r.status === 'done'
+                        ? <svg className="w-2.5 h-2.5 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                        : <svg className={`w-2.5 h-2.5 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                      }
+                    </span>
+                    <div className="flex-1 min-w-0" onClick={(e) => { e.stopPropagation(); onEditReminder(r, e); }}>
                       <div className={`text-[11px] truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>
                         {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={9} strokeWidth={1.5} className="inline mr-0.5 text-amber-400" />}
                         {r.title}

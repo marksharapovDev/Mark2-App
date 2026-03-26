@@ -478,16 +478,29 @@ export function CalendarPanel() {
         <div className="flex-1 overflow-y-auto p-3">
           {detailView.type === 'event' ? (
             // Event detail
-            <div>
-              <div className={`text-sm font-medium mb-1 ${SPHERE_META[detailView.event.sphere].color}`}>{detailView.event.title}</div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${SPHERE_META[detailView.event.sphere].bg} ${SPHERE_META[detailView.event.sphere].color}`}>{SPHERE_META[detailView.event.sphere].label}</span>
-              </div>
-              <div className="text-[11px] text-neutral-400 mb-1">
-                {fmtDateShort(detailView.event.date)} &middot; {detailView.event.allDay ? 'Весь день' : `${fmtTime(detailView.event.startHour, detailView.event.startMin)} – ${fmtTime(detailView.event.endHour, detailView.event.endMin)}`}
-              </div>
-              {detailView.event.description && <div className="text-[11px] text-neutral-500 mt-2">{detailView.event.description}</div>}
-            </div>
+            (() => {
+              const ev = detailView.event;
+              const lessonMatch = ev.title.match(/^Урок\s+(.+?)(?:\s*\((.+?)\))?$/);
+              return (
+                <div>
+                  <div className={`text-sm font-medium mb-1.5 ${SPHERE_META[ev.sphere].color}`}>{ev.title}</div>
+                  <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${SPHERE_META[ev.sphere].bg} ${SPHERE_META[ev.sphere].color}`}>{SPHERE_META[ev.sphere].label}</span>
+                    {ev.isRecurring && <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">Повторяется</span>}
+                  </div>
+                  <div className="text-[11px] text-neutral-400 mb-1">
+                    {fmtDateShort(ev.date)} &middot; {ev.allDay ? 'Весь день' : `${fmtTime(ev.startHour, ev.startMin)} – ${fmtTime(ev.endHour, ev.endMin)}`}
+                  </div>
+                  {lessonMatch && (
+                    <div className="mt-2 space-y-1">
+                      <div className="text-[11px] text-neutral-400"><span className="text-neutral-600">Ученик:</span> {lessonMatch[1]}</div>
+                      {lessonMatch[2] && <div className="text-[11px] text-neutral-400"><span className="text-neutral-600">Предмет:</span> {lessonMatch[2]}</div>}
+                    </div>
+                  )}
+                  {ev.description && <div className="text-[11px] text-neutral-500 mt-2 whitespace-pre-wrap">{ev.description}</div>}
+                </div>
+              );
+            })()
           ) : (
             // Reminder detail
             <div>
