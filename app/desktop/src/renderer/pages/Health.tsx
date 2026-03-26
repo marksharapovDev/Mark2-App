@@ -425,13 +425,28 @@ function DailyChecklist({ hasWorkout, hasWeight, hasSleep, waterOk, hasMeals, to
     finally { setSaving(false); }
   }, [inlineInput, inlineValue, onLogSaved]);
 
+  // Checkbox click: open inline input (weight/sleep/water) or navigate (workout/meals)
   const handleCheckboxClick = useCallback((key: string, done: boolean) => {
-    if (done) return; // already done, no action
+    if (done) return;
     switch (key) {
       case 'workout': onAddWorkout(); break;
       case 'weight': setInlineInput('weight'); setInlineValue(''); break;
       case 'sleep': setInlineInput('sleep'); setInlineValue(''); break;
       case 'water': setInlineInput('water'); setInlineValue(''); break;
+      case 'meals': onGoNutrition(); break;
+    }
+  }, [onAddWorkout, onGoNutrition]);
+
+  // Label click: always navigate to the corresponding section
+  const handleLabelClick = useCallback((key: string) => {
+    switch (key) {
+      case 'workout': onAddWorkout(); break;
+      case 'weight': // fall through — open inline input for quick entry
+      case 'sleep':
+      case 'water':
+        setInlineInput(key as 'weight' | 'sleep' | 'water');
+        setInlineValue('');
+        break;
       case 'meals': onGoNutrition(); break;
     }
   }, [onAddWorkout, onGoNutrition]);
@@ -455,19 +470,25 @@ function DailyChecklist({ hasWorkout, hasWeight, hasSleep, waterOk, hasMeals, to
         {checks.map((c) => (
           <div key={c.key}>
             <div className="flex items-center gap-2 px-2 py-1 rounded text-xs hover:bg-neutral-800/50 transition-colors">
+              {/* Checkbox icon — clickable when not done */}
               <button
                 onClick={() => handleCheckboxClick(c.key, c.done)}
-                className="shrink-0"
-                disabled={c.done}
+                className={`shrink-0 ${c.done ? 'cursor-default' : 'cursor-pointer'}`}
               >
                 {c.done
                   ? <CheckSquare size={13} className="text-emerald-400" />
                   : <Square size={13} className="text-neutral-600 hover:text-neutral-400 transition-colors" />
                 }
               </button>
-              <span className={`flex-1 ${c.done ? 'text-neutral-400 line-through' : 'text-neutral-300'}`}>{c.label}</span>
+              {/* Label — always clickable */}
+              <button
+                onClick={() => handleLabelClick(c.key)}
+                className={`flex-1 text-left ${c.done ? 'text-neutral-400 line-through' : 'text-neutral-300 hover:text-white'} transition-colors`}
+              >
+                {c.label}
+              </button>
             </div>
-            {/* Inline input */}
+            {/* Inline input for weight/sleep/water */}
             {inlineInput === c.key && (
               <div className="flex items-center gap-1.5 px-2 py-1 ml-5">
                 <input
