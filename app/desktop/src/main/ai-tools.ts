@@ -846,10 +846,114 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     };
   },
 
-  // Workouts
+  // Workouts (legacy)
   add_workout: async (params) => {
     const result = await db.createWorkout(params);
     return { success: true, message: `Тренировка добавлена`, entity: 'workouts', data: result as unknown as Record<string, unknown> };
+  },
+
+  // Health: Log workout
+  log_workout: async (params) => {
+    const workoutData: Record<string, unknown> = {
+      type: params.type ?? 'gym',
+      title: params.title ?? null,
+      durationMinutes: params.duration ?? params.durationMinutes ?? null,
+      notes: params.notes ?? null,
+      mood: params.mood ?? null,
+      date: params.date ?? new Date().toISOString().slice(0, 10),
+    };
+    const workout = await db.createWorkoutV2(workoutData);
+
+    // Create exercises if provided
+    const exercises = params.exercises;
+    if (Array.isArray(exercises)) {
+      for (let i = 0; i < exercises.length; i++) {
+        const ex = exercises[i] as Record<string, unknown>;
+        await db.createWorkoutExercise({
+          workoutId: workout.id,
+          name: ex.name ?? 'Упражнение',
+          sets: ex.sets ?? null,
+          reps: ex.reps != null ? String(ex.reps) : null,
+          weightKg: ex.weight ?? ex.weightKg ?? null,
+          durationMinutes: ex.duration ?? ex.durationMinutes ?? null,
+          distanceKm: ex.distance ?? ex.distanceKm ?? null,
+          orderIndex: i,
+          notes: ex.notes ?? null,
+        });
+      }
+    }
+
+    return {
+      success: true,
+      message: `Тренировка записана: ${workout.title ?? workout.type}${workout.durationMinutes ? ` (${workout.durationMinutes} мин)` : ''}`,
+      entity: 'health',
+      data: workout as unknown as Record<string, unknown>,
+    };
+  },
+
+  // Health: Log health data
+  log_health: async (params) => {
+    const logData: Record<string, unknown> = {
+      type: params.type,
+      value: params.value ?? null,
+      notes: params.notes ?? null,
+      data: params.data ?? null,
+      date: params.date ?? new Date().toISOString().slice(0, 10),
+    };
+    const log = await db.createHealthLog(logData);
+
+    const typeLabels: Record<string, string> = {
+      weight: 'Вес',
+      sleep: 'Сон',
+      water: 'Вода',
+      mood: 'Настроение',
+      measurement: 'Замеры',
+    };
+    const label = typeLabels[String(params.type)] ?? String(params.type);
+    const valueStr = log.value != null ? `: ${log.value}` : '';
+
+    return {
+      success: true,
+      message: `${label}${valueStr} записано`,
+      entity: 'health',
+      data: log as unknown as Record<string, unknown>,
+    };
+  },
+
+  // Health: Create goal
+  create_health_goal: async (params) => {
+    const goalData: Record<string, unknown> = {
+      title: params.title,
+      type: params.type ?? null,
+      targetValue: params.targetValue ?? null,
+      currentValue: params.currentValue ?? 0,
+      unit: params.unit ?? null,
+      deadline: params.deadline ?? null,
+    };
+    const goal = await db.createHealthGoal(goalData);
+    return {
+      success: true,
+      message: `Цель создана: ${goal.title}`,
+      entity: 'health',
+      data: goal as unknown as Record<string, unknown>,
+    };
+  },
+
+  // Health: Update goal
+  update_health_goal: async (params) => {
+    const goalId = String(params.goalId ?? params.id ?? '');
+    if (!goalId) throw new Error('goalId is required');
+    const updates: Record<string, unknown> = {};
+    if (params.currentValue != null) updates.currentValue = params.currentValue;
+    if (params.status) updates.status = params.status;
+    if (params.title) updates.title = params.title;
+    const goal = await db.updateHealthGoal(goalId, updates);
+    return {
+      success: true,
+      message: `Цель обновлена: ${goal.title}`,
+      entity: 'health',
+      data: goal as unknown as Record<string, unknown>,
+    };
   },
 
   // Files

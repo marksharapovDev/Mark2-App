@@ -297,6 +297,46 @@ const dbApi = {
     create: (data: Record<string, unknown>) =>
       ipcRenderer.invoke('db:workouts:create', data),
   },
+  health: {
+    workouts: {
+      list: (dateFrom?: string, dateTo?: string) =>
+        ipcRenderer.invoke('db:health:workouts:list', dateFrom, dateTo),
+      create: (data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:workouts:create', data),
+      update: (id: string, data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:workouts:update', id, data),
+      delete: (id: string) =>
+        ipcRenderer.invoke('db:health:workouts:delete', id),
+    },
+    exercises: {
+      list: (workoutId: string) =>
+        ipcRenderer.invoke('db:health:exercises:list', workoutId),
+      create: (data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:exercises:create', data),
+      update: (id: string, data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:exercises:update', id, data),
+      delete: (id: string) =>
+        ipcRenderer.invoke('db:health:exercises:delete', id),
+    },
+    logs: {
+      list: (type?: string, dateFrom?: string, dateTo?: string) =>
+        ipcRenderer.invoke('db:health:logs:list', type, dateFrom, dateTo),
+      create: (data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:logs:create', data),
+      update: (id: string, data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:logs:update', id, data),
+      delete: (id: string) =>
+        ipcRenderer.invoke('db:health:logs:delete', id),
+    },
+    goals: {
+      list: () =>
+        ipcRenderer.invoke('db:health:goals:list'),
+      create: (data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:goals:create', data),
+      update: (id: string, data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:goals:update', id, data),
+    },
+  },
   notes: {
     create: (data: Record<string, unknown>) =>
       ipcRenderer.invoke('db:notes:create', data),

@@ -19,6 +19,10 @@ import type {
   SavingsGoal,
   StudentRate,
   FinanceSummary,
+  WorkoutV2,
+  WorkoutExercise,
+  HealthLog,
+  HealthGoal,
 } from '@mark2/shared';
 
 // --- Retry wrapper for EPIPE/fetch errors ---
@@ -625,7 +629,7 @@ export async function setStudentRate(studentId: string, ratePerLesson: number, c
   });
 }
 
-// --- Workouts ---
+// --- Workouts (legacy) ---
 
 export async function getWorkouts(): Promise<Workout[]> {
   const sb = getSupabase();
@@ -639,6 +643,154 @@ export async function createWorkout(input: Record<string, unknown>): Promise<Wor
   const { data, error } = await sb.from('workouts').insert(toDbFields(input)).select().single();
   if (error) throw error;
   return mapRow<Workout>(data);
+}
+
+// --- Workouts V2 ---
+
+export async function getWorkoutsV2(dateFrom?: string, dateTo?: string): Promise<WorkoutV2[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    let query = sb.from('workouts').select('*').order('date', { ascending: false });
+    if (dateFrom) query = query.gte('date', dateFrom);
+    if (dateTo) query = query.lte('date', dateTo);
+    const { data, error } = await query;
+    if (error) throw error;
+    return mapRows<WorkoutV2>(data);
+  });
+}
+
+export async function createWorkoutV2(input: Record<string, unknown>): Promise<WorkoutV2> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('workouts').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<WorkoutV2>(data);
+  });
+}
+
+export async function updateWorkoutV2(id: string, input: Record<string, unknown>): Promise<WorkoutV2> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('workouts').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<WorkoutV2>(data);
+  });
+}
+
+export async function deleteWorkoutV2(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('workouts').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+// --- Workout Exercises ---
+
+export async function getWorkoutExercises(workoutId: string): Promise<WorkoutExercise[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('workout_exercises').select('*')
+      .eq('workout_id', workoutId).order('order_index', { ascending: true });
+    if (error) throw error;
+    return mapRows<WorkoutExercise>(data);
+  });
+}
+
+export async function createWorkoutExercise(input: Record<string, unknown>): Promise<WorkoutExercise> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('workout_exercises').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<WorkoutExercise>(data);
+  });
+}
+
+export async function updateWorkoutExercise(id: string, input: Record<string, unknown>): Promise<WorkoutExercise> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('workout_exercises').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<WorkoutExercise>(data);
+  });
+}
+
+export async function deleteWorkoutExercise(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('workout_exercises').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+// --- Health Logs ---
+
+export async function getHealthLogs(type?: string, dateFrom?: string, dateTo?: string): Promise<HealthLog[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    let query = sb.from('health_logs').select('*').order('date', { ascending: false });
+    if (type) query = query.eq('type', type);
+    if (dateFrom) query = query.gte('date', dateFrom);
+    if (dateTo) query = query.lte('date', dateTo);
+    const { data, error } = await query;
+    if (error) throw error;
+    return mapRows<HealthLog>(data);
+  });
+}
+
+export async function createHealthLog(input: Record<string, unknown>): Promise<HealthLog> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('health_logs').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<HealthLog>(data);
+  });
+}
+
+export async function updateHealthLog(id: string, input: Record<string, unknown>): Promise<HealthLog> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('health_logs').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<HealthLog>(data);
+  });
+}
+
+export async function deleteHealthLog(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('health_logs').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+// --- Health Goals ---
+
+export async function getHealthGoals(): Promise<HealthGoal[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('health_goals').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return mapRows<HealthGoal>(data);
+  });
+}
+
+export async function createHealthGoal(input: Record<string, unknown>): Promise<HealthGoal> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('health_goals').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<HealthGoal>(data);
+  });
+}
+
+export async function updateHealthGoal(id: string, input: Record<string, unknown>): Promise<HealthGoal> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('health_goals').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<HealthGoal>(data);
+  });
 }
 
 // --- Daily Notes ---

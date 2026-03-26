@@ -261,6 +261,107 @@ export const createDailyNoteSchema = dailyNoteSchema.omit({
   source: true,
 });
 
+// --- Health v2 ---
+
+export const workoutTypeV2Schema = z.enum(['gym', 'running', 'cycling', 'swimming', 'calisthenics', 'stretching', 'other']);
+export const workoutMoodSchema = z.enum(['great', 'good', 'normal', 'tired', 'bad']);
+
+export const workoutV2Schema = z.object({
+  id: z.string().uuid(),
+  date: z.string(),
+  type: workoutTypeV2Schema,
+  title: z.string().nullable(),
+  durationMinutes: z.number().int().nullable(),
+  notes: z.string().nullable(),
+  mood: workoutMoodSchema.nullable(),
+  createdAt: z.coerce.date(),
+});
+
+export const createWorkoutV2Schema = workoutV2Schema.omit({
+  id: true,
+  createdAt: true,
+}).partial({
+  date: true,
+  title: true,
+  durationMinutes: true,
+  notes: true,
+  mood: true,
+});
+
+export const workoutExerciseSchema = z.object({
+  id: z.string().uuid(),
+  workoutId: z.string().uuid(),
+  name: z.string().min(1),
+  sets: z.number().int().nullable(),
+  reps: z.string().nullable(),
+  weightKg: z.number().nullable(),
+  durationMinutes: z.number().int().nullable(),
+  distanceKm: z.number().nullable(),
+  orderIndex: z.number().int(),
+  notes: z.string().nullable(),
+});
+
+export const createWorkoutExerciseSchema = workoutExerciseSchema.omit({
+  id: true,
+}).partial({
+  sets: true,
+  reps: true,
+  weightKg: true,
+  durationMinutes: true,
+  distanceKm: true,
+  orderIndex: true,
+  notes: true,
+});
+
+export const healthLogTypeSchema = z.enum(['weight', 'sleep', 'water', 'mood', 'measurement']);
+
+export const healthLogSchema = z.object({
+  id: z.string().uuid(),
+  date: z.string(),
+  type: healthLogTypeSchema,
+  value: z.number().nullable(),
+  data: z.record(z.unknown()).nullable(),
+  notes: z.string().nullable(),
+  createdAt: z.coerce.date(),
+});
+
+export const createHealthLogSchema = healthLogSchema.omit({
+  id: true,
+  createdAt: true,
+}).partial({
+  date: true,
+  value: true,
+  data: true,
+  notes: true,
+});
+
+export const healthGoalTypeSchema = z.enum(['weight', 'strength', 'cardio', 'habit', 'other']);
+export const healthGoalStatusSchema = z.enum(['active', 'completed', 'paused']);
+
+export const healthGoalSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string().min(1),
+  type: healthGoalTypeSchema.nullable(),
+  targetValue: z.number().nullable(),
+  currentValue: z.number().nullable(),
+  unit: z.string().nullable(),
+  deadline: z.string().nullable(),
+  status: healthGoalStatusSchema,
+  createdAt: z.coerce.date(),
+});
+
+export const createHealthGoalSchema = healthGoalSchema.omit({
+  id: true,
+  createdAt: true,
+}).partial({
+  type: true,
+  targetValue: true,
+  currentValue: true,
+  unit: true,
+  deadline: true,
+  status: true,
+});
+
 // --- Chat ---
 
 export const agentNameSchema = z.enum(['dev', 'teaching', 'study', 'health', 'finance', 'general']);

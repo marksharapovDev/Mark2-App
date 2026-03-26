@@ -145,6 +145,31 @@ interface DbAPI {
     list: () => Promise<import('@mark2/shared').Workout[]>;
     create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').Workout>;
   };
+  health: {
+    workouts: {
+      list: (dateFrom?: string, dateTo?: string) => Promise<import('@mark2/shared').WorkoutV2[]>;
+      create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').WorkoutV2>;
+      update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').WorkoutV2>;
+      delete: (id: string) => Promise<void>;
+    };
+    exercises: {
+      list: (workoutId: string) => Promise<import('@mark2/shared').WorkoutExercise[]>;
+      create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').WorkoutExercise>;
+      update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').WorkoutExercise>;
+      delete: (id: string) => Promise<void>;
+    };
+    logs: {
+      list: (type?: string, dateFrom?: string, dateTo?: string) => Promise<import('@mark2/shared').HealthLog[]>;
+      create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').HealthLog>;
+      update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').HealthLog>;
+      delete: (id: string) => Promise<void>;
+    };
+    goals: {
+      list: () => Promise<import('@mark2/shared').HealthGoal[]>;
+      create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').HealthGoal>;
+      update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').HealthGoal>;
+    };
+  };
   notes: {
     create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').DailyNote>;
   };

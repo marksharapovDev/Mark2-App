@@ -7,6 +7,7 @@ export type { Subject } from './types/subject.js';
 export type { AssignmentType, AssignmentStatus, StudyAssignment, ExamType, ExamStatus, StudyExam, SubjectType, SubjectStatus } from './types/study.js';
 export type { TransactionType, Transaction, IncomeCategory, ExpenseCategory, SavingsCategory, TaxCategory, TransactionCategory, SavingsGoal, StudentRate, FinanceSummary } from './types/finance.js';
 export type { WorkoutType, Exercise, Workout } from './types/workout.js';
+export type { WorkoutTypeV2, WorkoutMood, WorkoutV2, WorkoutExercise, HealthLogType, HealthLog, HealthGoalType, HealthGoalStatus, HealthGoal } from './types/health.js';
 export type { Recurrence, CalendarEvent } from './types/calendar.js';
 export type { NoteSource, DailyNote } from './types/note.js';
 export type { AttachedFileEntityType, AttachedFileCategory, AttachedFileType, AttachedFileStatus, AttachedFile } from './types/attached-file.js';
@@ -54,4 +55,17 @@ export {
   chatEngineSchema,
   chatRoleSchema,
   chatMessageSchema,
+  workoutTypeV2Schema,
+  workoutMoodSchema,
+  workoutV2Schema,
+  createWorkoutV2Schema,
+  workoutExerciseSchema,
+  createWorkoutExerciseSchema,
+  healthLogTypeSchema,
+  healthLogSchema,
+  createHealthLogSchema,
+  healthGoalTypeSchema,
+  healthGoalStatusSchema,
+  healthGoalSchema,
+  createHealthGoalSchema,
 } from './validation/schemas.js';
