@@ -1,6 +1,21 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Bell, Loader2, Repeat } from 'lucide-react';
+import { AlertTriangle, Bell, Loader2, Repeat } from 'lucide-react';
 import { useCalendar } from '../context/calendar-context';
+
+// --- Reminder type (from DB) ---
+
+interface CalendarReminder {
+  id: string;
+  title: string;
+  date: string;
+  time: string | null;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'pending' | 'done' | 'skipped' | 'deferred';
+  sphere: Sphere;
+  sourceType: string | null;
+  description: string | null;
+  isRecurring: boolean;
+}
 
 // --- Types ---
 
@@ -396,6 +411,7 @@ export function Calendar() {
   const [viewYear, setViewYear] = useState(() => new Date(selectedDate).getFullYear());
   const [viewMonth, setViewMonth] = useState(() => new Date(selectedDate).getMonth());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [reminders, setReminders] = useState<CalendarReminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
@@ -472,13 +488,28 @@ export function Calendar() {
     localStorage.setItem(ZOOM_LS_KEY, String(hourHeight));
   }, [hourHeight]);
 
-  // Load events from DB
+  // Load events + reminders from DB
   const reloadEvents = useCallback(async () => {
     try {
-      const dbEvents = await window.db.events.list('2026-01-01', '2026-12-31');
+      const [dbEvents, dbReminders] = await Promise.all([
+        window.db.events.list('2026-01-01', '2026-12-31'),
+        window.db.reminders.list({ dateFrom: '2026-01-01', dateTo: '2026-12-31' }),
+      ]);
       if (dbEvents.length > 0) {
         setEvents(dbEvents.map((e) => mapDbEventToLocal(e as unknown as Record<string, unknown>)));
       }
+      setReminders((dbReminders ?? []).map((r: Record<string, unknown>) => ({
+        id: String(r.id),
+        title: String(r.title),
+        date: String(r.date),
+        time: r.time ? String(r.time) : null,
+        priority: (r.priority as CalendarReminder['priority']) ?? 'medium',
+        status: (r.status as CalendarReminder['status']) ?? 'pending',
+        sphere: (r.sphere as Sphere) ?? 'personal',
+        sourceType: r.sourceType ? String(r.sourceType) : null,
+        description: r.description ? String(r.description) : null,
+        isRecurring: (r.isRecurring as boolean) ?? false,
+      })));
     } catch (err) {
       setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
     }
@@ -492,7 +523,7 @@ export function Calendar() {
   // Reload on data-changed from AI
   useEffect(() => {
     return window.dataEvents.onDataChanged((entities) => {
-      if (entities.includes('events') || entities.includes('tasks')) {
+      if (entities.includes('events') || entities.includes('tasks') || entities.includes('reminders')) {
         reloadEvents();
       }
     });
@@ -517,6 +548,17 @@ export function Calendar() {
   const getEventsForDate = useCallback((date: string) => {
     return expandedEvents.filter((e) => e.date === date);
   }, [expandedEvents]);
+
+  const getRemindersForDate = useCallback((date: string) => {
+    return reminders.filter((r) => r.date === date);
+  }, [reminders]);
+
+  const handleCompleteReminder = useCallback(async (id: string) => {
+    setReminders((prev) => prev.map((r) => r.id === id ? { ...r, status: 'done' as const } : r));
+    try {
+      await window.db.reminders.complete(id);
+    } catch { /* ignore */ }
+  }, []);
 
   const navigateMonth = useCallback((dir: -1 | 1) => {
     let m = viewMonth + dir;
@@ -852,6 +894,8 @@ export function Calendar() {
               selectedDate={selectedDate}
               onSelectDate={handleSelectDate}
               eventsForDate={getEventsForDate}
+              remindersForDate={getRemindersForDate}
+              onCompleteReminder={handleCompleteReminder}
               now={now}
               hourHeight={hourHeight}
               onEventClick={setSelectedEvent}
@@ -868,12 +912,16 @@ export function Calendar() {
               selectedDate={selectedDate}
               onSelectDate={(d) => { handleSelectDate(d); setView('day'); }}
               eventsForDate={getEventsForDate}
+              remindersForDate={getRemindersForDate}
+              onCompleteReminder={handleCompleteReminder}
             />
           )}
           {view === 'day' && (
             <DayView
               date={selectedDate}
               eventsForDate={getEventsForDate}
+              remindersForDate={getRemindersForDate}
+              onCompleteReminder={handleCompleteReminder}
               now={now}
               hourHeight={hourHeight}
               onEventClick={setSelectedEvent}
@@ -888,6 +936,8 @@ export function Calendar() {
             <ListView
               selectedDate={selectedDate}
               eventsForDate={getEventsForDate}
+              remindersForDate={getRemindersForDate}
+              onCompleteReminder={handleCompleteReminder}
               onEventClick={setSelectedEvent}
             />
           )}
@@ -899,6 +949,8 @@ export function Calendar() {
           viewYear={viewYear}
           viewMonth={viewMonth}
           eventsForDate={getEventsForDate}
+          remindersForDate={getRemindersForDate}
+          onCompleteReminder={handleCompleteReminder}
         />
       </div>
 
@@ -1067,6 +1119,8 @@ function WeekView({
   selectedDate,
   onSelectDate,
   eventsForDate,
+  remindersForDate,
+  onCompleteReminder,
   now,
   hourHeight,
   onEventClick,
@@ -1080,6 +1134,8 @@ function WeekView({
   selectedDate: string;
   onSelectDate: (d: string) => void;
   eventsForDate: (date: string) => CalendarEvent[];
+  remindersForDate: (date: string) => CalendarReminder[];
+  onCompleteReminder: (id: string) => void;
   now: Date;
   hourHeight: number;
   onEventClick: (ev: CalendarEvent) => void;
@@ -1125,7 +1181,9 @@ function WeekView({
 
   const allDayEvents = weekDates.map((d) => eventsForDate(d).filter((e) => e.allDay));
   const timedEvents = weekDates.map((d) => eventsForDate(d).filter((e) => !e.allDay));
-  const hasAllDay = allDayEvents.some((evs) => evs.length > 0);
+  const weekReminders = weekDates.map((d) => remindersForDate(d));
+  const allDayReminders = weekReminders.map((rs) => rs.filter((r) => !r.time));
+  const hasAllDay = allDayEvents.some((evs) => evs.length > 0) || allDayReminders.some((rs) => rs.length > 0);
 
   const nowHour = now.getHours();
   const nowMin = now.getMinutes();
@@ -1352,6 +1410,22 @@ function WeekView({
                       </div>
                     );
                   })}
+                  {allDayReminders[i]?.map((r) => (
+                    <div
+                      key={`rem-${r.id}`}
+                      className={`text-[10px] px-1.5 py-0.5 truncate flex items-center gap-1 cursor-pointer hover:bg-neutral-800/40 transition-all
+                        border-l-2 ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
+                      onClick={() => { if (r.status !== 'done') onCompleteReminder(r.id); }}
+                    >
+                      {r.status === 'done'
+                        ? <svg className="w-2.5 h-2.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                        : <svg className={`w-2.5 h-2.5 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                      }
+                      <Bell size={9} strokeWidth={1.5} className={r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color} />
+                      {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={9} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
+                      <span className={`truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>{r.title}</span>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -1652,11 +1726,15 @@ function MonthView({
   selectedDate,
   onSelectDate,
   eventsForDate,
+  remindersForDate,
+  onCompleteReminder,
 }: {
   grid: string[][];
   selectedDate: string;
   onSelectDate: (d: string) => void;
   eventsForDate: (date: string) => CalendarEvent[];
+  remindersForDate: (date: string) => CalendarReminder[];
+  onCompleteReminder: (id: string) => void;
 }) {
   return (
     <div className="p-4 overflow-auto h-full">
@@ -1676,8 +1754,11 @@ function MonthView({
           const isToday = date === TODAY;
           const d = new Date(date);
           const dayEvents = eventsForDate(date);
-          const shown = dayEvents.slice(0, 3);
-          const more = dayEvents.length - 3;
+          const dayReminders = remindersForDate(date);
+          const totalItems = dayEvents.length + dayReminders.length;
+          const shownEvents = dayEvents.slice(0, 3);
+          const shownReminders = dayReminders.slice(0, Math.max(0, 3 - shownEvents.length));
+          const more = totalItems - shownEvents.length - shownReminders.length;
 
           return (
             <button
@@ -1696,13 +1777,25 @@ function MonthView({
                 {d.getDate()}
               </div>
               <div className="space-y-0.5">
-                {shown.map((ev) => (
+                {shownEvents.map((ev) => (
                   <div
                     key={ev.id}
                     className={`text-[9px] px-1 py-0.5 rounded truncate border-l-2
                       ${SPHERE_META[ev.sphere].bg} ${SPHERE_META[ev.sphere].border} ${SPHERE_META[ev.sphere].color}`}
                   >
                     {ev.allDay ? ev.title : `${fmtTime(ev.startHour, ev.startMin)} ${ev.title}`}
+                  </div>
+                ))}
+                {shownReminders.map((r) => (
+                  <div
+                    key={`rem-${r.id}`}
+                    className={`text-[9px] px-1 py-0.5 truncate border-l-2 flex items-center gap-0.5
+                      ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}
+                    onClick={(e) => { e.stopPropagation(); if (r.status !== 'done') onCompleteReminder(r.id); }}
+                  >
+                    <Bell size={8} strokeWidth={1.5} className="shrink-0" />
+                    {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={8} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
+                    <span className="truncate">{r.title}</span>
                   </div>
                 ))}
                 {more > 0 && (
@@ -1724,6 +1817,8 @@ function MonthView({
 function DayView({
   date,
   eventsForDate,
+  remindersForDate,
+  onCompleteReminder,
   now,
   hourHeight,
   onEventClick,
@@ -1735,6 +1830,8 @@ function DayView({
 }: {
   date: string;
   eventsForDate: (date: string) => CalendarEvent[];
+  remindersForDate: (date: string) => CalendarReminder[];
+  onCompleteReminder: (id: string) => void;
   now: Date;
   hourHeight: number;
   onEventClick: (ev: CalendarEvent) => void;
@@ -1757,6 +1854,8 @@ function DayView({
   const eventDragRef = useRef<EventDragState | null>(null);
 
   const events = eventsForDate(date);
+  const dayReminders = remindersForDate(date);
+  const allDayReminders = dayReminders.filter((r) => !r.time);
   const allDay = events.filter((e) => e.allDay);
   const timed = events.filter((e) => !e.allDay);
   const isToday = date === TODAY;
@@ -1933,9 +2032,9 @@ function DayView({
         {isToday && <div className="text-[11px] text-blue-400">Сегодня</div>}
       </div>
 
-      {/* All-day */}
-      {allDay.length > 0 && (
-        <div className="shrink-0 px-6 py-2 border-b border-neutral-800 flex gap-2">
+      {/* All-day + reminders */}
+      {(allDay.length > 0 || allDayReminders.length > 0) && (
+        <div className="shrink-0 px-6 py-2 border-b border-neutral-800 flex flex-wrap gap-2">
           {allDay.map((ev) => (
             <div
               key={ev.id}
@@ -1944,6 +2043,22 @@ function DayView({
                 ${SPHERE_META[ev.sphere].bg} ${SPHERE_META[ev.sphere].border} ${SPHERE_META[ev.sphere].color}`}
             >
               {ev.title}
+            </div>
+          ))}
+          {allDayReminders.map((r) => (
+            <div
+              key={`rem-${r.id}`}
+              className={`text-xs px-2 py-1 border-l-2 flex items-center gap-1 cursor-pointer hover:bg-neutral-800/40 transition-all
+                ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
+              onClick={() => { if (r.status !== 'done') onCompleteReminder(r.id); }}
+            >
+              {r.status === 'done'
+                ? <svg className="w-3 h-3 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                : <svg className={`w-3 h-3 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+              }
+              <Bell size={10} strokeWidth={1.5} className={r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color} />
+              {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={10} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
+              <span className={`${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>{r.title}</span>
             </div>
           ))}
         </div>
@@ -2172,10 +2287,14 @@ function DayView({
 function ListView({
   selectedDate,
   eventsForDate,
+  remindersForDate,
+  onCompleteReminder,
   onEventClick,
 }: {
   selectedDate: string;
   eventsForDate: (date: string) => CalendarEvent[];
+  remindersForDate: (date: string) => CalendarReminder[];
+  onCompleteReminder: (id: string) => void;
   onEventClick: (ev: CalendarEvent) => void;
 }) {
   const start = getMonday(selectedDate);
@@ -2187,8 +2306,9 @@ function ListView({
       <div className="space-y-4">
         {days.map((date) => {
           const events = eventsForDate(date);
+          const dayReminders = remindersForDate(date);
           const isToday = date === TODAY;
-          if (events.length === 0) {
+          if (events.length === 0 && dayReminders.length === 0) {
             return (
               <div key={date}>
                 <div className={`text-xs font-semibold mb-1 ${isToday ? 'text-blue-400' : 'text-neutral-500'}`}>
@@ -2231,6 +2351,31 @@ function ListView({
                       </span>
                     </div>
                   ))}
+                {dayReminders.map((r) => (
+                  <div
+                    key={`rem-${r.id}`}
+                    className={`flex items-center gap-3 px-3 py-1.5 border-l-2 cursor-pointer hover:bg-neutral-800/40 transition-all
+                      ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
+                    onClick={() => { if (r.status !== 'done') onCompleteReminder(r.id); }}
+                  >
+                    <span className="text-xs text-neutral-500 w-24 shrink-0">
+                      {r.time ? r.time.slice(0, 5) : 'Весь день'}
+                    </span>
+                    <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                      {r.status === 'done'
+                        ? <svg className="w-3.5 h-3.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                        : <svg className={`w-3.5 h-3.5 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                      }
+                      <Bell size={12} strokeWidth={1.5} className={r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color} />
+                      {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={12} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
+                      <span className={`text-sm ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>{r.title}</span>
+                      {r.description && <span className="text-[11px] text-neutral-600 truncate ml-1">{r.description}</span>}
+                    </div>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${SPHERE_META[r.sphere].bg} ${SPHERE_META[r.sphere].color}`}>
+                      {SPHERE_META[r.sphere].label}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           );
@@ -2250,12 +2395,16 @@ function CalendarSidebar({
   viewYear,
   viewMonth,
   eventsForDate,
+  remindersForDate,
+  onCompleteReminder,
 }: {
   selectedDate: string;
   onSelectDate: (d: string) => void;
   viewYear: number;
   viewMonth: number;
   eventsForDate: (date: string) => CalendarEvent[];
+  remindersForDate: (date: string) => CalendarReminder[];
+  onCompleteReminder: (id: string) => void;
 }) {
   const miniGrid = getMonthGrid(viewYear, viewMonth);
   const dayEvents = eventsForDate(selectedDate).sort((a, b) =>
@@ -2341,6 +2490,41 @@ function CalendarSidebar({
             ))}
           </div>
         )}
+
+        {/* Reminders for selected day */}
+        {(() => {
+          const sidebarReminders = remindersForDate(selectedDate);
+          if (sidebarReminders.length === 0) return null;
+          return (
+            <div className="mt-2 pt-2 border-t border-neutral-800/50">
+              <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <Bell size={10} strokeWidth={1.5} /> Напоминания
+              </div>
+              <div className="space-y-0.5">
+                {sidebarReminders.map((r) => (
+                  <div
+                    key={`rem-${r.id}`}
+                    className={`flex items-center gap-1.5 py-0.5 border-l-2 pl-2 rounded-r cursor-pointer hover:bg-neutral-800/30 transition-all
+                      ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
+                    onClick={() => { if (r.status !== 'done') onCompleteReminder(r.id); }}
+                  >
+                    {r.status === 'done'
+                      ? <svg className="w-2.5 h-2.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                      : <svg className={`w-2.5 h-2.5 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                    }
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-[11px] truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>
+                        {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={9} strokeWidth={1.5} className="inline mr-0.5 text-amber-400" />}
+                        {r.title}
+                      </div>
+                      {r.time && <div className="text-[10px] text-neutral-600">{r.time.slice(0, 5)}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="mx-3 border-t border-neutral-800" />

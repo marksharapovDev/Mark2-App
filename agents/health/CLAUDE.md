@@ -241,4 +241,9 @@
 - `create_event` — событие в календарь: `{title, startAt, endAt, sphere: "health"}`
 - `save_file` — сохранить файл: `{path: "agents/health/context/...", content: "..."}`
 
+### Напоминания
+- `create_reminder` — создать напоминание: `{title, date, time?, priority?, sphere?, description?, isRecurring?, recurringPattern?}`
+- `complete_reminder` — завершить напоминание: `{reminderId}`
+- `defer_reminder` — перенести напоминание: `{reminderId, newDate}`
+
 ВАЖНО: после выполнения действия сообщи пользователю что сделано.

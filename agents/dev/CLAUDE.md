@@ -118,5 +118,10 @@
 3. При generate_task_prompt ИИ сам пишет подробный промпт по описанию задачи
 4. auto-resolve проекта по имени: достаточно указать projectName
 
+### Напоминания
+- `create_reminder` — создать напоминание: `{title, date, time?, priority?, sphere?, description?, isRecurring?, recurringPattern?}`
+- `complete_reminder` — завершить напоминание: `{reminderId}`
+- `defer_reminder` — перенести напоминание: `{reminderId, newDate}`
+
 ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
 После выполнения действия сообщи пользователю что сделано.

@@ -371,7 +371,7 @@ interface ActionResult {
 
 type ActionHandler = (params: Record<string, unknown>) => Promise<ActionResult>;
 
-const DESTRUCTIVE_ACTIONS = new Set(['delete_task', 'delete_event', 'delete_student', 'delete_learning_path_topic', 'delete_dev_task', 'delete_project', 'delete_assignment', 'delete_exam']);
+const DESTRUCTIVE_ACTIONS = new Set(['delete_task', 'delete_event', 'delete_student', 'delete_learning_path_topic', 'delete_dev_task', 'delete_project', 'delete_assignment', 'delete_exam', 'delete_reminder']);
 
 function isDestructive(action: string): boolean {
   return DESTRUCTIVE_ACTIONS.has(action);
@@ -1360,6 +1360,42 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     console.log(`[AI Tools] attach_file topic_id: ${params.topicId || 'none'}, entity: ${params.entityType}/${params.entityId}, category: ${params.category}`);
     const result = await db.createAttachedFile(params);
     return { success: true, message: `Файл прикреплён: ${params.filename}`, entity: 'files', data: result as unknown as Record<string, unknown> };
+  },
+
+  // Reminders
+  create_reminder: async (params) => {
+    const data: Record<string, unknown> = {
+      title: params.title,
+      date: params.date ?? new Date().toISOString().slice(0, 10),
+    };
+    if (params.time) data.time = params.time;
+    if (params.priority) data.priority = params.priority;
+    if (params.sphere) data.sphere = params.sphere;
+    if (params.description) data.description = params.description;
+    if (params.isRecurring != null) data.isRecurring = params.isRecurring;
+    if (params.recurringPattern) data.recurringPattern = params.recurringPattern;
+    if (params.recurringEndDate) data.recurringEndDate = params.recurringEndDate;
+    if (params.notes) data.notes = params.notes;
+    if (params.sourceType) data.sourceType = params.sourceType;
+    if (params.sourceId) data.sourceId = params.sourceId;
+    const result = await db.createReminder(data);
+    return { success: true, message: `Напоминание создано: ${params.title}`, entity: 'reminders', data: result as unknown as Record<string, unknown> };
+  },
+
+  complete_reminder: async (params) => {
+    const id = String(params.reminderId ?? params.id ?? '');
+    if (!id) return { success: false, message: 'reminderId обязателен', entity: '' };
+    await db.completeReminder(id);
+    return { success: true, message: 'Напоминание выполнено', entity: 'reminders' };
+  },
+
+  defer_reminder: async (params) => {
+    const id = String(params.reminderId ?? params.id ?? '');
+    const newDate = String(params.newDate ?? '');
+    if (!id) return { success: false, message: 'reminderId обязателен', entity: '' };
+    if (!newDate) return { success: false, message: 'newDate обязателен', entity: '' };
+    await db.updateReminder(id, { date: newDate, status: 'deferred' });
+    return { success: true, message: `Напоминание перенесено на ${newDate}`, entity: 'reminders' };
   },
 };
 

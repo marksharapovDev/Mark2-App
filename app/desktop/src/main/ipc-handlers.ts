@@ -18,6 +18,7 @@ import {
   setAgentContext,
 } from './hybrid-engine';
 import * as db from './db-service';
+import { getAggregatedTasks } from './task-aggregator';
 import type { Sphere } from '@mark2/shared';
 
 const VALID_AGENTS = new Set<string>(['dev', 'teaching', 'study', 'health', 'finance', 'general']);
@@ -539,6 +540,32 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('db:learning-path:reorder', async (_event, studentId: string, topicIds: string[]) => {
     return db.reorderLearningPathTopics(studentId, topicIds);
+  });
+
+  // Reminders
+  ipcMain.handle('db:reminders:list', async (_event, filters?: Record<string, unknown>) => {
+    return db.getReminders(filters as Parameters<typeof db.getReminders>[0]);
+  });
+
+  ipcMain.handle('db:reminders:create', async (_event, data: Record<string, unknown>) => {
+    return db.createReminder(data);
+  });
+
+  ipcMain.handle('db:reminders:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateReminder(id, data);
+  });
+
+  ipcMain.handle('db:reminders:delete', async (_event, id: string) => {
+    return db.deleteReminder(id);
+  });
+
+  ipcMain.handle('db:reminders:complete', async (_event, id: string) => {
+    return db.completeReminder(id);
+  });
+
+  // Aggregated Tasks
+  ipcMain.handle('tasks:aggregated:get', async (_event, dateStr: string) => {
+    return getAggregatedTasks(new Date(dateStr));
   });
 
   // === File operations ===

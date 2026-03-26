@@ -419,6 +419,23 @@ const dbApi = {
     reorder: (studentId: string, topicIds: string[]) =>
       ipcRenderer.invoke('db:learning-path:reorder', studentId, topicIds),
   },
+  reminders: {
+    list: (filters?: { dateFrom?: string; dateTo?: string; status?: string; sphere?: string }) =>
+      ipcRenderer.invoke('db:reminders:list', filters),
+    create: (data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:reminders:create', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('db:reminders:update', id, data),
+    delete: (id: string) =>
+      ipcRenderer.invoke('db:reminders:delete', id),
+    complete: (id: string) =>
+      ipcRenderer.invoke('db:reminders:complete', id),
+  },
+};
+
+const tasksApi = {
+  getAggregated: (date: string) =>
+    ipcRenderer.invoke('tasks:aggregated:get', date),
 };
 
 const studyApi = {
@@ -455,4 +472,5 @@ contextBridge.exposeInMainWorld('calendar', calendarApi);
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
 contextBridge.exposeInMainWorld('db', dbApi);
 contextBridge.exposeInMainWorld('study', studyApi);
+contextBridge.exposeInMainWorld('tasks', tasksApi);
 contextBridge.exposeInMainWorld('dataEvents', dataEvents);

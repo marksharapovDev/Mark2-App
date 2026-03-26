@@ -99,6 +99,11 @@
 - notes — краткое резюме урока
 - Система автоматически обновит статусы в плане обучения
 
+### Напоминания
+- `create_reminder` — создать напоминание: `{title, date, time?, priority?, sphere?, description?, isRecurring?, recurringPattern?}`
+- `complete_reminder` — завершить напоминание: `{reminderId}`
+- `defer_reminder` — перенести напоминание: `{reminderId, newDate}`
+
 ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
 После выполнения действия сообщи пользователю что сделано.
 

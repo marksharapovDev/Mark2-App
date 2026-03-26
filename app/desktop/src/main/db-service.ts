@@ -28,6 +28,7 @@ import type {
   MealPlan,
   Meal,
   DailyChecklist,
+  Reminder,
 } from '@mark2/shared';
 
 // --- Retry wrapper for EPIPE/fetch errors ---
@@ -1186,5 +1187,75 @@ export async function reorderLearningPathTopics(studentId: string, topicIds: str
         .eq('student_id', studentId);
       if (error) throw error;
     }
+  });
+}
+
+// --- Reminders ---
+
+export async function getReminders(filters?: {
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+  sphere?: string;
+}): Promise<Reminder[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    let query = sb.from('reminders').select('*').order('date', { ascending: true });
+    if (filters?.dateFrom) query = query.gte('date', filters.dateFrom);
+    if (filters?.dateTo) query = query.lte('date', filters.dateTo);
+    if (filters?.status) query = query.eq('status', filters.status);
+    if (filters?.sphere) query = query.eq('sphere', filters.sphere);
+    const { data, error } = await query;
+    if (error) throw error;
+    return mapRows<Reminder>(data);
+  });
+}
+
+export async function createReminder(input: Record<string, unknown>): Promise<Reminder> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('reminders').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<Reminder>(data);
+  });
+}
+
+export async function updateReminder(id: string, input: Record<string, unknown>): Promise<Reminder> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('reminders').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<Reminder>(data);
+  });
+}
+
+export async function deleteReminder(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('reminders').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+export async function completeReminder(id: string): Promise<Reminder> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('reminders').update({ status: 'done' }).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<Reminder>(data);
+  });
+}
+
+export async function getRecurringReminders(): Promise<Reminder[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb
+      .from('reminders')
+      .select('*')
+      .eq('is_recurring', true)
+      .neq('status', 'done')
+      .order('date', { ascending: true });
+    if (error) throw error;
+    return mapRows<Reminder>(data);
   });
 }

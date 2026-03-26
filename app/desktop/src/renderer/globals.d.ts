@@ -220,6 +220,27 @@ interface DbAPI {
     delete: (id: string) => Promise<void>;
     reorder: (studentId: string, topicIds: string[]) => Promise<void>;
   };
+  reminders: {
+    list: (filters?: { dateFrom?: string; dateTo?: string; status?: string; sphere?: string }) => Promise<import('@mark2/shared').Reminder[]>;
+    create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').Reminder>;
+    update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').Reminder>;
+    delete: (id: string) => Promise<void>;
+    complete: (id: string) => Promise<import('@mark2/shared').Reminder>;
+  };
+}
+
+interface TasksAPI {
+  getAggregated: (date: string) => Promise<Array<{
+    id: string;
+    title: string;
+    time: string | null;
+    sphere: string;
+    priority: string;
+    status: string;
+    sourceType: string;
+    sourceId: string | null;
+    isReminder: boolean;
+  }>>;
 }
 
 interface DataEventsAPI {
@@ -251,6 +272,7 @@ interface Window {
   claude: ClaudeAPI;
   calendar: CalendarAPI;
   db: DbAPI;
+  tasks: TasksAPI;
   study: StudyAPI;
   dataEvents: DataEventsAPI;
   electronAPI: ElectronAPI;

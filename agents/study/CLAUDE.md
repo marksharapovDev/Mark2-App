@@ -91,5 +91,10 @@
   **ВАЖНО**: НЕ изменяет оригинальную заметку! Сохраняет в summaries/ как `{noteFilename}_summary.md`
 - `attach_file` — прикрепить файл к сущности: `{entityType, entityId?, filename, filepath, fileType, category}`
 
+### Напоминания
+- `create_reminder` — создать напоминание: `{title, date, time?, priority?, sphere?, description?, isRecurring?, recurringPattern?}`
+- `complete_reminder` — завершить напоминание: `{reminderId}`
+- `defer_reminder` — перенести напоминание: `{reminderId, newDate}`
+
 ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
 После выполнения действия сообщи пользователю что сделано.
