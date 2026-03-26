@@ -4,6 +4,12 @@ import { useCalendar } from '../context/calendar-context';
 
 // --- Reminder type (from DB) ---
 
+interface ReminderSubtask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
 interface CalendarReminder {
   id: string;
   title: string;
@@ -15,6 +21,7 @@ interface CalendarReminder {
   sourceType: string | null;
   description: string | null;
   isRecurring: boolean;
+  subtasks: ReminderSubtask[];
 }
 
 // --- Types ---
@@ -415,6 +422,7 @@ export function Calendar() {
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [editReminder, setEditReminder] = useState<{ reminder: CalendarReminder; rect: DOMRect } | null>(null);
   const [createModal, setCreateModal] = useState<CreateModalData | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [recurringChoice, setRecurringChoice] = useState<{
@@ -512,6 +520,7 @@ export function Calendar() {
         sourceType: r.sourceType ? String(r.sourceType) : null,
         description: r.description ? String(r.description) : null,
         isRecurring: (r.isRecurring as boolean) ?? false,
+        subtasks: Array.isArray(r.subtasks) ? (r.subtasks as ReminderSubtask[]) : [],
       }));
       console.log(`[Calendar] Reminders loaded: ${mappedReminders.length} items, dates: [${mappedReminders.map((r) => r.date).join(', ')}]`);
       setReminders(mappedReminders);
@@ -573,6 +582,30 @@ export function Calendar() {
       }
     } catch { /* ignore */ }
   }, [reminders]);
+
+  const handleSaveReminder = useCallback(async (id: string, data: Record<string, unknown>) => {
+    const updated = { ...data };
+    setReminders((prev) => prev.map((r) => r.id === id ? {
+      ...r,
+      title: String(updated.title ?? r.title),
+      description: updated.description != null ? String(updated.description) : r.description,
+      date: String(updated.date ?? r.date),
+      time: updated.time != null ? String(updated.time) || null : r.time,
+      priority: (updated.priority as CalendarReminder['priority']) ?? r.priority,
+      sphere: (updated.sphere as Sphere) ?? r.sphere,
+      subtasks: Array.isArray(updated.subtasks) ? (updated.subtasks as ReminderSubtask[]) : r.subtasks,
+    } : r));
+    setEditReminder(null);
+    try {
+      await window.db.reminders.update(id, updated);
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleOpenEditReminder = useCallback((reminder: CalendarReminder, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setEditReminder({ reminder, rect });
+  }, []);
 
   const navigateMonth = useCallback((dir: -1 | 1) => {
     let m = viewMonth + dir;
@@ -910,6 +943,7 @@ export function Calendar() {
               eventsForDate={getEventsForDate}
               remindersForDate={getRemindersForDate}
               onCompleteReminder={handleToggleReminder}
+              onEditReminder={handleOpenEditReminder}
               now={now}
               hourHeight={hourHeight}
               onEventClick={setSelectedEvent}
@@ -928,6 +962,7 @@ export function Calendar() {
               eventsForDate={getEventsForDate}
               remindersForDate={getRemindersForDate}
               onCompleteReminder={handleToggleReminder}
+              onEditReminder={handleOpenEditReminder}
             />
           )}
           {view === 'day' && (
@@ -936,6 +971,7 @@ export function Calendar() {
               eventsForDate={getEventsForDate}
               remindersForDate={getRemindersForDate}
               onCompleteReminder={handleToggleReminder}
+              onEditReminder={handleOpenEditReminder}
               now={now}
               hourHeight={hourHeight}
               onEventClick={setSelectedEvent}
@@ -952,6 +988,7 @@ export function Calendar() {
               eventsForDate={getEventsForDate}
               remindersForDate={getRemindersForDate}
               onCompleteReminder={handleToggleReminder}
+              onEditReminder={handleOpenEditReminder}
               onEventClick={setSelectedEvent}
             />
           )}
@@ -965,6 +1002,7 @@ export function Calendar() {
           eventsForDate={getEventsForDate}
           remindersForDate={getRemindersForDate}
           onCompleteReminder={handleToggleReminder}
+          onEditReminder={handleOpenEditReminder}
         />
       </div>
 
@@ -1061,6 +1099,16 @@ export function Calendar() {
         />
       )}
 
+      {/* Reminder edit popup */}
+      {editReminder && (
+        <ReminderEditPopup
+          reminder={editReminder.reminder}
+          rect={editReminder.rect}
+          onSave={(data) => handleSaveReminder(editReminder.reminder.id, data)}
+          onClose={() => setEditReminder(null)}
+        />
+      )}
+
       {/* Recurring move choice */}
       {recurringChoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setRecurringChoice(null)}>
@@ -1135,6 +1183,7 @@ function WeekView({
   eventsForDate,
   remindersForDate,
   onCompleteReminder,
+  onEditReminder,
   now,
   hourHeight,
   onEventClick,
@@ -1150,6 +1199,7 @@ function WeekView({
   eventsForDate: (date: string) => CalendarEvent[];
   remindersForDate: (date: string) => CalendarReminder[];
   onCompleteReminder: (id: string) => void;
+  onEditReminder: (reminder: CalendarReminder, e: React.MouseEvent) => void;
   now: Date;
   hourHeight: number;
   onEventClick: (ev: CalendarEvent) => void;
@@ -1768,6 +1818,7 @@ function MonthView({
   eventsForDate,
   remindersForDate,
   onCompleteReminder,
+  onEditReminder,
 }: {
   grid: string[][];
   selectedDate: string;
@@ -1775,6 +1826,7 @@ function MonthView({
   eventsForDate: (date: string) => CalendarEvent[];
   remindersForDate: (date: string) => CalendarReminder[];
   onCompleteReminder: (id: string) => void;
+  onEditReminder: (reminder: CalendarReminder, e: React.MouseEvent) => void;
 }) {
   return (
     <div className="p-4 overflow-auto h-full">
@@ -1831,12 +1883,14 @@ function MonthView({
                     key={`rem-${r.id}`}
                     className={`text-[9px] px-1 py-0.5 truncate border-l-2 flex items-center gap-0.5 hover:bg-neutral-800/40 rounded-sm
                       ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}
-                    onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}
+                    onClick={(e) => { e.stopPropagation(); onEditReminder(r, e); }}
                   >
-                    {r.status === 'done'
-                      ? <svg className="w-2 h-2 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
-                      : <svg className={`w-2 h-2 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
-                    }
+                    <span className="shrink-0 cursor-pointer" onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}>
+                      {r.status === 'done'
+                        ? <svg className="w-2 h-2 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                        : <svg className={`w-2 h-2 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                      }
+                    </span>
                     {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={8} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
                     <span className="truncate">{r.title}</span>
                   </div>
@@ -1862,6 +1916,7 @@ function DayView({
   eventsForDate,
   remindersForDate,
   onCompleteReminder,
+  onEditReminder,
   now,
   hourHeight,
   onEventClick,
@@ -1875,6 +1930,7 @@ function DayView({
   eventsForDate: (date: string) => CalendarEvent[];
   remindersForDate: (date: string) => CalendarReminder[];
   onCompleteReminder: (id: string) => void;
+  onEditReminder: (reminder: CalendarReminder, e: React.MouseEvent) => void;
   now: Date;
   hourHeight: number;
   onEventClick: (ev: CalendarEvent) => void;
@@ -2360,12 +2416,14 @@ function ListView({
   eventsForDate,
   remindersForDate,
   onCompleteReminder,
+  onEditReminder,
   onEventClick,
 }: {
   selectedDate: string;
   eventsForDate: (date: string) => CalendarEvent[];
   remindersForDate: (date: string) => CalendarReminder[];
   onCompleteReminder: (id: string) => void;
+  onEditReminder: (reminder: CalendarReminder, e: React.MouseEvent) => void;
   onEventClick: (ev: CalendarEvent) => void;
 }) {
   const start = getMonday(selectedDate);
@@ -2468,6 +2526,7 @@ function CalendarSidebar({
   eventsForDate,
   remindersForDate,
   onCompleteReminder,
+  onEditReminder,
 }: {
   selectedDate: string;
   onSelectDate: (d: string) => void;
@@ -2476,6 +2535,7 @@ function CalendarSidebar({
   eventsForDate: (date: string) => CalendarEvent[];
   remindersForDate: (date: string) => CalendarReminder[];
   onCompleteReminder: (id: string) => void;
+  onEditReminder: (reminder: CalendarReminder, e: React.MouseEvent) => void;
 }) {
   const miniGrid = getMonthGrid(viewYear, viewMonth);
   const dayEvents = eventsForDate(selectedDate).sort((a, b) =>
@@ -3176,6 +3236,160 @@ function ContextMenuComponent({
         <Bell size={12} strokeWidth={1.5} />
         Новое напоминание
       </button>
+    </div>
+  );
+}
+
+// ============================================================
+// REMINDER EDIT POPUP
+// ============================================================
+
+const PRIORITY_OPTIONS: Array<{ value: CalendarReminder['priority']; label: string; color: string }> = [
+  { value: 'low', label: 'Низкий', color: 'text-neutral-400' },
+  { value: 'medium', label: 'Средний', color: 'text-blue-400' },
+  { value: 'high', label: 'Высокий', color: 'text-amber-400' },
+  { value: 'urgent', label: 'Срочный', color: 'text-red-400' },
+];
+
+const SPHERE_OPTIONS: Array<{ value: Sphere; label: string }> = [
+  { value: 'dev', label: 'Dev' },
+  { value: 'teaching', label: 'Teaching' },
+  { value: 'study', label: 'Study' },
+  { value: 'health', label: 'Health' },
+  { value: 'finance', label: 'Finance' },
+  { value: 'personal', label: 'Личное' },
+];
+
+function ReminderEditPopup({ reminder, rect, onSave, onClose }: {
+  reminder: CalendarReminder;
+  rect: DOMRect;
+  onSave: (data: Record<string, unknown>) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [title, setTitle] = useState(reminder.title);
+  const [description, setDescription] = useState(reminder.description ?? '');
+  const [date, setDate] = useState(reminder.date);
+  const [time, setTime] = useState(reminder.time?.slice(0, 5) ?? '');
+  const [priority, setPriority] = useState(reminder.priority);
+  const [sphere, setSphere] = useState(reminder.sphere);
+  const [subtasks, setSubtasks] = useState<ReminderSubtask[]>(reminder.subtasks ?? []);
+  const [newSubtask, setNewSubtask] = useState('');
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleEsc);
+    return () => { document.removeEventListener('mousedown', handleClick); document.removeEventListener('keydown', handleEsc); };
+  }, [onClose]);
+
+  const handleSubmit = () => {
+    if (!title.trim()) return;
+    onSave({
+      title: title.trim(),
+      description: description.trim() || null,
+      date,
+      time: time || null,
+      priority,
+      sphere,
+      subtasks,
+    });
+  };
+
+  const addSubtask = () => {
+    if (!newSubtask.trim()) return;
+    setSubtasks((prev) => [...prev, { id: crypto.randomUUID(), title: newSubtask.trim(), done: false }]);
+    setNewSubtask('');
+  };
+
+  const toggleSubtask = (id: string) => {
+    setSubtasks((prev) => prev.map((s) => s.id === id ? { ...s, done: !s.done } : s));
+  };
+
+  const deleteSubtask = (id: string) => {
+    setSubtasks((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const popupHeight = 440;
+  const spaceBelow = window.innerHeight - rect.bottom - 8;
+  const top = spaceBelow >= popupHeight ? rect.bottom + 4 : Math.max(8, rect.top - popupHeight - 4);
+  const left = Math.min(Math.max(8, rect.left - 100), window.innerWidth - 350);
+
+  const inputCls = 'w-full px-3 py-1.5 rounded bg-neutral-800 border border-neutral-700 text-sm text-neutral-200 focus:outline-none focus:border-blue-500';
+
+  return (
+    <div ref={ref} className="fixed z-50 animate-in fade-in duration-150" style={{ top, left, width: 340 }}>
+      <div className="bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl p-4 max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-medium text-neutral-200">Редактировать напоминание</span>
+          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-300 transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div className="space-y-2.5">
+          <input type="text" placeholder="Название" value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} autoFocus />
+          <textarea placeholder="Описание" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={`${inputCls} resize-none`} />
+
+          <div className="grid grid-cols-2 gap-2">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} />
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={inputCls} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <select value={priority} onChange={(e) => setPriority(e.target.value as CalendarReminder['priority'])} className={inputCls}>
+              {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+            <select value={sphere} onChange={(e) => setSphere(e.target.value as Sphere)} className={inputCls}>
+              {SPHERE_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </div>
+
+          {/* Subtasks */}
+          <div>
+            <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-1">Подзадачи</div>
+            <div className="space-y-1 mb-2">
+              {subtasks.map((s) => (
+                <div key={s.id} className="flex items-center gap-1.5 group">
+                  <button onClick={() => toggleSubtask(s.id)} className="shrink-0">
+                    {s.done
+                      ? <svg className="w-3.5 h-3.5 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                      : <svg className="w-3.5 h-3.5 text-neutral-500" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                    }
+                  </button>
+                  <span className={`text-xs flex-1 ${s.done ? 'text-neutral-600 line-through' : 'text-neutral-300'}`}>{s.title}</span>
+                  <button onClick={() => deleteSubtask(s.id)} className="shrink-0 text-neutral-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-1">
+              <input
+                type="text"
+                placeholder="+ Добавить подзадачу"
+                value={newSubtask}
+                onChange={(e) => setNewSubtask(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSubtask(); } }}
+                className="flex-1 px-2 py-1 rounded bg-neutral-800 border border-neutral-700/50 text-xs text-neutral-300 focus:outline-none focus:border-blue-500"
+              />
+              {newSubtask.trim() && (
+                <button onClick={addSubtask} className="px-2 py-1 text-xs text-blue-400 hover:text-blue-300 transition-colors">+</button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200 transition-colors">Отмена</button>
+          <button onClick={handleSubmit} disabled={!title.trim()} className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm text-white transition-colors">
+            Сохранить
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

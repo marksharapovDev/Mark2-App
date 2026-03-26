@@ -73,7 +73,7 @@
 - `add_workout` — тренировка: `{type: "gym"|"run"|"swim", exercises?, duration?}`
 - `save_file` — сохранить файл: `{path: "agents/general/context/materials/filename.md", content: "содержимое"}`
 - `attach_file` — прикрепить файл к сущности: `{entityType: "student"|"lesson"|"homework"|"subject"|"project"|"task", entityId?, filename, filepath, fileType: "docx"|"pdf"|"md"|"py"|"txt", category: "homework"|"lesson_plan"|"material"|"notes"|"test"|"solution"}`
-- `create_reminder` — создать напоминание: `{title, date, time?, priority?: "low"|"medium"|"high"|"urgent", sphere?: "teaching"|"dev"|"study"|"finance"|"health"|"personal", description?, isRecurring?, recurringPattern?: "daily"|"weekday"|"weekly"|"monthly"}`
+- `create_reminder` — создать напоминание: `{title, date, time?, priority?: "low"|"medium"|"high"|"urgent", sphere?: "teaching"|"dev"|"study"|"finance"|"health"|"personal", description?, subtasks?: ["подзадача1", "подзадача2"], isRecurring?, recurringPattern?: "daily"|"weekday"|"weekly"|"monthly"}`
 - `complete_reminder` — завершить напоминание: `{reminderId}`
 - `defer_reminder` — перенести напоминание: `{reminderId, newDate}`
 

@@ -1,4 +1,5 @@
 import * as db from './db-service';
+import crypto from 'crypto';
 import { mkdirSync, writeFileSync } from 'fs';
 import { resolve, dirname, basename, extname } from 'path';
 import os from 'os';
@@ -1378,6 +1379,13 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     if (params.notes) data.notes = params.notes;
     if (params.sourceType) data.sourceType = params.sourceType;
     if (params.sourceId) data.sourceId = params.sourceId;
+    if (Array.isArray(params.subtasks)) {
+      data.subtasks = (params.subtasks as Array<string | Record<string, unknown>>).map((s) => ({
+        id: crypto.randomUUID(),
+        title: typeof s === 'string' ? s : String((s as Record<string, unknown>).title ?? s),
+        done: false,
+      }));
+    }
     const result = await db.createReminder(data);
     return { success: true, message: `Напоминание создано: ${params.title}`, entity: 'reminders', data: result as unknown as Record<string, unknown> };
   },

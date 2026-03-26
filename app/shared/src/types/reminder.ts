@@ -8,6 +8,12 @@ export type ReminderSourceType = 'manual' | 'teaching_lesson' | 'dev_task' | 'st
 
 export type RecurringPattern = 'daily' | 'weekday' | 'weekly' | 'monthly';
 
+export interface ReminderSubtask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
 export interface Reminder {
   id: string;
   title: string;
@@ -23,5 +29,6 @@ export interface Reminder {
   recurringPattern: RecurringPattern | null;
   recurringEndDate: string | null;
   notes: string | null;
+  subtasks: ReminderSubtask[];
   createdAt: string;
 }

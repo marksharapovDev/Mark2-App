@@ -14,7 +14,7 @@ export type { AttachedFileEntityType, AttachedFileCategory, AttachedFileType, At
 export type { LessonStatus, Lesson } from './types/lesson.js';
 export type { LearningPathStatus, LearningPathTopic } from './types/learning-path.js';
 export type { AgentName, ChatEngine, ChatRole, ChatSession, ChatMessage } from './types/chat.js';
-export type { ReminderPriority, ReminderStatus, ReminderSphere, ReminderSourceType, RecurringPattern, Reminder } from './types/reminder.js';
+export type { ReminderPriority, ReminderStatus, ReminderSphere, ReminderSourceType, RecurringPattern, ReminderSubtask, Reminder } from './types/reminder.js';
 
 // Validation schemas
 export {
