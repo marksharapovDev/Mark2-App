@@ -1450,14 +1450,14 @@ function WeekView({
             <div className="grid grid-cols-[56px_repeat(7,1fr)] border-t border-neutral-800/50">
               <div className="text-[10px] text-neutral-600 py-1 text-right pr-2">весь день</div>
               {allDayEvents.map((evs, i) => (
-                <div key={i} className="border-l border-neutral-800/50 px-0.5 py-0.5">
+                <div key={i} className="border-l border-neutral-800/50 px-0.5 py-0.5 max-h-[60px] overflow-y-auto min-w-0">
                   {evs.map((ev) => {
                     const isTask = ev.type === 'task';
                     const isRem = ev.type === 'reminder';
                     return (
                       <div
                         key={ev.id}
-                        className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer hover:brightness-125 transition-all truncate flex items-center gap-1
+                        className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer hover:brightness-125 transition-all flex items-center gap-1 min-w-0 overflow-hidden whitespace-nowrap
                           ${isTask ? 'bg-neutral-950/60 border border-neutral-700/30' : isRem ? '' : SPHERE_META[ev.sphere].bg}
                           ${isTask ? '' : 'border-l-2'} ${SPHERE_META[ev.sphere].border}
                           ${ev.done ? 'opacity-50' : ''}`}
@@ -1472,16 +1472,16 @@ function WeekView({
                             ? <svg className="w-2.5 h-2.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
                             : <svg className={`w-2.5 h-2.5 shrink-0 ${SPHERE_META[ev.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
                         )}
-                        {isRem && <Bell size={10} strokeWidth={1.5} className="inline" />}
+                        {isRem && <Bell size={10} strokeWidth={1.5} className="shrink-0" />}
                         {isRecurringEvent(ev) && <Repeat size={9} strokeWidth={1.5} className="shrink-0 opacity-50" />}
-                        <span className={`${SPHERE_META[ev.sphere].color} ${ev.done ? 'line-through' : ''} ${ev.isException ? 'italic' : ''}`}>{ev.title}</span>
+                        <span className={`truncate ${SPHERE_META[ev.sphere].color} ${ev.done ? 'line-through' : ''} ${ev.isException ? 'italic' : ''}`}>{ev.title}</span>
                       </div>
                     );
                   })}
                   {allDayReminders[i]?.map((r) => (
                     <div
                       key={`rem-${r.id}`}
-                      className={`text-[10px] px-1.5 py-0.5 truncate flex items-center gap-1 cursor-pointer hover:bg-neutral-800/40 transition-all
+                      className={`text-[10px] px-1.5 py-0.5 flex items-center gap-1 cursor-pointer hover:bg-neutral-800/40 transition-all min-w-0 overflow-hidden whitespace-nowrap
                         border-l-2 ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
                     >
                       <span className="shrink-0" onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}>
@@ -1490,7 +1490,7 @@ function WeekView({
                           : <svg className={`w-2.5 h-2.5 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
                         }
                       </span>
-                      <Bell size={9} strokeWidth={1.5} className={r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color} />
+                      <Bell size={9} strokeWidth={1.5} className={`shrink-0 ${r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color}`} />
                       {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={9} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
                       <span className={`truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`} onClick={(e) => { e.stopPropagation(); onEditReminder(r, e); }}>{r.title}</span>
                     </div>
@@ -2139,12 +2139,12 @@ function DayView({
 
       {/* All-day + reminders */}
       {(allDay.length > 0 || allDayReminders.length > 0) && (
-        <div className="shrink-0 px-6 py-2 border-b border-neutral-800 flex flex-wrap gap-2">
+        <div className="shrink-0 px-6 py-2 border-b border-neutral-800 flex flex-wrap gap-2 max-h-[60px] overflow-y-auto">
           {allDay.map((ev) => (
             <div
               key={ev.id}
               onClick={() => onEventClick(ev)}
-              className={`text-xs px-2 py-1 rounded border-l-2 cursor-pointer hover:brightness-125 transition-all
+              className={`text-xs px-2 py-1 rounded border-l-2 cursor-pointer hover:brightness-125 transition-all truncate max-w-[200px]
                 ${SPHERE_META[ev.sphere].bg} ${SPHERE_META[ev.sphere].border} ${SPHERE_META[ev.sphere].color}`}
             >
               {ev.title}
@@ -2153,7 +2153,7 @@ function DayView({
           {allDayReminders.map((r) => (
             <div
               key={`rem-${r.id}`}
-              className={`text-xs px-2 py-1 border-l-2 flex items-center gap-1 cursor-pointer hover:bg-neutral-800/40 transition-all
+              className={`text-xs px-2 py-1 border-l-2 flex items-center gap-1 cursor-pointer hover:bg-neutral-800/40 transition-all max-w-[200px] overflow-hidden whitespace-nowrap
                 ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
             >
               <span className="shrink-0" onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}>
@@ -2162,9 +2162,9 @@ function DayView({
                   : <svg className={`w-3 h-3 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
                 }
               </span>
-              <Bell size={10} strokeWidth={1.5} className={r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color} />
+              <Bell size={10} strokeWidth={1.5} className={`shrink-0 ${r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color}`} />
               {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={10} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
-              <span className={`${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`} onClick={(e) => { e.stopPropagation(); onEditReminder(r, e); }}>{r.title}</span>
+              <span className={`truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`} onClick={(e) => { e.stopPropagation(); onEditReminder(r, e); }}>{r.title}</span>
             </div>
           ))}
         </div>
@@ -3005,7 +3005,6 @@ function CreateEventModal({
                     : 'text-neutral-500 hover:text-neutral-300'
                 }`}
               >
-                {t === 'reminder' && <Bell size={11} strokeWidth={1.5} className="inline mr-1" />}
                 {typeLabels[t]}
               </button>
             ))}
