@@ -1056,6 +1056,10 @@ export function Calendar() {
           onClose={() => setCreateModal(null)}
           onSave={addEvent}
           onUpdate={updateEvent}
+          onSaveReminder={async (data) => {
+            await window.db.reminders.create(data);
+            reloadEvents();
+          }}
         />
       )}
 
@@ -2883,11 +2887,13 @@ function CreateEventModal({
   onClose,
   onSave,
   onUpdate,
+  onSaveReminder,
 }: {
   data: CreateModalData;
   onClose: () => void;
   onSave: (event: CalendarEvent) => void;
   onUpdate: (event: CalendarEvent) => void;
+  onSaveReminder: (data: Record<string, unknown>) => Promise<void>;
 }) {
   const isEdit = !!data.editEvent;
   const [title, setTitle] = useState(data.editEvent?.title ?? '');
@@ -2902,6 +2908,7 @@ function CreateEventModal({
   const [eventType, setEventType] = useState<EventType>(data.editEvent?.type ?? data.defaultType ?? 'event');
   const [subtasks, setSubtasks] = useState<Subtask[]>(data.editEvent?.subtasks ?? []);
   const [newSubtask, setNewSubtask] = useState('');
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
   const [recurrence, setRecurrence] = useState<RecurrencePattern | 'none'>(
     data.editEvent?.recurrenceRule?.pattern ?? 'none',
   );
@@ -2912,8 +2919,37 @@ function CreateEventModal({
     data.editEvent?.recurrenceRule?.endDate ?? '',
   );
 
-  const handleSubmit = () => {
+  const isEventMode = eventType === 'event';
+  const isTaskMode = eventType === 'task';
+  const isReminderMode = eventType === 'reminder';
+
+  const handleSubmit = async () => {
     if (!title.trim()) return;
+
+    if (isTaskMode || isReminderMode) {
+      // Create as reminder in reminders table
+      const time = (!allDay && !isTaskMode) ? `${pad2(startHour)}:${pad2(startMin)}` : null;
+      const reminderData: Record<string, unknown> = {
+        title: title.trim(),
+        description: description.trim() || null,
+        date,
+        time,
+        priority,
+        sphere,
+        sourceType: 'manual',
+        subtasks: subtasks.map((s) => ({ id: crypto.randomUUID(), title: s.title, done: s.done })),
+      };
+      if (isReminderMode && recurrence !== 'none') {
+        reminderData.isRecurring = true;
+        reminderData.recurringPattern = recurrence === 'custom' ? 'daily' : recurrence;
+        if (recurrenceEnd) reminderData.recurringEndDate = recurrenceEnd;
+      }
+      await onSaveReminder(reminderData);
+      onClose();
+      return;
+    }
+
+    // Event mode — existing logic
     const isRec = recurrence !== 'none';
     const event: CalendarEvent = {
       id: data.editEvent?.id ?? `ev-${Date.now()}`,
@@ -2946,22 +2982,45 @@ function CreateEventModal({
     }
   };
 
+  const typeLabels: Record<EventType, string> = { event: 'Событие', task: 'Задача', reminder: 'Напоминание' };
+  const titlePlaceholder = isEventMode ? 'Название события' : isTaskMode ? 'Название задачи' : 'Текст напоминания';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
-        className="relative bg-neutral-900 border border-neutral-700 rounded-xl p-5 w-[420px] max-w-[90vw] shadow-2xl"
+        className="relative bg-neutral-900 border border-neutral-700 rounded-xl p-5 w-[420px] max-w-[90vw] shadow-2xl max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Type selector — TOP */}
+        {!isEdit && (
+          <div className="flex gap-1 mb-4 bg-neutral-800/50 rounded-lg p-1">
+            {(['event', 'task', 'reminder'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setEventType(t)}
+                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  eventType === t
+                    ? 'bg-neutral-700 text-white shadow-sm'
+                    : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+              >
+                {t === 'reminder' && <Bell size={11} strokeWidth={1.5} className="inline mr-1" />}
+                {typeLabels[t]}
+              </button>
+            ))}
+          </div>
+        )}
+
         <h3 className="text-lg font-bold text-neutral-100 mb-4">
-          {isEdit ? 'Редактировать событие' : 'Новое событие'}
+          {isEdit ? `Редактировать ${typeLabels[eventType].toLowerCase()}` : `${typeLabels[eventType]}`}
         </h3>
 
         <input
           autoFocus
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Название события"
+          placeholder={titlePlaceholder}
           className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-sm text-neutral-100 placeholder-neutral-600 mb-3 outline-none focus:border-blue-500/50"
           onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
         />
@@ -2974,6 +3033,7 @@ function CreateEventModal({
           className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-sm text-neutral-100 placeholder-neutral-600 mb-3 outline-none focus:border-blue-500/50 resize-none"
         />
 
+        {/* Sphere */}
         <div className="mb-3">
           <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Сфера</div>
           <div className="flex gap-1.5 flex-wrap">
@@ -2993,6 +3053,7 @@ function CreateEventModal({
           </div>
         </div>
 
+        {/* Date */}
         <div className="mb-3">
           <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Дата</div>
           <input
@@ -3003,69 +3064,18 @@ function CreateEventModal({
           />
         </div>
 
-        {/* Event type */}
-        <div className="mb-3">
-          <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Тип</div>
-          <div className="flex gap-1.5">
-            {([['event', 'Событие'], ['task', 'Задача'], ['reminder', 'Напоминание']] as const).map(([t, label]) => (
-              <button
-                key={t}
-                onClick={() => setEventType(t)}
-                className={`px-2.5 py-1 rounded-lg text-xs transition-colors border ${
-                  eventType === t
-                    ? 'bg-neutral-700 text-white border-neutral-600'
-                    : 'border-neutral-700 text-neutral-500 hover:text-neutral-300'
-                }`}
-              >
-                {t === 'reminder' && <><Bell size={11} strokeWidth={1.5} className="inline mr-0.5" /></>}{label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex gap-4 mb-3">
-          <label className="flex items-center gap-2 text-sm text-neutral-400 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={allDay}
-              onChange={(e) => setAllDay(e.target.checked)}
-              className="rounded border-neutral-600 bg-neutral-800"
-            />
-            Весь день
-          </label>
-        </div>
-
-        {/* Recurrence */}
-        <div className="mb-3">
-          <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Повторение</div>
-          <div className="flex gap-1.5 flex-wrap">
-            {([['none', 'Нет'], ['daily', 'Каждый день'], ['weekly', 'Каждую неделю'], ['biweekly', 'Раз в 2 нед'], ['custom', 'Свой']] as const).map(([val, label]) => (
-              <button
-                key={val}
-                onClick={() => setRecurrence(val)}
-                className={`px-2.5 py-1 rounded-lg text-xs transition-colors border ${
-                  recurrence === val
-                    ? 'bg-neutral-700 text-white border-neutral-600'
-                    : 'border-neutral-700 text-neutral-500 hover:text-neutral-300'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {recurrence === 'custom' && (
-            <div className="flex gap-1.5 mt-2">
-              {(['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const).map((label, idx) => (
+        {/* Priority — task & reminder only */}
+        {(isTaskMode || isReminderMode) && (
+          <div className="mb-3">
+            <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Приоритет</div>
+            <div className="flex gap-1.5">
+              {([['low', 'Низкий', 'text-neutral-400'], ['medium', 'Средний', 'text-blue-400'], ['high', 'Высокий', 'text-amber-400'], ['urgent', 'Срочный', 'text-red-400']] as const).map(([val, label, color]) => (
                 <button
-                  key={idx}
-                  onClick={() =>
-                    setRecurrenceDays((prev) =>
-                      prev.includes(idx) ? prev.filter((d) => d !== idx) : [...prev, idx].sort(),
-                    )
-                  }
-                  className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors border ${
-                    recurrenceDays.includes(idx)
-                      ? 'bg-blue-600/30 text-blue-300 border-blue-500/40'
+                  key={val}
+                  onClick={() => setPriority(val)}
+                  className={`px-2.5 py-1 rounded-lg text-xs transition-colors border ${
+                    priority === val
+                      ? `bg-neutral-700 ${color} border-neutral-600`
                       : 'border-neutral-700 text-neutral-500 hover:text-neutral-300'
                   }`}
                 >
@@ -3073,37 +3083,34 @@ function CreateEventModal({
                 </button>
               ))}
             </div>
-          )}
-          {recurrence !== 'none' && (
-            <div className="mt-2">
-              <div className="text-[10px] text-neutral-600 mb-1">До (необязательно)</div>
-              <input
-                type="date"
-                value={recurrenceEnd}
-                onChange={(e) => setRecurrenceEnd(e.target.value)}
-                className="px-2 py-1 bg-neutral-800 border border-neutral-700 rounded text-xs text-neutral-300 outline-none focus:border-blue-500/50"
-              />
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {!allDay && (
-          <div className="flex gap-3 mb-4">
+        {/* All day — event & reminder only */}
+        {(isEventMode || isReminderMode) && (
+          <div className="flex gap-4 mb-3">
+            <label className="flex items-center gap-2 text-sm text-neutral-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={allDay}
+                onChange={(e) => setAllDay(e.target.checked)}
+                className="rounded border-neutral-600 bg-neutral-800"
+              />
+              Весь день
+            </label>
+          </div>
+        )}
+
+        {/* Time selectors — event: start+end, reminder: start only */}
+        {!allDay && isEventMode && (
+          <div className="flex gap-3 mb-3">
             <div>
               <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1">Начало</div>
               <div className="flex gap-1">
-                <select
-                  value={startHour}
-                  onChange={(e) => setStartHour(Number(e.target.value))}
-                  className="px-2 py-1.5 bg-neutral-800 border border-neutral-700 rounded text-sm text-neutral-100 outline-none"
-                >
+                <select value={startHour} onChange={(e) => setStartHour(Number(e.target.value))} className="px-2 py-1.5 bg-neutral-800 border border-neutral-700 rounded text-sm text-neutral-100 outline-none">
                   {HOURS_24.map((h) => <option key={h} value={h}>{pad2(h)}</option>)}
                 </select>
-                <select
-                  value={startMin}
-                  onChange={(e) => setStartMin(Number(e.target.value))}
-                  className="px-2 py-1.5 bg-neutral-800 border border-neutral-700 rounded text-sm text-neutral-100 outline-none"
-                >
+                <select value={startMin} onChange={(e) => setStartMin(Number(e.target.value))} className="px-2 py-1.5 bg-neutral-800 border border-neutral-700 rounded text-sm text-neutral-100 outline-none">
                   {[0, 15, 30, 45].map((m) => <option key={m} value={m}>{pad2(m)}</option>)}
                 </select>
               </div>
@@ -3111,70 +3118,179 @@ function CreateEventModal({
             <div>
               <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1">Конец</div>
               <div className="flex gap-1">
-                <select
-                  value={endHour}
-                  onChange={(e) => setEndHour(Number(e.target.value))}
-                  className="px-2 py-1.5 bg-neutral-800 border border-neutral-700 rounded text-sm text-neutral-100 outline-none"
-                >
+                <select value={endHour} onChange={(e) => setEndHour(Number(e.target.value))} className="px-2 py-1.5 bg-neutral-800 border border-neutral-700 rounded text-sm text-neutral-100 outline-none">
                   {HOURS_24.map((h) => <option key={h} value={h}>{pad2(h)}</option>)}
                 </select>
-                <select
-                  value={endMin}
-                  onChange={(e) => setEndMin(Number(e.target.value))}
-                  className="px-2 py-1.5 bg-neutral-800 border border-neutral-700 rounded text-sm text-neutral-100 outline-none"
-                >
+                <select value={endMin} onChange={(e) => setEndMin(Number(e.target.value))} className="px-2 py-1.5 bg-neutral-800 border border-neutral-700 rounded text-sm text-neutral-100 outline-none">
                   {[0, 15, 30, 45].map((m) => <option key={m} value={m}>{pad2(m)}</option>)}
                 </select>
               </div>
             </div>
           </div>
         )}
+        {!allDay && isReminderMode && (
+          <div className="mb-3">
+            <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1">Время</div>
+            <div className="flex gap-1">
+              <select value={startHour} onChange={(e) => setStartHour(Number(e.target.value))} className="px-2 py-1.5 bg-neutral-800 border border-neutral-700 rounded text-sm text-neutral-100 outline-none">
+                {HOURS_24.map((h) => <option key={h} value={h}>{pad2(h)}</option>)}
+              </select>
+              <select value={startMin} onChange={(e) => setStartMin(Number(e.target.value))} className="px-2 py-1.5 bg-neutral-800 border border-neutral-700 rounded text-sm text-neutral-100 outline-none">
+                {[0, 15, 30, 45].map((m) => <option key={m} value={m}>{pad2(m)}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
 
-        {/* Subtasks */}
-        <div className="mb-4">
-          <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Подзадачи</div>
-          {subtasks.length > 0 && (
-            <div className="space-y-1 mb-2">
-              {subtasks.map((st, idx) => (
-                <div key={idx} className="flex items-center gap-2 group">
-                  <button
-                    onClick={() => setSubtasks((prev) => prev.map((s, i) => i === idx ? { ...s, done: !s.done } : s))}
-                    className={`shrink-0 ${st.done ? 'text-green-400' : 'text-neutral-500'}`}
-                  >
-                    {st.done ? (
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
-                    ) : (
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
-                    )}
-                  </button>
-                  <span className={`text-xs flex-1 ${st.done ? 'text-neutral-600 line-through' : 'text-neutral-300'}`}>{st.title}</span>
-                  <button
-                    onClick={() => setSubtasks((prev) => prev.filter((_, i) => i !== idx))}
-                    className="opacity-0 group-hover:opacity-100 text-neutral-600 hover:text-red-400 transition-all"
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
+        {/* Recurrence — event & reminder */}
+        {(isEventMode || isReminderMode) && (
+          <div className="mb-3">
+            <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Повторение</div>
+            <div className="flex gap-1.5 flex-wrap">
+              {([['none', 'Нет'], ['daily', 'Каждый день'], ['weekly', 'Каждую неделю'], ['biweekly', 'Раз в 2 нед'], ['custom', 'Свой']] as const).map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => setRecurrence(val)}
+                  className={`px-2.5 py-1 rounded-lg text-xs transition-colors border ${
+                    recurrence === val
+                      ? 'bg-neutral-700 text-white border-neutral-600'
+                      : 'border-neutral-700 text-neutral-500 hover:text-neutral-300'
+                  }`}
+                >
+                  {label}
+                </button>
               ))}
             </div>
-          )}
-          <div className="flex gap-2">
-            <input
-              value={newSubtask}
-              onChange={(e) => setNewSubtask(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && newSubtask.trim()) {
-                  setSubtasks((prev) => [...prev, { title: newSubtask.trim(), done: false }]);
-                  setNewSubtask('');
-                }
-              }}
-              placeholder="+ Добавить подзадачу"
-              className="flex-1 px-2 py-1 bg-neutral-800/50 border border-neutral-700/50 rounded text-xs text-neutral-300 placeholder-neutral-600 outline-none focus:border-neutral-600"
-            />
+            {recurrence === 'custom' && (
+              <div className="flex gap-1.5 mt-2">
+                {(['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const).map((label, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() =>
+                      setRecurrenceDays((prev) =>
+                        prev.includes(idx) ? prev.filter((d) => d !== idx) : [...prev, idx].sort(),
+                      )
+                    }
+                    className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors border ${
+                      recurrenceDays.includes(idx)
+                        ? 'bg-blue-600/30 text-blue-300 border-blue-500/40'
+                        : 'border-neutral-700 text-neutral-500 hover:text-neutral-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {recurrence !== 'none' && (
+              <div className="mt-2">
+                <div className="text-[10px] text-neutral-600 mb-1">До (необязательно)</div>
+                <input
+                  type="date"
+                  value={recurrenceEnd}
+                  onChange={(e) => setRecurrenceEnd(e.target.value)}
+                  className="px-2 py-1 bg-neutral-800 border border-neutral-700 rounded text-xs text-neutral-300 outline-none focus:border-blue-500/50"
+                />
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* Subtasks — task & reminder */}
+        {(isTaskMode || isReminderMode) && (
+          <div className="mb-4">
+            <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Подзадачи</div>
+            {subtasks.length > 0 && (
+              <div className="space-y-1 mb-2">
+                {subtasks.map((st, idx) => (
+                  <div key={idx} className="flex items-center gap-2 group">
+                    <button
+                      onClick={() => setSubtasks((prev) => prev.map((s, i) => i === idx ? { ...s, done: !s.done } : s))}
+                      className={`shrink-0 ${st.done ? 'text-green-400' : 'text-neutral-500'}`}
+                    >
+                      {st.done ? (
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                      )}
+                    </button>
+                    <span className={`text-xs flex-1 ${st.done ? 'text-neutral-600 line-through' : 'text-neutral-300'}`}>{st.title}</span>
+                    <button
+                      onClick={() => setSubtasks((prev) => prev.filter((_, i) => i !== idx))}
+                      className="opacity-0 group-hover:opacity-100 text-neutral-600 hover:text-red-400 transition-all"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                value={newSubtask}
+                onChange={(e) => setNewSubtask(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newSubtask.trim()) {
+                    setSubtasks((prev) => [...prev, { title: newSubtask.trim(), done: false }]);
+                    setNewSubtask('');
+                  }
+                }}
+                placeholder="+ Добавить подзадачу"
+                className="flex-1 px-2 py-1 bg-neutral-800/50 border border-neutral-700/50 rounded text-xs text-neutral-300 placeholder-neutral-600 outline-none focus:border-neutral-600"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Subtasks for events (legacy) */}
+        {isEventMode && (
+          <div className="mb-4">
+            <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Подзадачи</div>
+            {subtasks.length > 0 && (
+              <div className="space-y-1 mb-2">
+                {subtasks.map((st, idx) => (
+                  <div key={idx} className="flex items-center gap-2 group">
+                    <button
+                      onClick={() => setSubtasks((prev) => prev.map((s, i) => i === idx ? { ...s, done: !s.done } : s))}
+                      className={`shrink-0 ${st.done ? 'text-green-400' : 'text-neutral-500'}`}
+                    >
+                      {st.done ? (
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                      )}
+                    </button>
+                    <span className={`text-xs flex-1 ${st.done ? 'text-neutral-600 line-through' : 'text-neutral-300'}`}>{st.title}</span>
+                    <button
+                      onClick={() => setSubtasks((prev) => prev.filter((_, i) => i !== idx))}
+                      className="opacity-0 group-hover:opacity-100 text-neutral-600 hover:text-red-400 transition-all"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                value={newSubtask}
+                onChange={(e) => setNewSubtask(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newSubtask.trim()) {
+                    setSubtasks((prev) => [...prev, { title: newSubtask.trim(), done: false }]);
+                    setNewSubtask('');
+                  }
+                }}
+                placeholder="+ Добавить подзадачу"
+                className="flex-1 px-2 py-1 bg-neutral-800/50 border border-neutral-700/50 rounded text-xs text-neutral-300 placeholder-neutral-600 outline-none focus:border-neutral-600"
+              />
+            </div>
+          </div>
+        )}
 
         <div className="flex gap-2">
           <button
