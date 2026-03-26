@@ -197,11 +197,11 @@ export function Health() {
           <div className="flex-1 overflow-y-auto pb-4">
             {/* Today checklist */}
             <DailyChecklist
-              hasWorkout={!!todayWorkout}
-              hasWeight={!!todayWeight}
-              hasSleep={!!todaySleep}
-              waterOk={todayWater != null && (todayWater.value ?? 0) >= 2}
-              hasMeals={todayMeals.length > 0}
+              todayWorkout={todayWorkout ?? null}
+              todayWeight={todayWeight ?? null}
+              todaySleep={todaySleep ?? null}
+              todayWater={todayWater ?? null}
+              todayMeals={todayMeals}
               todayCalories={todayCalories}
               onAddWorkout={() => setMainView({ kind: 'add-workout' })}
               onGoNutrition={() => setMainView({ kind: 'nutrition' })}
@@ -400,63 +400,114 @@ function GoalProgress({ goal }: { goal: HealthGoal }) {
 
 // --- Daily Checklist ---
 
-function DailyChecklist({ hasWorkout, hasWeight, hasSleep, waterOk, hasMeals, todayCalories, onAddWorkout, onGoNutrition, onLogSaved }: {
-  hasWorkout: boolean; hasWeight: boolean; hasSleep: boolean; waterOk: boolean; hasMeals: boolean;
-  todayCalories: number; onAddWorkout: () => void; onGoNutrition: () => void; onLogSaved: () => void;
+function DailyChecklist({ todayWorkout, todayWeight, todaySleep, todayWater, todayMeals, todayCalories, onAddWorkout, onGoNutrition, onLogSaved }: {
+  todayWorkout: WorkoutV2 | null;
+  todayWeight: HealthLog | null;
+  todaySleep: HealthLog | null;
+  todayWater: HealthLog | null;
+  todayMeals: Meal[];
+  todayCalories: number;
+  onAddWorkout: () => void;
+  onGoNutrition: () => void;
+  onLogSaved: () => void;
 }) {
   const [inlineInput, setInlineInput] = useState<'weight' | 'sleep' | 'water' | null>(null);
   const [inlineValue, setInlineValue] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Derive check states from actual data
+  const hasWorkout = todayWorkout != null;
+  const hasWeight = todayWeight != null;
+  const hasSleep = todaySleep != null;
+  const waterOk = todayWater != null && (todayWater.value ?? 0) >= 2;
+  const hasBreakfast = todayMeals.some((m) => m.type === 'breakfast');
+  const hasLunch = todayMeals.some((m) => m.type === 'lunch');
+  const hasDinner = todayMeals.some((m) => m.type === 'dinner');
+  const mainMealsCount = [hasBreakfast, hasLunch, hasDinner].filter(Boolean).length;
+  const hasMeals = mainMealsCount === 3;
+
+  // Get existing log ID for updates
+  const existingLogId = useCallback((key: string): string | null => {
+    switch (key) {
+      case 'weight': return todayWeight?.id ?? null;
+      case 'sleep': return todaySleep?.id ?? null;
+      case 'water': return todayWater?.id ?? null;
+      default: return null;
+    }
+  }, [todayWeight, todaySleep, todayWater]);
+
+  // Get existing value for pre-filling
+  const existingValue = useCallback((key: string): string => {
+    switch (key) {
+      case 'weight': return todayWeight?.value != null ? String(todayWeight.value) : '';
+      case 'sleep': return todaySleep?.value != null ? String(todaySleep.value) : '';
+      case 'water': return todayWater?.value != null ? String(todayWater.value) : '';
+      default: return '';
+    }
+  }, [todayWeight, todaySleep, todayWater]);
+
   const handleSaveInline = useCallback(async () => {
     if (!inlineInput || !inlineValue.trim()) return;
     setSaving(true);
     try {
-      await window.db.health.logs.create({
-        type: inlineInput,
-        value: parseFloat(inlineValue),
-        date: todayStr(),
-      });
+      const logId = existingLogId(inlineInput);
+      if (logId) {
+        // Update existing log
+        await window.db.health.logs.update(logId, { value: parseFloat(inlineValue) });
+      } else {
+        // Create new log
+        await window.db.health.logs.create({
+          type: inlineInput,
+          value: parseFloat(inlineValue),
+          date: todayStr(),
+        });
+      }
       await window.db.health.checklist.refresh(todayStr());
       setInlineInput(null);
       setInlineValue('');
       onLogSaved();
     } catch (err) { console.error('Failed to log:', err); }
     finally { setSaving(false); }
-  }, [inlineInput, inlineValue, onLogSaved]);
+  }, [inlineInput, inlineValue, existingLogId, onLogSaved]);
 
-  // Checkbox click: open inline input (weight/sleep/water) or navigate (workout/meals)
-  const handleCheckboxClick = useCallback((key: string, done: boolean) => {
-    if (done) return;
+  // Open inline input with pre-filled value (for both new and edit)
+  const openInlineInput = useCallback((key: 'weight' | 'sleep' | 'water') => {
+    setInlineInput(key);
+    setInlineValue(existingValue(key));
+  }, [existingValue]);
+
+  const handleClick = useCallback((key: string) => {
     switch (key) {
       case 'workout': onAddWorkout(); break;
-      case 'weight': setInlineInput('weight'); setInlineValue(''); break;
-      case 'sleep': setInlineInput('sleep'); setInlineValue(''); break;
-      case 'water': setInlineInput('water'); setInlineValue(''); break;
-      case 'meals': onGoNutrition(); break;
-    }
-  }, [onAddWorkout, onGoNutrition]);
-
-  // Label click: always navigate to the corresponding section
-  const handleLabelClick = useCallback((key: string) => {
-    switch (key) {
-      case 'workout': onAddWorkout(); break;
-      case 'weight': // fall through — open inline input for quick entry
+      case 'weight':
       case 'sleep':
       case 'water':
-        setInlineInput(key as 'weight' | 'sleep' | 'water');
-        setInlineValue('');
+        openInlineInput(key as 'weight' | 'sleep' | 'water');
         break;
       case 'meals': onGoNutrition(); break;
     }
-  }, [onAddWorkout, onGoNutrition]);
+  }, [onAddWorkout, onGoNutrition, openInlineInput]);
+
+  // Display values for completed items
+  const displayValue = useCallback((key: string): string | null => {
+    switch (key) {
+      case 'workout': return todayWorkout?.title ?? WORKOUT_TYPE_META[todayWorkout?.type ?? 'other']?.label ?? null;
+      case 'weight': return todayWeight?.value != null ? `${todayWeight.value} кг` : null;
+      case 'sleep': return todaySleep?.value != null ? `${todaySleep.value} ч` : null;
+      case 'water': return todayWater?.value != null ? `${todayWater.value} л` : null;
+      case 'meals': return mainMealsCount > 0
+        ? (hasMeals ? `3/3 · ${todayCalories} ккал` : `${mainMealsCount}/3`)
+        : null;
+      default: return null;
+    }
+  }, [todayWorkout, todayWeight, todaySleep, todayWater, mainMealsCount, hasMeals, todayCalories]);
 
   const checks: { key: string; done: boolean; label: string; unit?: string }[] = [
     { key: 'workout', done: hasWorkout, label: 'Тренировка' },
-    { key: 'weight', done: hasWeight, label: 'Вес записан', unit: 'кг' },
-    { key: 'sleep', done: hasSleep, label: 'Сон записан', unit: 'ч' },
+    { key: 'weight', done: hasWeight, label: 'Вес', unit: 'кг' },
+    { key: 'sleep', done: hasSleep, label: 'Сон', unit: 'ч' },
     { key: 'water', done: waterOk, label: 'Вода 2л+', unit: 'л' },
-    { key: 'meals', done: hasMeals, label: 'Питание записано' },
+    { key: 'meals', done: hasMeals, label: 'Питание' },
   ];
   const doneCount = checks.filter((c) => c.done).length;
 
@@ -467,68 +518,60 @@ function DailyChecklist({ hasWorkout, hasWeight, hasSleep, waterOk, hasMeals, to
         <span className="text-[10px] text-neutral-600">{doneCount} из {checks.length}</span>
       </div>
       <div className="space-y-0.5">
-        {checks.map((c) => (
-          <div key={c.key}>
-            <div className="flex items-center gap-2 px-2 py-1 rounded text-xs hover:bg-neutral-800/50 transition-colors">
-              {/* Checkbox icon — clickable when not done */}
-              <button
-                onClick={() => handleCheckboxClick(c.key, c.done)}
-                className={`shrink-0 ${c.done ? 'cursor-default' : 'cursor-pointer'}`}
+        {checks.map((c) => {
+          const val = displayValue(c.key);
+          return (
+            <div key={c.key}>
+              <div
+                className="flex items-center gap-2 px-2 py-1 rounded text-xs hover:bg-neutral-800/50 transition-colors cursor-pointer"
+                onClick={() => handleClick(c.key)}
               >
                 {c.done
-                  ? <CheckSquare size={13} className="text-emerald-400" />
-                  : <Square size={13} className="text-neutral-600 hover:text-neutral-400 transition-colors" />
+                  ? <CheckSquare size={13} className="text-emerald-400 shrink-0" />
+                  : <Square size={13} className="text-neutral-600 shrink-0" />
                 }
-              </button>
-              {/* Label — always clickable */}
-              <button
-                onClick={() => handleLabelClick(c.key)}
-                className={`flex-1 text-left ${c.done ? 'text-neutral-400 line-through' : 'text-neutral-300 hover:text-white'} transition-colors`}
-              >
-                {c.label}
-              </button>
-            </div>
-            {/* Inline input for weight/sleep/water */}
-            {inlineInput === c.key && (
-              <div className="flex items-center gap-1.5 px-2 py-1 ml-5">
-                <input
-                  type="number"
-                  step="0.1"
-                  value={inlineValue}
-                  onChange={(e) => setInlineValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveInline();
-                    if (e.key === 'Escape') { setInlineInput(null); setInlineValue(''); }
-                  }}
-                  autoFocus
-                  disabled={saving}
-                  className="w-16 bg-neutral-800 rounded px-2 py-0.5 text-xs text-white outline-none"
-                  placeholder="0"
-                />
-                {c.unit && <span className="text-[10px] text-neutral-500">{c.unit}</span>}
-                <button
-                  onClick={handleSaveInline}
-                  disabled={saving || !inlineValue.trim()}
-                  className="text-emerald-400 hover:text-emerald-300 disabled:opacity-40"
-                >
-                  <Check size={12} />
-                </button>
-                <button
-                  onClick={() => { setInlineInput(null); setInlineValue(''); }}
-                  className="text-neutral-500 hover:text-neutral-300"
-                >
-                  <X size={12} />
-                </button>
+                <span className={c.done ? 'text-neutral-400' : 'text-neutral-300'}>{c.label}</span>
+                {c.done && val && (
+                  <span className="text-neutral-500 text-[10px] ml-auto shrink-0">{val}</span>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+              {/* Inline input for weight/sleep/water */}
+              {inlineInput === c.key && (
+                <div className="flex items-center gap-1.5 px-2 py-1 ml-5">
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={inlineValue}
+                    onChange={(e) => setInlineValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveInline();
+                      if (e.key === 'Escape') { setInlineInput(null); setInlineValue(''); }
+                    }}
+                    autoFocus
+                    disabled={saving}
+                    className="w-16 bg-neutral-800 rounded px-2 py-0.5 text-xs text-white outline-none"
+                    placeholder="0"
+                  />
+                  {c.unit && <span className="text-[10px] text-neutral-500">{c.unit}</span>}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleSaveInline(); }}
+                    disabled={saving || !inlineValue.trim()}
+                    className="text-emerald-400 hover:text-emerald-300 disabled:opacity-40"
+                  >
+                    <Check size={12} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setInlineInput(null); setInlineValue(''); }}
+                    className="text-neutral-500 hover:text-neutral-300"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-      {todayCalories > 0 && (
-        <div className="mt-1.5 px-2 text-[10px] text-neutral-500">
-          Калории: {todayCalories} ккал
-        </div>
-      )}
       <div className="mt-2 h-1 bg-neutral-800 rounded-full overflow-hidden mx-2">
         <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${(doneCount / checks.length) * 100}%` }} />
       </div>

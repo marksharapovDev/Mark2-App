@@ -1000,9 +1000,10 @@ export async function refreshDailyChecklist(date: string): Promise<DailyChecklis
     const waterLog = logs.find((l) => l.type === 'water');
     const waterGoal = waterLog != null && (Number(waterLog.value) >= 2);
 
-    // Check meals
-    const { data: mData } = await sb.from('meals').select('id').eq('date', date).limit(1);
-    const hasMeals = (mData?.length ?? 0) > 0;
+    // Check meals — all 3 main meals required (breakfast, lunch, dinner)
+    const { data: mData } = await sb.from('meals').select('type').eq('date', date);
+    const mealTypes = new Set((mData ?? []).map((m) => m.type));
+    const hasMeals = mealTypes.has('breakfast') && mealTypes.has('lunch') && mealTypes.has('dinner');
 
     const completed = [hasWorkout, hasWeight, hasSleep, waterGoal, hasMeals].filter(Boolean).length;
 
