@@ -315,27 +315,36 @@ export function CalendarPanel() {
     return expandRecurringForPanel(events, `${year}-01-01`, `${year}-12-31`);
   }, [events]);
 
+  const isSelectedToday = selectedDate === TODAY;
+
   const selectedDayEvents = useMemo(() => eventsForDateFn(selectedDate, expandedEvents).sort((a, b) =>
     (a.allDay ? -1 : b.allDay ? 1 : (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin))
   ), [selectedDate, expandedEvents]);
 
-  // Upcoming: future events (exclude today), max 5
+  const todayEvents = useMemo(() => isSelectedToday ? selectedDayEvents : eventsForDateFn(TODAY, expandedEvents).sort((a, b) =>
+    (a.allDay ? -1 : b.allDay ? 1 : (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin))
+  ), [isSelectedToday, selectedDayEvents, expandedEvents]);
+
+  // Upcoming: only when today is selected; exclude today AND selectedDate
   const upcomingItems = useMemo(() => {
+    if (!isSelectedToday) return [];
     const tomorrow = dateToStr(addDays(new Date(TODAY), 1));
+    const excludeDates = new Set([TODAY, selectedDate]);
     const futureEvents = expandedEvents
-      .filter((e) => e.date >= tomorrow)
+      .filter((e) => e.date >= tomorrow && !excludeDates.has(e.date))
       .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin))
       .slice(0, 5);
     const futureReminders = reminders
-      .filter((r) => r.date >= tomorrow && r.status !== 'done')
+      .filter((r) => r.date >= tomorrow && !excludeDates.has(r.date) && r.status !== 'done')
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 5);
     const combined = [
       ...futureEvents.map((e) => ({ key: `e-${e.id}`, date: e.date, time: e.allDay ? 'Весь день' : fmtTime(e.startHour, e.startMin), title: e.title, sphere: e.sphere, isReminder: false as const, item: e })),
       ...futureReminders.map((r) => ({ key: `r-${r.id}`, date: r.date, time: r.time?.slice(0, 5) ?? 'Весь день', title: r.title, sphere: r.sphere, isReminder: true as const, item: r })),
     ].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
+    console.log(`[CalendarPanel] Selected: ${selectedDate}, Today: ${TODAY}, Events today: ${todayEvents.length}, Upcoming: ${combined.length}`);
     return combined;
-  }, [expandedEvents, reminders]);
+  }, [isSelectedToday, selectedDate, expandedEvents, reminders, todayEvents.length]);
 
   const navigateMonth = useCallback((dir: -1 | 1) => {
     let m = viewMonth + dir;
@@ -619,85 +628,123 @@ export function CalendarPanel() {
 
         <div className="mx-3 border-t border-neutral-800" />
 
-        {/* Selected day's events + reminders */}
-        <div className="p-3">
-          <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-            {selectedDate === TODAY ? 'Сегодня' : fmtDateShort(selectedDate)}
-          </div>
-          {selectedDayEvents.length === 0 && remindersForDate(selectedDate).length === 0 ? (
-            <div className="text-[11px] text-neutral-700">Нет событий</div>
-          ) : (
-            <div className="space-y-1">
-              {selectedDayEvents.map((ev) => (
-                <div key={ev.id} onClick={() => openEventDetail(ev)} className={`flex gap-2 py-1 border-l-2 pl-2 rounded-r cursor-pointer hover:bg-neutral-800/30 transition-colors ${SPHERE_META[ev.sphere].border}`}>
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-[11px] truncate ${SPHERE_META[ev.sphere].color}`}>{ev.title}</div>
-                    <div className="text-[10px] text-neutral-600">
-                      {ev.allDay ? 'Весь день' : `${fmtTime(ev.startHour, ev.startMin)} – ${fmtTime(ev.endHour, ev.endMin)}`}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {remindersForDate(selectedDate).map((r) => (
-                <div
-                  key={`rem-${r.id}`}
-                  className={`flex items-center gap-1.5 py-1 border-l-2 pl-2 rounded-r cursor-pointer hover:bg-neutral-800/30 transition-all
-                    ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
-                >
-                  <span className="shrink-0" onClick={(e) => { e.stopPropagation(); handleToggleReminder(r.id); }}>
-                    {r.status === 'done'
-                      ? <svg className="w-2.5 h-2.5 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
-                      : <svg className={`w-2.5 h-2.5 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
-                    }
-                  </span>
-                  <div className="flex-1 min-w-0" onClick={() => openReminderDetail(r)}>
-                    <div className={`text-[11px] truncate flex items-center gap-0.5 ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>
-                      <Bell size={10} strokeWidth={1.5} className="shrink-0" />
-                      {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={9} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
-                      {r.title}
-                    </div>
-                    <div className="text-[10px] text-neutral-600">
-                      {r.time ? r.time.slice(0, 5) : 'Весь день'}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Section 1: Selected day (or today if same) */}
+        <DaySection
+          label={isSelectedToday ? 'Сегодня' : fmtDateShort(selectedDate)}
+          events={selectedDayEvents}
+          reminders={remindersForDate(selectedDate)}
+          onEventClick={openEventDetail}
+          onReminderClick={openReminderDetail}
+          onToggleReminder={handleToggleReminder}
+        />
 
-        <div className="mx-3 border-t border-neutral-800" />
+        {/* Section 2: Today (only when a different day is selected) */}
+        {!isSelectedToday && (
+          <>
+            <div className="mx-3 border-t border-neutral-800" />
+            <DaySection
+              label="Сегодня"
+              events={todayEvents}
+              reminders={remindersForDate(TODAY)}
+              onEventClick={openEventDetail}
+              onReminderClick={openReminderDetail}
+              onToggleReminder={handleToggleReminder}
+            />
+          </>
+        )}
 
-        {/* Upcoming (future days only) */}
-        <div className="p-3">
-          <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-            Ближайшие
-          </div>
-          {upcomingItems.length === 0 ? (
-            <div className="text-[11px] text-neutral-700">Нет событий</div>
-          ) : (
-            <div className="space-y-1">
-              {upcomingItems.map((item) => (
-                <div
-                  key={item.key}
-                  onClick={() => item.isReminder ? openReminderDetail(item.item as PanelReminder) : openEventDetail(item.item as CalendarEvent)}
-                  className={`flex gap-2 py-1 border-l-2 pl-2 rounded-r cursor-pointer hover:bg-neutral-800/30 transition-colors ${SPHERE_META[item.sphere].border}`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-[11px] truncate flex items-center gap-0.5 ${SPHERE_META[item.sphere].color}`}>
-                      {item.isReminder && <Bell size={10} strokeWidth={1.5} className="shrink-0" />}
-                      {item.title}
+        {/* Section 3: Upcoming (only when today is selected) */}
+        {isSelectedToday && (
+          <>
+            <div className="mx-3 border-t border-neutral-800" />
+            <div className="p-3">
+              <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                Ближайшие
+              </div>
+              {upcomingItems.length === 0 ? (
+                <div className="text-[11px] text-neutral-700">Нет событий</div>
+              ) : (
+                <div className="space-y-1">
+                  {upcomingItems.map((item) => (
+                    <div
+                      key={item.key}
+                      onClick={() => item.isReminder ? openReminderDetail(item.item as PanelReminder) : openEventDetail(item.item as CalendarEvent)}
+                      className={`flex gap-2 py-1 border-l-2 pl-2 rounded-r cursor-pointer hover:bg-neutral-800/30 transition-colors ${SPHERE_META[item.sphere].border}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-[11px] truncate flex items-center gap-0.5 ${SPHERE_META[item.sphere].color}`}>
+                          {item.isReminder && <Bell size={10} strokeWidth={1.5} className="shrink-0" />}
+                          {item.title}
+                        </div>
+                        <div className="text-[10px] text-neutral-600">
+                          {fmtDateShort(item.date)} &middot; {item.time}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-[10px] text-neutral-600">
-                      {fmtDateShort(item.date)} &middot; {item.time}
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+// --- Reusable day section ---
+
+function DaySection({ label, events, reminders, onEventClick, onReminderClick, onToggleReminder }: {
+  label: string;
+  events: CalendarEvent[];
+  reminders: PanelReminder[];
+  onEventClick: (ev: CalendarEvent) => void;
+  onReminderClick: (r: PanelReminder) => void;
+  onToggleReminder: (id: string) => void;
+}) {
+  return (
+    <div className="p-3">
+      <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">{label}</div>
+      {events.length === 0 && reminders.length === 0 ? (
+        <div className="text-[11px] text-neutral-700">Нет событий</div>
+      ) : (
+        <div className="space-y-1">
+          {events.map((ev) => (
+            <div key={ev.id} onClick={() => onEventClick(ev)} className={`flex gap-2 py-1 border-l-2 pl-2 rounded-r cursor-pointer hover:bg-neutral-800/30 transition-colors ${SPHERE_META[ev.sphere].border}`}>
+              <div className="flex-1 min-w-0">
+                <div className={`text-[11px] truncate ${SPHERE_META[ev.sphere].color}`}>{ev.title}</div>
+                <div className="text-[10px] text-neutral-600">
+                  {ev.allDay ? 'Весь день' : `${fmtTime(ev.startHour, ev.startMin)} – ${fmtTime(ev.endHour, ev.endMin)}`}
+                </div>
+              </div>
+            </div>
+          ))}
+          {reminders.map((r) => (
+            <div
+              key={`rem-${r.id}`}
+              className={`flex items-center gap-1.5 py-1 border-l-2 pl-2 rounded-r cursor-pointer hover:bg-neutral-800/30 transition-all
+                ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
+            >
+              <span className="shrink-0" onClick={(e) => { e.stopPropagation(); onToggleReminder(r.id); }}>
+                {r.status === 'done'
+                  ? <svg className="w-2.5 h-2.5 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                  : <svg className={`w-2.5 h-2.5 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                }
+              </span>
+              <div className="flex-1 min-w-0" onClick={() => onReminderClick(r)}>
+                <div className={`text-[11px] truncate flex items-center gap-0.5 ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>
+                  <Bell size={10} strokeWidth={1.5} className="shrink-0" />
+                  {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={9} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
+                  {r.title}
+                </div>
+                <div className="text-[10px] text-neutral-600">
+                  {r.time ? r.time.slice(0, 5) : 'Весь день'}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
