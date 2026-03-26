@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
-import { SidebarToggle } from '../components/layout/SidebarToggle';
-import { useCollapsibleSidebar } from '../hooks/use-collapsible-sidebar';
+import { useSidebar } from '../context/sidebar-context';
 import type { TaskStatus, LearningPathTopic, LearningPathStatus, StudentRate, Transaction } from '@mark2/shared';
 import { CheckCircle2, RefreshCw, Clock, XCircle, FileText, FileType, FileCode, PenLine, ClipboardList, BarChart3, Loader2, Banknote } from 'lucide-react';
 
@@ -459,7 +458,8 @@ export function Teaching() {
     if (saved) { const n = parseInt(saved, 10); if (n >= 200 && n <= 400) return n; }
     return Math.min(400, Math.max(200, Math.round(window.innerWidth * 0.2)));
   });
-  const leftSidebar = useCollapsibleSidebar('teaching', sidebarWidth);
+  const { leftCollapsed, setLeftKey } = useSidebar();
+  useEffect(() => { setLeftKey('teaching'); }, [setLeftKey]);
   const [taskChecked, setTaskChecked] = useState<Record<string, boolean>>({});
   const [newStudent, setNewStudent] = useState({ name: '', subject: '', level: 'beginner' as StudentLevel, days: '', time: '' });
   const isDraggingSidebar = useRef(false);
@@ -669,7 +669,7 @@ export function Teaching() {
         {/* === SIDEBAR === */}
         <aside
           className="shrink-0 border-r border-neutral-800 flex flex-col bg-neutral-950/50 overflow-hidden transition-[width] duration-200 ease-in-out"
-          style={{ width: leftSidebar.width }}
+          style={{ width: leftCollapsed ? 0 : sidebarWidth }}
         >
           {/* Tabs */}
           <div className="flex border-b border-neutral-800">
@@ -1068,9 +1068,7 @@ export function Teaching() {
           )}
         </aside>
 
-        <SidebarToggle collapsed={leftSidebar.collapsed} onToggle={leftSidebar.toggle} side="left" />
-
-        {!leftSidebar.collapsed && (
+        {!leftCollapsed && (
           <div
             onMouseDown={handleSidebarDragStart}
             className="w-1 shrink-0 cursor-col-resize hover:bg-blue-500/30 transition-colors"

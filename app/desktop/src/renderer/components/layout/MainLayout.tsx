@@ -1,9 +1,9 @@
 import { useState, useCallback, useRef, type ReactNode } from 'react';
 import { Sidebar, type SidebarItem } from './Sidebar';
-import { SidebarToggle } from './SidebarToggle';
 import { ChatPanel } from './ChatPanel';
 import { CalendarPanel } from './CalendarPanel';
 import { useCalendar } from '../../context/calendar-context';
+import { useSidebar } from '../../context/sidebar-context';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
 
@@ -23,7 +23,6 @@ interface MainLayoutProps {
 
 const LS_WIDTH_KEY = 'mark2-chat-width';
 const LS_CAL_HEIGHT_KEY = 'mark2-calendar-chat-ratio';
-const LS_CHAT_COLLAPSED_KEY = 'mark2-chat-collapsed';
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 600;
 const MIN_PANEL_HEIGHT = 150;
@@ -49,20 +48,12 @@ function getInitialCalendarHeight(): number {
 
 export function MainLayout({ agent, children, sidebar, showChat = true, noPadding = false, defaultChatWidthPct = 30 }: MainLayoutProps) {
   const { calendarOpen } = useCalendar();
+  const { chatCollapsed, toggleChat } = useSidebar();
   const [width, setWidth] = useState(() => getInitialWidth(defaultChatWidthPct));
   const [calendarHeight, setCalendarHeight] = useState(getInitialCalendarHeight);
-  const [chatCollapsed, setChatCollapsed] = useState(() => localStorage.getItem(LS_CHAT_COLLAPSED_KEY) === '1');
   const isHDragging = useRef(false);
   const isVDragging = useRef(false);
   const contentColRef = useRef<HTMLDivElement>(null);
-
-  const toggleChat = useCallback(() => {
-    setChatCollapsed((prev) => {
-      const next = !prev;
-      localStorage.setItem(LS_CHAT_COLLAPSED_KEY, next ? '1' : '0');
-      return next;
-    });
-  }, []);
 
   // Horizontal drag (panel width)
   const handleHDragDown = useCallback(() => {
@@ -98,7 +89,6 @@ export function MainLayout({ agent, children, sidebar, showChat = true, noPaddin
       const rect = contentColRef.current.getBoundingClientRect();
       const totalHeight = rect.height;
       const calH = e.clientY - rect.top;
-      // 4px for the drag handle itself
       const chatH = totalHeight - calH - 4;
       const clamped = Math.min(totalHeight - MIN_PANEL_HEIGHT - 4, Math.max(MIN_PANEL_HEIGHT, calH));
       if (chatH >= MIN_PANEL_HEIGHT || calH <= clamped) {
@@ -133,39 +123,34 @@ export function MainLayout({ agent, children, sidebar, showChat = true, noPaddin
       </main>
 
       {showChat && (
-        <>
-          <SidebarToggle collapsed={chatCollapsed} onToggle={toggleChat} side="right" />
+        <div
+          className="shrink-0 flex overflow-hidden transition-[width] duration-200 ease-in-out"
+          style={{ width: chatCollapsed ? 0 : width }}
+        >
+          {!chatCollapsed && (
+            <>
+              {/* Horizontal drag handle */}
+              <div className="w-1 cursor-col-resize hover:bg-blue-500/30 transition-colors shrink-0 border-l border-neutral-800" onMouseDown={handleHDragDown} />
 
-          <div
-            className="shrink-0 border-l border-neutral-800 flex bg-neutral-950/50 overflow-hidden transition-[width] duration-200 ease-in-out"
-            style={{ width: chatCollapsed ? 0 : width }}
-          >
-            {!chatCollapsed && (
-              <>
-                {/* Horizontal drag handle */}
-                <div onMouseDown={handleHDragDown} className="w-1 cursor-col-resize hover:bg-blue-500/30 transition-colors shrink-0" />
+              {/* Content column: calendar (optional) + chat */}
+              <div ref={contentColRef} className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-neutral-950/50">
+                {calendarOpen && (
+                  <>
+                    <div className="shrink-0 overflow-hidden" style={{ height: calendarHeight }}>
+                      <CalendarPanel />
+                    </div>
+                    <div
+                      onMouseDown={handleVDragDown}
+                      className="h-1 shrink-0 cursor-row-resize hover:bg-blue-500/30 bg-neutral-800/50 transition-colors"
+                    />
+                  </>
+                )}
 
-                {/* Content column: calendar (optional) + chat */}
-                <div ref={contentColRef} className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-                  {calendarOpen && (
-                    <>
-                      <div className="shrink-0 overflow-hidden" style={{ height: calendarHeight }}>
-                        <CalendarPanel />
-                      </div>
-                      <div
-                        onMouseDown={handleVDragDown}
-                        className="h-1 shrink-0 cursor-row-resize hover:bg-blue-500/30 bg-neutral-800/50 transition-colors"
-                      />
-                    </>
-                  )}
-
-                  {/* Chat fills remaining space */}
-                  <ChatPanel agent={agent} embedded />
-                </div>
-              </>
-            )}
-          </div>
-        </>
+                <ChatPanel agent={agent} embedded onCollapse={toggleChat} />
+              </div>
+            </>
+          )}
+        </div>
       )}
     </div>
   );

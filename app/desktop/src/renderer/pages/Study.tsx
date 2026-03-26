@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
-import { SidebarToggle } from '../components/layout/SidebarToggle';
-import { useCollapsibleSidebar } from '../hooks/use-collapsible-sidebar';
+import { useSidebar } from '../context/sidebar-context';
 import type { Subject, StudyAssignment, StudyExam, TaskStatus } from '@mark2/shared';
 import {
   BookOpen, PenLine, ClipboardList, BarChart3, FileText, MapPin, NotebookText,
@@ -166,7 +165,8 @@ export function Study() {
     if (saved) { const n = parseInt(saved, 10); if (n >= 200 && n <= 400) return n; }
     return Math.min(400, Math.max(200, Math.round(window.innerWidth * 0.2)));
   });
-  const leftSidebar = useCollapsibleSidebar('study', sidebarWidth);
+  const { leftCollapsed, setLeftKey } = useSidebar();
+  useEffect(() => { setLeftKey('study'); }, [setLeftKey]);
 
   // DB state
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -240,10 +240,20 @@ export function Study() {
     .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
     .slice(0, 5);
 
+  // Auto-select last subject (or first available) after data loads
+  useEffect(() => {
+    if (loading || subjects.length === 0 || selectedSubjectId) return;
+    const lastId = localStorage.getItem('mark2-study-last-subject');
+    const target = (lastId && subjects.find((s) => s.id === lastId)) ? lastId : subjects[0]!.id;
+    setSelectedSubjectId(target);
+    setMainView({ kind: 'subject', tab: 'notes' });
+  }, [loading, subjects, selectedSubjectId]);
+
   const selectSubject = useCallback((id: string) => {
     setSelectedSubjectId(id);
     setSidebarTab('subjects');
-    setMainView({ kind: 'subject', tab: 'assignments' });
+    localStorage.setItem('mark2-study-last-subject', id);
+    setMainView({ kind: 'subject', tab: 'notes' });
   }, []);
 
   const handleSidebarDragStart = useCallback(() => {
@@ -282,7 +292,7 @@ export function Study() {
         {/* === SIDEBAR === */}
         <aside
           className="shrink-0 border-r border-neutral-800 flex flex-col bg-neutral-950/50 overflow-hidden transition-[width] duration-200 ease-in-out"
-          style={{ width: leftSidebar.width }}
+          style={{ width: leftCollapsed ? 0 : sidebarWidth }}
         >
           {/* Tabs */}
           <div className="flex border-b border-neutral-800">
@@ -605,9 +615,7 @@ export function Study() {
           )}
         </aside>
 
-        <SidebarToggle collapsed={leftSidebar.collapsed} onToggle={leftSidebar.toggle} side="left" />
-
-        {!leftSidebar.collapsed && (
+        {!leftCollapsed && (
           <div
             onMouseDown={handleSidebarDragStart}
             className="w-1 shrink-0 cursor-col-resize hover:bg-blue-500/30 transition-colors"
@@ -627,9 +635,9 @@ export function Study() {
             </div>
           )}
 
-          {!loading && mainView.kind === 'empty' && (
+          {!loading && mainView.kind === 'empty' && subjects.length === 0 && (
             <div className="flex items-center justify-center h-full text-neutral-500">
-              Выберите предмет
+              Добавьте первый предмет
             </div>
           )}
 
@@ -768,10 +776,10 @@ function SubjectView({
     .filter((a) => typeFilter === 'all' || a.type === typeFilter);
 
   const tabs: Array<{ key: SubjectTab; label: string; count?: number }> = [
+    { key: 'notes', label: 'Заметки' },
     { key: 'assignments', label: 'Задания', count: assignments.length },
     { key: 'exams', label: 'Экзамены', count: exams.length },
     { key: 'files', label: 'Файлы' },
-    { key: 'notes', label: 'Заметки' },
   ];
 
   return (

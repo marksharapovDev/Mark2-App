@@ -14,6 +14,7 @@ interface ChatPanelProps {
   agent: AgentName;
   defaultWidthPct?: number; // default width as % of window (e.g. 30 or 35)
   embedded?: boolean; // when true, no width management — fills parent container
+  onCollapse?: () => void; // external collapse handler (replaces internal isOpen toggle)
 }
 
 const MIN_WIDTH = 280;
@@ -29,7 +30,7 @@ function getInitialChatWidth(defaultPct: number): number {
   return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(window.innerWidth * defaultPct / 100)));
 }
 
-export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false }: ChatPanelProps) {
+export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCollapse }: ChatPanelProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [isPoppedOut, setIsPoppedOut] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -349,11 +350,6 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false }: Cha
             <button onClick={handlePopout} className="text-neutral-600 hover:text-neutral-400 transition-colors" title="Pop out">
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-              </svg>
-            </button>
-            <button onClick={() => setIsOpen(false)} className="text-neutral-600 hover:text-neutral-400 transition-colors" title="Collapse">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
               </svg>
             </button>
           </div>

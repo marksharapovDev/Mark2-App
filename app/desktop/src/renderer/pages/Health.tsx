@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
-import { SidebarToggle } from '../components/layout/SidebarToggle';
-import { useCollapsibleSidebar } from '../hooks/use-collapsible-sidebar';
+import { useSidebar } from '../context/sidebar-context';
 import type { TaskStatus } from '@mark2/shared';
 import { Dumbbell, UtensilsCrossed, BarChart3, Moon, PersonStanding, Waves, CheckCircle2, Clock, Star, Loader2 } from 'lucide-react';
 
@@ -332,7 +331,8 @@ export function Health() {
     if (saved) { const n = parseInt(saved, 10); if (n >= 200 && n <= 400) return n; }
     return Math.min(400, Math.max(200, Math.round(window.innerWidth * 0.2)));
   });
-  const leftSidebar = useCollapsibleSidebar('health', sidebarWidth);
+  const { leftCollapsed, setLeftKey } = useSidebar();
+  useEffect(() => { setLeftKey('health'); }, [setLeftKey]);
   const isDraggingSidebar = useRef(false);
   const [taskChecked, setTaskChecked] = useState<Record<string, boolean>>({});
 
@@ -443,7 +443,7 @@ export function Health() {
         {/* === SIDEBAR === */}
         <aside
           className="shrink-0 border-r border-neutral-800 flex flex-col bg-neutral-950/50 overflow-hidden transition-[width] duration-200 ease-in-out"
-          style={{ width: leftSidebar.width }}
+          style={{ width: leftCollapsed ? 0 : sidebarWidth }}
         >
           {/* Sections nav */}
           <div className="px-3 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
@@ -540,9 +540,7 @@ export function Health() {
           </div>
         </aside>
 
-        <SidebarToggle collapsed={leftSidebar.collapsed} onToggle={leftSidebar.toggle} side="left" />
-
-        {!leftSidebar.collapsed && (
+        {!leftCollapsed && (
           <div
             onMouseDown={handleSidebarDragStart}
             className="w-1 shrink-0 cursor-col-resize hover:bg-blue-500/30 transition-colors"
