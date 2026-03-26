@@ -1246,6 +1246,15 @@ export async function completeReminder(id: string): Promise<Reminder> {
   });
 }
 
+export async function uncompleteReminder(id: string): Promise<Reminder> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('reminders').update({ status: 'pending' }).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<Reminder>(data);
+  });
+}
+
 export async function getRecurringReminders(): Promise<Reminder[]> {
   return withRetry(async () => {
     const sb = getSupabase();

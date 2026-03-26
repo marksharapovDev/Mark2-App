@@ -561,12 +561,18 @@ export function Calendar() {
     return found;
   }, [reminders]);
 
-  const handleCompleteReminder = useCallback(async (id: string) => {
-    setReminders((prev) => prev.map((r) => r.id === id ? { ...r, status: 'done' as const } : r));
+  const handleToggleReminder = useCallback(async (id: string) => {
+    const current = reminders.find((r) => r.id === id);
+    const newStatus = current?.status === 'done' ? 'pending' as const : 'done' as const;
+    setReminders((prev) => prev.map((r) => r.id === id ? { ...r, status: newStatus } : r));
     try {
-      await window.db.reminders.complete(id);
+      if (newStatus === 'done') {
+        await window.db.reminders.complete(id);
+      } else {
+        await window.db.reminders.uncomplete(id);
+      }
     } catch { /* ignore */ }
-  }, []);
+  }, [reminders]);
 
   const navigateMonth = useCallback((dir: -1 | 1) => {
     let m = viewMonth + dir;
@@ -903,7 +909,7 @@ export function Calendar() {
               onSelectDate={handleSelectDate}
               eventsForDate={getEventsForDate}
               remindersForDate={getRemindersForDate}
-              onCompleteReminder={handleCompleteReminder}
+              onCompleteReminder={handleToggleReminder}
               now={now}
               hourHeight={hourHeight}
               onEventClick={setSelectedEvent}
@@ -921,7 +927,7 @@ export function Calendar() {
               onSelectDate={(d) => { handleSelectDate(d); setView('day'); }}
               eventsForDate={getEventsForDate}
               remindersForDate={getRemindersForDate}
-              onCompleteReminder={handleCompleteReminder}
+              onCompleteReminder={handleToggleReminder}
             />
           )}
           {view === 'day' && (
@@ -929,7 +935,7 @@ export function Calendar() {
               date={selectedDate}
               eventsForDate={getEventsForDate}
               remindersForDate={getRemindersForDate}
-              onCompleteReminder={handleCompleteReminder}
+              onCompleteReminder={handleToggleReminder}
               now={now}
               hourHeight={hourHeight}
               onEventClick={setSelectedEvent}
@@ -945,7 +951,7 @@ export function Calendar() {
               selectedDate={selectedDate}
               eventsForDate={getEventsForDate}
               remindersForDate={getRemindersForDate}
-              onCompleteReminder={handleCompleteReminder}
+              onCompleteReminder={handleToggleReminder}
               onEventClick={setSelectedEvent}
             />
           )}
@@ -958,7 +964,7 @@ export function Calendar() {
           viewMonth={viewMonth}
           eventsForDate={getEventsForDate}
           remindersForDate={getRemindersForDate}
-          onCompleteReminder={handleCompleteReminder}
+          onCompleteReminder={handleToggleReminder}
         />
       </div>
 
@@ -1423,7 +1429,7 @@ function WeekView({
                       key={`rem-${r.id}`}
                       className={`text-[10px] px-1.5 py-0.5 truncate flex items-center gap-1 cursor-pointer hover:bg-neutral-800/40 transition-all
                         border-l-2 ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
-                      onClick={() => { if (r.status !== 'done') onCompleteReminder(r.id); }}
+                      onClick={() => { onCompleteReminder(r.id); }}
                     >
                       {r.status === 'done'
                         ? <svg className="w-2.5 h-2.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
@@ -1611,6 +1617,32 @@ function WeekView({
                   );
                 })}
 
+                {/* Timed reminders from reminders table */}
+                {weekReminders[dayIdx]?.filter((r) => r.time).map((r) => {
+                  const [hStr, mStr] = r.time!.split(':');
+                  const rHour = parseInt(hStr ?? '0', 10);
+                  const rMin = parseInt(mStr ?? '0', 10);
+                  const top = (rHour + rMin / 60) * hourHeight;
+                  return (
+                    <div
+                      key={`rem-${r.id}`}
+                      className={`absolute rounded-sm px-1.5 flex items-center gap-1 select-none
+                        border-l-2 ${SPHERE_META[r.sphere].border} hover:bg-neutral-800/50 transition-all cursor-pointer
+                        ${r.status === 'done' ? 'opacity-40' : ''}`}
+                      style={{ top, height: 20, left: '2%', width: '96%', zIndex: 2 }}
+                      onClick={() => onCompleteReminder(r.id)}
+                    >
+                      {r.status === 'done'
+                        ? <svg className="w-2.5 h-2.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                        : <svg className={`w-2.5 h-2.5 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                      }
+                      <Bell size={10} strokeWidth={1.5} className={r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color} />
+                      {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={9} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
+                      <span className={`text-[9px] truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>{r.title}</span>
+                    </div>
+                  );
+                })}
+
                 {/* Create-drag preview */}
                 {dragPreview && dragPreview.dayIdx === dayIdx && (
                   <div
@@ -1769,11 +1801,11 @@ function MonthView({
           const more = totalItems - shownEvents.length - shownReminders.length;
 
           return (
-            <button
+            <div
               key={date}
-              onClick={() => onSelectDate(date)}
-              className={`min-h-[100px] p-1.5 text-left border-t border-l border-neutral-800/50 first:border-l-0 transition-colors
+              className={`min-h-[100px] p-1.5 text-left border-t border-l border-neutral-800/50 first:border-l-0 transition-colors cursor-pointer
                 ${isToday ? 'bg-blue-500/5' : 'hover:bg-neutral-900/50'}`}
+              onClick={() => onSelectDate(date)}
             >
               <div className={`text-xs mb-1 ${
                 isToday
@@ -1797,11 +1829,14 @@ function MonthView({
                 {shownReminders.map((r) => (
                   <div
                     key={`rem-${r.id}`}
-                    className={`text-[9px] px-1 py-0.5 truncate border-l-2 flex items-center gap-0.5
+                    className={`text-[9px] px-1 py-0.5 truncate border-l-2 flex items-center gap-0.5 hover:bg-neutral-800/40 rounded-sm
                       ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}
-                    onClick={(e) => { e.stopPropagation(); if (r.status !== 'done') onCompleteReminder(r.id); }}
+                    onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}
                   >
-                    <Bell size={8} strokeWidth={1.5} className="shrink-0" />
+                    {r.status === 'done'
+                      ? <svg className="w-2 h-2 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                      : <svg className={`w-2 h-2 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                    }
                     {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={8} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
                     <span className="truncate">{r.title}</span>
                   </div>
@@ -1810,7 +1845,7 @@ function MonthView({
                   <div className="text-[9px] text-neutral-600 pl-1">+{more} ещё</div>
                 )}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -2058,7 +2093,7 @@ function DayView({
               key={`rem-${r.id}`}
               className={`text-xs px-2 py-1 border-l-2 flex items-center gap-1 cursor-pointer hover:bg-neutral-800/40 transition-all
                 ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
-              onClick={() => { if (r.status !== 'done') onCompleteReminder(r.id); }}
+              onClick={() => { onCompleteReminder(r.id); }}
             >
               {r.status === 'done'
                 ? <svg className="w-3 h-3 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
@@ -2226,6 +2261,34 @@ function DayView({
               );
             })}
 
+            {/* Timed reminders from reminders table */}
+            {dayReminders.filter((r) => r.time).map((r) => {
+              const [hStr, mStr] = r.time!.split(':');
+              const rHour = parseInt(hStr ?? '0', 10);
+              const rMin = parseInt(mStr ?? '0', 10);
+              const top = (rHour + rMin / 60) * hourHeight;
+              return (
+                <div
+                  key={`rem-${r.id}`}
+                  className={`absolute rounded-sm px-2 flex items-center gap-1.5 select-none
+                    border-l-2 ${SPHERE_META[r.sphere].border} hover:bg-neutral-800/50 transition-all cursor-pointer
+                    ${r.status === 'done' ? 'opacity-40' : ''}`}
+                  style={{ top, height: 22, left: 0, right: 0, zIndex: 2 }}
+                  onClick={() => onCompleteReminder(r.id)}
+                >
+                  {r.status === 'done'
+                    ? <svg className="w-3 h-3 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                    : <svg className={`w-3 h-3 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                  }
+                  <Bell size={11} strokeWidth={1.5} className={r.status === 'done' ? 'text-neutral-600' : SPHERE_META[r.sphere].color} />
+                  {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={10} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
+                  <span className={`text-[10px] truncate ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>
+                    {fmtTime(rHour, rMin)} {r.title}
+                  </span>
+                </div>
+              );
+            })}
+
             {/* Create-drag preview */}
             {dragPreview && (
               <div
@@ -2364,7 +2427,7 @@ function ListView({
                     key={`rem-${r.id}`}
                     className={`flex items-center gap-3 px-3 py-1.5 border-l-2 cursor-pointer hover:bg-neutral-800/40 transition-all
                       ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
-                    onClick={() => { if (r.status !== 'done') onCompleteReminder(r.id); }}
+                    onClick={() => { onCompleteReminder(r.id); }}
                   >
                     <span className="text-xs text-neutral-500 w-24 shrink-0">
                       {r.time ? r.time.slice(0, 5) : 'Весь день'}
@@ -2514,7 +2577,7 @@ function CalendarSidebar({
                     key={`rem-${r.id}`}
                     className={`flex items-center gap-1.5 py-0.5 border-l-2 pl-2 rounded-r cursor-pointer hover:bg-neutral-800/30 transition-all
                       ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
-                    onClick={() => { if (r.status !== 'done') onCompleteReminder(r.id); }}
+                    onClick={() => { onCompleteReminder(r.id); }}
                   >
                     {r.status === 'done'
                       ? <svg className="w-2.5 h-2.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>

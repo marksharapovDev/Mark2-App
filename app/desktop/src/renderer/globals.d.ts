@@ -226,6 +226,7 @@ interface DbAPI {
     update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').Reminder>;
     delete: (id: string) => Promise<void>;
     complete: (id: string) => Promise<import('@mark2/shared').Reminder>;
+    uncomplete: (id: string) => Promise<import('@mark2/shared').Reminder>;
   };
 }
 

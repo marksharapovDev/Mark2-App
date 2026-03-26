@@ -563,6 +563,10 @@ export function registerIpcHandlers(): void {
     return db.completeReminder(id);
   });
 
+  ipcMain.handle('db:reminders:uncomplete', async (_event, id: string) => {
+    return db.uncompleteReminder(id);
+  });
+
   // Aggregated Tasks
   ipcMain.handle('tasks:aggregated:get', async (_event, dateStr: string) => {
     return getAggregatedTasks(new Date(dateStr));

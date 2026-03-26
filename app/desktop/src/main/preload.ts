@@ -430,6 +430,8 @@ const dbApi = {
       ipcRenderer.invoke('db:reminders:delete', id),
     complete: (id: string) =>
       ipcRenderer.invoke('db:reminders:complete', id),
+    uncomplete: (id: string) =>
+      ipcRenderer.invoke('db:reminders:uncomplete', id),
   },
 };
 

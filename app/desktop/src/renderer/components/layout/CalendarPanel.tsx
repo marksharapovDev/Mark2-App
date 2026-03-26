@@ -1,7 +1,17 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell } from 'lucide-react';
+import { AlertTriangle, Bell } from 'lucide-react';
 import { useCalendar } from '../../context/calendar-context';
+
+interface PanelReminder {
+  id: string;
+  title: string;
+  date: string;
+  time: string | null;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'pending' | 'done' | 'skipped' | 'deferred';
+  sphere: Sphere;
+}
 
 // --- Types ---
 
@@ -195,15 +205,32 @@ export function CalendarPanel() {
   const { closeCalendar, selectedDate, setSelectedDate } = useCalendar();
   const navigate = useNavigate();
 
-  const [viewYear, setViewYear] = useState(2026);
-  const [viewMonth, setViewMonth] = useState(2); // March = 2 (0-indexed)
+  const now = new Date();
+  const [viewYear, setViewYear] = useState(now.getFullYear());
+  const [viewMonth, setViewMonth] = useState(now.getMonth());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [reminders, setReminders] = useState<PanelReminder[]>([]);
 
-  // Load events from DB
+  // Load events + reminders from DB
   const reloadEvents = useCallback(async () => {
     try {
-      const dbEvents = await window.db.events.list('2026-01-01', '2026-12-31');
+      const year = new Date().getFullYear();
+      const rangeFrom = `${year}-01-01`;
+      const rangeTo = `${year}-12-31`;
+      const [dbEvents, dbReminders] = await Promise.all([
+        window.db.events.list(rangeFrom, rangeTo),
+        window.db.reminders.list({ dateFrom: rangeFrom, dateTo: rangeTo }),
+      ]);
       setEvents(dbEvents.map((e) => mapDbEventToPanel(e as unknown as Record<string, unknown>)));
+      setReminders((dbReminders ?? []).map((r: Record<string, unknown>) => ({
+        id: String(r.id),
+        title: String(r.title),
+        date: String(r.date).slice(0, 10),
+        time: r.time ? String(r.time) : null,
+        priority: (r.priority as PanelReminder['priority']) ?? 'medium',
+        status: (r.status as PanelReminder['status']) ?? 'pending',
+        sphere: (r.sphere as Sphere) ?? 'personal',
+      })));
     } catch {
       // keep empty state
     }
@@ -216,18 +243,35 @@ export function CalendarPanel() {
   // Reload on data-changed from AI
   useEffect(() => {
     return window.dataEvents.onDataChanged((entities) => {
-      if (entities.includes('events')) {
+      if (entities.includes('events') || entities.includes('reminders')) {
         reloadEvents();
       }
     });
   }, [reloadEvents]);
 
+  const handleToggleReminder = useCallback(async (id: string) => {
+    const current = reminders.find((r) => r.id === id);
+    const newStatus = current?.status === 'done' ? 'pending' as const : 'done' as const;
+    setReminders((prev) => prev.map((r) => r.id === id ? { ...r, status: newStatus } : r));
+    try {
+      if (newStatus === 'done') {
+        await window.db.reminders.complete(id);
+      } else {
+        await window.db.reminders.uncomplete(id);
+      }
+    } catch { /* ignore */ }
+  }, [reminders]);
+
+  const remindersForDate = useCallback((date: string) => {
+    return reminders.filter((r) => r.date === date);
+  }, [reminders]);
+
   const monthGrid = useMemo(() => getMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
 
-  const expandedEvents = useMemo(
-    () => expandRecurringForPanel(events, '2026-01-01', '2026-12-31'),
-    [events],
-  );
+  const expandedEvents = useMemo(() => {
+    const year = new Date().getFullYear();
+    return expandRecurringForPanel(events, `${year}-01-01`, `${year}-12-31`);
+  }, [events]);
 
   const selectedDayEvents = useMemo(() => eventsForDate(selectedDate, expandedEvents).sort((a, b) =>
     (a.allDay ? -1 : b.allDay ? 1 : (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin))
@@ -308,6 +352,8 @@ export function CalendarPanel() {
               const isToday = date === TODAY;
               const isSelected = date === selectedDate;
               const hasEvents = eventsForDate(date, expandedEvents).length > 0;
+              const hasReminders = remindersForDate(date).length > 0;
+              const hasItems = hasEvents || hasReminders;
               return (
                 <button
                   key={date}
@@ -321,9 +367,9 @@ export function CalendarPanel() {
                   }`}
                 >
                   {d.getDate()}
-                  {hasEvents && (
+                  {hasItems && (
                     <span className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-0.5 h-0.5 rounded-full ${
-                      isToday ? 'bg-blue-300' : 'bg-blue-400'
+                      isToday ? 'bg-blue-300' : hasReminders && !hasEvents ? 'bg-amber-400' : 'bg-blue-400'
                     }`} />
                   )}
                 </button>
@@ -339,7 +385,7 @@ export function CalendarPanel() {
           <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
             {selectedDate === TODAY ? 'Сегодня' : fmtDateShort(selectedDate)}
           </div>
-          {selectedDayEvents.length === 0 ? (
+          {selectedDayEvents.length === 0 && remindersForDate(selectedDate).length === 0 ? (
             <div className="text-[11px] text-neutral-700">Нет событий</div>
           ) : (
             <div className="space-y-1">
@@ -351,6 +397,29 @@ export function CalendarPanel() {
                     </div>
                     <div className="text-[10px] text-neutral-600">
                       {ev.allDay ? 'Весь день' : `${fmtTime(ev.startHour, ev.startMin)} – ${fmtTime(ev.endHour, ev.endMin)}`}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {remindersForDate(selectedDate).map((r) => (
+                <div
+                  key={`rem-${r.id}`}
+                  className={`flex items-center gap-1.5 py-1 border-l-2 pl-2 rounded-r cursor-pointer hover:bg-neutral-800/30 transition-all
+                    ${SPHERE_META[r.sphere].border} ${r.status === 'done' ? 'opacity-40' : ''}`}
+                  onClick={() => handleToggleReminder(r.id)}
+                >
+                  {r.status === 'done'
+                    ? <svg className="w-2.5 h-2.5 text-green-400 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+                    : <svg className={`w-2.5 h-2.5 shrink-0 ${SPHERE_META[r.sphere].color}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+                  }
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-[11px] truncate flex items-center gap-0.5 ${r.status === 'done' ? 'text-neutral-600 line-through' : SPHERE_META[r.sphere].color}`}>
+                      <Bell size={10} strokeWidth={1.5} className="shrink-0" />
+                      {(r.priority === 'urgent' || r.priority === 'high') && <AlertTriangle size={9} strokeWidth={1.5} className="shrink-0 text-amber-400" />}
+                      {r.title}
+                    </div>
+                    <div className="text-[10px] text-neutral-600">
+                      {r.time ? r.time.slice(0, 5) : 'Весь день'}
                     </div>
                   </div>
                 </div>
