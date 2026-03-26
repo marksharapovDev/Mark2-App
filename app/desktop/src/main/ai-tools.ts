@@ -883,6 +883,9 @@ const AI_TOOLS: Record<string, ActionHandler> = {
       }
     }
 
+    // Refresh daily checklist
+    await db.refreshDailyChecklist(String(workoutData.date));
+
     return {
       success: true,
       message: `Тренировка записана: ${workout.title ?? workout.type}${workout.durationMinutes ? ` (${workout.durationMinutes} мин)` : ''}`,
@@ -911,6 +914,9 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     };
     const label = typeLabels[String(params.type)] ?? String(params.type);
     const valueStr = log.value != null ? `: ${log.value}` : '';
+
+    // Refresh daily checklist
+    await db.refreshDailyChecklist(String(logData.date));
 
     return {
       success: true,
@@ -1050,6 +1056,9 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     };
     const label = typeLabels[String(params.type)] ?? 'Приём пищи';
     const calStr = meal.calories ? ` (${meal.calories} ккал)` : '';
+
+    // Refresh daily checklist
+    await db.refreshDailyChecklist(String(mealData.date));
 
     return {
       success: true,

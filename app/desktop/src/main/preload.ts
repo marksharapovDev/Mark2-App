@@ -374,6 +374,14 @@ const dbApi = {
       delete: (id: string) =>
         ipcRenderer.invoke('db:health:meals:delete', id),
     },
+    checklist: {
+      get: (date: string) =>
+        ipcRenderer.invoke('db:health:checklist:get', date),
+      upsert: (date: string, data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:checklist:upsert', date, data),
+      refresh: (date: string) =>
+        ipcRenderer.invoke('db:health:checklist:refresh', date),
+    },
   },
   notes: {
     create: (data: Record<string, unknown>) =>

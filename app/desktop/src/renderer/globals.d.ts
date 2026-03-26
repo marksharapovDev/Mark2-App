@@ -192,6 +192,11 @@ interface DbAPI {
       update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').Meal>;
       delete: (id: string) => Promise<void>;
     };
+    checklist: {
+      get: (date: string) => Promise<import('@mark2/shared').DailyChecklist | null>;
+      upsert: (date: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').DailyChecklist>;
+      refresh: (date: string) => Promise<import('@mark2/shared').DailyChecklist>;
+    };
   };
   notes: {
     create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').DailyNote>;

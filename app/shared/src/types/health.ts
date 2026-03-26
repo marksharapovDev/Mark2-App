@@ -110,3 +110,18 @@ export interface HealthGoal {
   status: HealthGoalStatus;
   createdAt: Date;
 }
+
+// --- Daily Checklist ---
+
+export interface DailyChecklist {
+  id: string;
+  date: string;
+  workout: boolean;
+  weightLogged: boolean;
+  sleepLogged: boolean;
+  waterGoal: boolean;
+  mealsLogged: boolean;
+  completedCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}

@@ -468,6 +468,19 @@ export function registerIpcHandlers(): void {
     return db.deleteMeal(id);
   });
 
+  // Health: Daily Checklist
+  ipcMain.handle('db:health:checklist:get', async (_event, date: string) => {
+    return db.getDailyChecklist(date);
+  });
+
+  ipcMain.handle('db:health:checklist:upsert', async (_event, date: string, data: Record<string, unknown>) => {
+    return db.upsertDailyChecklist(date, data);
+  });
+
+  ipcMain.handle('db:health:checklist:refresh', async (_event, date: string) => {
+    return db.refreshDailyChecklist(date);
+  });
+
   // Daily Notes
   ipcMain.handle('db:notes:create', async (_event, data: Record<string, unknown>) => {
     return db.createDailyNote(data);

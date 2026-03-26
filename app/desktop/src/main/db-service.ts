@@ -27,6 +27,7 @@ import type {
   TrainingProgramDay,
   MealPlan,
   Meal,
+  DailyChecklist,
 } from '@mark2/shared';
 
 // --- Retry wrapper for EPIPE/fetch errors ---
@@ -941,6 +942,78 @@ export async function deleteMeal(id: string): Promise<void> {
     const sb = getSupabase();
     const { error } = await sb.from('meals').delete().eq('id', id);
     if (error) throw error;
+  });
+}
+
+// --- Daily Checklist ---
+
+export async function getDailyChecklist(date: string): Promise<DailyChecklist | null> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('daily_checklist').select('*').eq('date', date).maybeSingle();
+    if (error) throw error;
+    return data ? mapRow<DailyChecklist>(data) : null;
+  });
+}
+
+export async function upsertDailyChecklist(date: string, updates: Record<string, unknown>): Promise<DailyChecklist> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const dbFields = toDbFields(updates);
+    dbFields.date = date;
+    dbFields.updated_at = new Date().toISOString();
+    // Compute completed_count from the boolean fields
+    const bools = ['workout', 'weight_logged', 'sleep_logged', 'water_goal', 'meals_logged'];
+    let count = 0;
+    for (const b of bools) {
+      if (dbFields[b] === true) count++;
+    }
+    // Only set completed_count if we have all fields; otherwise merge with existing
+    if (bools.every((b) => b in dbFields)) {
+      dbFields.completed_count = count;
+    }
+    const { data, error } = await sb.from('daily_checklist')
+      .upsert(dbFields, { onConflict: 'date' })
+      .select().single();
+    if (error) throw error;
+    return mapRow<DailyChecklist>(data);
+  });
+}
+
+/**
+ * Re-compute the full checklist state for a given date by querying actual data,
+ * then upsert it. Called after any health log/workout/meal action.
+ */
+export async function refreshDailyChecklist(date: string): Promise<DailyChecklist> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+
+    // Check workouts
+    const { data: wData } = await sb.from('workouts').select('id').eq('date', date).limit(1);
+    const hasWorkout = (wData?.length ?? 0) > 0;
+
+    // Check health logs
+    const { data: logData } = await sb.from('health_logs').select('type, value').eq('date', date);
+    const logs = logData ?? [];
+    const hasWeight = logs.some((l) => l.type === 'weight');
+    const hasSleep = logs.some((l) => l.type === 'sleep');
+    const waterLog = logs.find((l) => l.type === 'water');
+    const waterGoal = waterLog != null && (Number(waterLog.value) >= 2);
+
+    // Check meals
+    const { data: mData } = await sb.from('meals').select('id').eq('date', date).limit(1);
+    const hasMeals = (mData?.length ?? 0) > 0;
+
+    const completed = [hasWorkout, hasWeight, hasSleep, waterGoal, hasMeals].filter(Boolean).length;
+
+    return upsertDailyChecklist(date, {
+      workout: hasWorkout,
+      weightLogged: hasWeight,
+      sleepLogged: hasSleep,
+      waterGoal,
+      mealsLogged: hasMeals,
+      completedCount: completed,
+    });
   });
 }
 
