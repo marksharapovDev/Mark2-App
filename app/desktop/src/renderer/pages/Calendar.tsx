@@ -118,7 +118,7 @@ const VIEW_TABS: Array<{ id: ViewMode; label: string }> = [
   { id: 'list', label: 'Список' },
 ];
 
-const TODAY = '2026-03-21';
+const TODAY = new Date().toLocaleDateString('sv-SE');
 const ZOOM_LS_KEY = 'mark2-calendar-zoom';
 const MIN_HOUR_HEIGHT = 25;
 const MAX_HOUR_HEIGHT = 150;
@@ -491,17 +491,20 @@ export function Calendar() {
   // Load events + reminders from DB
   const reloadEvents = useCallback(async () => {
     try {
+      const year = new Date().getFullYear();
+      const rangeFrom = `${year}-01-01`;
+      const rangeTo = `${year}-12-31`;
       const [dbEvents, dbReminders] = await Promise.all([
-        window.db.events.list('2026-01-01', '2026-12-31'),
-        window.db.reminders.list({ dateFrom: '2026-01-01', dateTo: '2026-12-31' }),
+        window.db.events.list(rangeFrom, rangeTo),
+        window.db.reminders.list({ dateFrom: rangeFrom, dateTo: rangeTo }),
       ]);
       if (dbEvents.length > 0) {
         setEvents(dbEvents.map((e) => mapDbEventToLocal(e as unknown as Record<string, unknown>)));
       }
-      setReminders((dbReminders ?? []).map((r: Record<string, unknown>) => ({
+      const mappedReminders = (dbReminders ?? []).map((r: Record<string, unknown>) => ({
         id: String(r.id),
         title: String(r.title),
-        date: String(r.date),
+        date: String(r.date).slice(0, 10),
         time: r.time ? String(r.time) : null,
         priority: (r.priority as CalendarReminder['priority']) ?? 'medium',
         status: (r.status as CalendarReminder['status']) ?? 'pending',
@@ -509,7 +512,9 @@ export function Calendar() {
         sourceType: r.sourceType ? String(r.sourceType) : null,
         description: r.description ? String(r.description) : null,
         isRecurring: (r.isRecurring as boolean) ?? false,
-      })));
+      }));
+      console.log(`[Calendar] Reminders loaded: ${mappedReminders.length} items, dates: [${mappedReminders.map((r) => r.date).join(', ')}]`);
+      setReminders(mappedReminders);
     } catch (err) {
       setDbError(err instanceof Error ? err.message : 'Ошибка подключения к БД');
     }
@@ -540,9 +545,8 @@ export function Calendar() {
 
   // Expand recurring events into virtual instances for the visible range
   const expandedEvents = useMemo(() => {
-    const rangeStart = '2026-01-01';
-    const rangeEnd = '2026-12-31';
-    return expandRecurringEvents(events, rangeStart, rangeEnd);
+    const year = new Date().getFullYear();
+    return expandRecurringEvents(events, `${year}-01-01`, `${year}-12-31`);
   }, [events]);
 
   const getEventsForDate = useCallback((date: string) => {
@@ -550,7 +554,11 @@ export function Calendar() {
   }, [expandedEvents]);
 
   const getRemindersForDate = useCallback((date: string) => {
-    return reminders.filter((r) => r.date === date);
+    const found = reminders.filter((r) => r.date === date);
+    if (found.length > 0) {
+      console.log(`[Calendar] remindersForDate(${date}): ${found.length} items`);
+    }
+    return found;
   }, [reminders]);
 
   const handleCompleteReminder = useCallback(async (id: string) => {

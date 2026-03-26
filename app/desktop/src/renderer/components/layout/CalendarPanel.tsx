@@ -47,7 +47,7 @@ const SPHERE_META: Record<Sphere, { label: string; color: string; bg: string; bo
 const DAY_NAMES_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const MONTH_NAMES = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
-const TODAY = '2026-03-21';
+const TODAY = new Date().toLocaleDateString('sv-SE');
 
 function pad2(n: number): string { return String(n).padStart(2, '0'); }
 

@@ -1,6 +1,6 @@
 import { Dumbbell, ClipboardList, BookOpen, Code, BarChart3 } from 'lucide-react';
 
-const TODAY = '2026-03-21';
+const TODAY = new Date().toLocaleDateString('sv-SE');
 
 interface TodayItem {
   time?: string;

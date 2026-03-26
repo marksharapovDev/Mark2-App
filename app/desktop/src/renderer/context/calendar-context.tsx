@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 
-const TODAY = '2026-03-21';
+const TODAY = new Date().toLocaleDateString('sv-SE');
 
 interface CalendarContextValue {
   calendarOpen: boolean;
