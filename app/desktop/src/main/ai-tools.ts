@@ -1405,6 +1405,14 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     await db.updateReminder(id, { date: newDate, status: 'deferred' });
     return { success: true, message: `Напоминание перенесено на ${newDate}`, entity: 'reminders' };
   },
+
+  delete_reminder: async (params) => {
+    const id = String(params.reminderId ?? params.id ?? '');
+    if (!id) return { success: false, message: 'reminderId обязателен', entity: '' };
+    console.log(`[AI Tools] Deleted reminder: ${id}`);
+    await db.deleteReminder(id);
+    return { success: true, message: 'Напоминание удалено', entity: 'reminders' };
+  },
 };
 
 const ACTION_REGEX = /\[ACTION:(\w+)\]([\s\S]*?)\[\/ACTION\]/g;
