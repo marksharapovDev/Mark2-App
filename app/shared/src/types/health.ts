@@ -40,6 +40,65 @@ export interface HealthLog {
 export type HealthGoalType = 'weight' | 'strength' | 'cardio' | 'habit' | 'other';
 export type HealthGoalStatus = 'active' | 'completed' | 'paused';
 
+// --- Training Programs ---
+
+export type TrainingProgramStatus = 'active' | 'completed' | 'paused';
+
+export interface TrainingProgramDayExercise {
+  name: string;
+  sets?: number;
+  reps?: string;
+  weightKg?: number;
+  notes?: string;
+}
+
+export interface TrainingProgram {
+  id: string;
+  name: string;
+  description: string | null;
+  status: TrainingProgramStatus;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TrainingProgramDay {
+  id: string;
+  programId: string;
+  dayName: string;
+  orderIndex: number;
+  exercises: TrainingProgramDayExercise[];
+  notes: string | null;
+}
+
+// --- Nutrition ---
+
+export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+export type MealPlanStatus = 'active' | 'paused';
+
+export interface MealPlan {
+  id: string;
+  name: string;
+  dailyCalories: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
+  status: MealPlanStatus;
+  createdAt: Date;
+}
+
+export interface Meal {
+  id: string;
+  date: string;
+  type: MealType;
+  title: string | null;
+  calories: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
+  notes: string | null;
+  createdAt: Date;
+}
+
 export interface HealthGoal {
   id: string;
   title: string;

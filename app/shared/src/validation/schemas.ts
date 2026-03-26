@@ -362,6 +362,106 @@ export const createHealthGoalSchema = healthGoalSchema.omit({
   status: true,
 });
 
+// --- Training Programs ---
+
+export const trainingProgramStatusSchema = z.enum(['active', 'completed', 'paused']);
+
+export const trainingProgramSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  description: z.string().nullable(),
+  status: trainingProgramStatusSchema,
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+
+export const createTrainingProgramSchema = trainingProgramSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).partial({
+  description: true,
+  status: true,
+});
+
+const trainingProgramDayExerciseSchema = z.object({
+  name: z.string(),
+  sets: z.number().int().optional(),
+  reps: z.string().optional(),
+  weightKg: z.number().optional(),
+  notes: z.string().optional(),
+});
+
+export const trainingProgramDaySchema = z.object({
+  id: z.string().uuid(),
+  programId: z.string().uuid(),
+  dayName: z.string().min(1),
+  orderIndex: z.number().int(),
+  exercises: z.array(trainingProgramDayExerciseSchema),
+  notes: z.string().nullable(),
+});
+
+export const createTrainingProgramDaySchema = trainingProgramDaySchema.omit({
+  id: true,
+}).partial({
+  orderIndex: true,
+  exercises: true,
+  notes: true,
+});
+
+// --- Nutrition ---
+
+export const mealTypeSchema = z.enum(['breakfast', 'lunch', 'dinner', 'snack']);
+export const mealPlanStatusSchema = z.enum(['active', 'paused']);
+
+export const mealPlanSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  dailyCalories: z.number().int().nullable(),
+  proteinG: z.number().int().nullable(),
+  carbsG: z.number().int().nullable(),
+  fatG: z.number().int().nullable(),
+  status: mealPlanStatusSchema,
+  createdAt: z.coerce.date(),
+});
+
+export const createMealPlanSchema = mealPlanSchema.omit({
+  id: true,
+  createdAt: true,
+}).partial({
+  dailyCalories: true,
+  proteinG: true,
+  carbsG: true,
+  fatG: true,
+  status: true,
+});
+
+export const mealSchema = z.object({
+  id: z.string().uuid(),
+  date: z.string(),
+  type: mealTypeSchema,
+  title: z.string().nullable(),
+  calories: z.number().int().nullable(),
+  proteinG: z.number().int().nullable(),
+  carbsG: z.number().int().nullable(),
+  fatG: z.number().int().nullable(),
+  notes: z.string().nullable(),
+  createdAt: z.coerce.date(),
+});
+
+export const createMealSchema = mealSchema.omit({
+  id: true,
+  createdAt: true,
+}).partial({
+  date: true,
+  title: true,
+  calories: true,
+  proteinG: true,
+  carbsG: true,
+  fatG: true,
+  notes: true,
+});
+
 // --- Chat ---
 
 export const agentNameSchema = z.enum(['dev', 'teaching', 'study', 'health', 'finance', 'general']);

@@ -169,6 +169,29 @@ interface DbAPI {
       create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').HealthGoal>;
       update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').HealthGoal>;
     };
+    programs: {
+      list: () => Promise<import('@mark2/shared').TrainingProgram[]>;
+      create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').TrainingProgram>;
+      update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').TrainingProgram>;
+      delete: (id: string) => Promise<void>;
+    };
+    programDays: {
+      list: (programId: string) => Promise<import('@mark2/shared').TrainingProgramDay[]>;
+      create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').TrainingProgramDay>;
+      update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').TrainingProgramDay>;
+      delete: (id: string) => Promise<void>;
+    };
+    mealPlans: {
+      list: () => Promise<import('@mark2/shared').MealPlan[]>;
+      create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').MealPlan>;
+      update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').MealPlan>;
+    };
+    meals: {
+      list: (date?: string, dateFrom?: string, dateTo?: string) => Promise<import('@mark2/shared').Meal[]>;
+      create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').Meal>;
+      update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').Meal>;
+      delete: (id: string) => Promise<void>;
+    };
   };
   notes: {
     create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').DailyNote>;

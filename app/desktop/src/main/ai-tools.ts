@@ -956,6 +956,109 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     };
   },
 
+  // Health: Create training program
+  create_training_program: async (params) => {
+    const programData: Record<string, unknown> = {
+      name: params.name ?? 'Новая программа',
+      description: params.description ?? null,
+    };
+    const program = await db.createTrainingProgram(programData);
+
+    // Create days if provided
+    const days = params.days;
+    if (Array.isArray(days)) {
+      for (let i = 0; i < days.length; i++) {
+        const day = days[i] as Record<string, unknown>;
+        const exercises = Array.isArray(day.exercises) ? day.exercises : [];
+        // Convert exercises to JSONB format
+        const dbExercises = exercises.map((ex: Record<string, unknown>) => ({
+          name: ex.name ?? 'Упражнение',
+          sets: ex.sets ?? undefined,
+          reps: ex.reps != null ? String(ex.reps) : undefined,
+          weight_kg: ex.weight ?? ex.weightKg ?? undefined,
+          notes: ex.notes ?? undefined,
+        }));
+        await db.createTrainingProgramDay({
+          programId: program.id,
+          dayName: String(day.dayName ?? day.day_name ?? `День ${i + 1}`),
+          orderIndex: i,
+          exercises: dbExercises,
+          notes: day.notes ? String(day.notes) : null,
+        });
+      }
+    }
+
+    return {
+      success: true,
+      message: `Программа создана: ${program.name}${Array.isArray(days) ? ` (${days.length} дней)` : ''}`,
+      entity: 'health',
+      data: program as unknown as Record<string, unknown>,
+    };
+  },
+
+  // Health: Update training program day
+  update_training_program_day: async (params) => {
+    const dayId = String(params.dayId ?? params.id ?? '');
+    if (!dayId) throw new Error('dayId is required');
+    const updates: Record<string, unknown> = {};
+    if (params.exercises != null) updates.exercises = params.exercises;
+    if (params.notes != null) updates.notes = params.notes;
+    if (params.dayName) updates.dayName = params.dayName;
+    const day = await db.updateTrainingProgramDay(dayId, updates);
+    return {
+      success: true,
+      message: `День обновлён: ${day.dayName}`,
+      entity: 'health',
+      data: day as unknown as Record<string, unknown>,
+    };
+  },
+
+  // Health: Create meal plan
+  create_meal_plan: async (params) => {
+    const planData: Record<string, unknown> = {
+      name: params.name ?? 'План питания',
+      dailyCalories: params.dailyCalories ?? params.calories ?? null,
+      proteinG: params.protein ?? params.proteinG ?? null,
+      carbsG: params.carbs ?? params.carbsG ?? null,
+      fatG: params.fat ?? params.fatG ?? null,
+    };
+    const plan = await db.createMealPlan(planData);
+    return {
+      success: true,
+      message: `План питания создан: ${plan.name}${plan.dailyCalories ? ` (${plan.dailyCalories} ккал)` : ''}`,
+      entity: 'health',
+      data: plan as unknown as Record<string, unknown>,
+    };
+  },
+
+  // Health: Log meal
+  log_meal: async (params) => {
+    const mealData: Record<string, unknown> = {
+      type: params.type ?? 'snack',
+      title: params.title ?? null,
+      calories: params.calories ?? null,
+      proteinG: params.protein ?? params.proteinG ?? null,
+      carbsG: params.carbs ?? params.carbsG ?? null,
+      fatG: params.fat ?? params.fatG ?? null,
+      notes: params.notes ?? null,
+      date: params.date ?? new Date().toISOString().slice(0, 10),
+    };
+    const meal = await db.createMeal(mealData);
+
+    const typeLabels: Record<string, string> = {
+      breakfast: 'Завтрак', lunch: 'Обед', dinner: 'Ужин', snack: 'Перекус',
+    };
+    const label = typeLabels[String(params.type)] ?? 'Приём пищи';
+    const calStr = meal.calories ? ` (${meal.calories} ккал)` : '';
+
+    return {
+      success: true,
+      message: `${label}: ${meal.title ?? ''}${calStr}`,
+      entity: 'health',
+      data: meal as unknown as Record<string, unknown>,
+    };
+  },
+
   // Files
   save_file: async (params) => {
     const filePath = String(params.path ?? '');

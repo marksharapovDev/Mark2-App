@@ -23,6 +23,10 @@ import type {
   WorkoutExercise,
   HealthLog,
   HealthGoal,
+  TrainingProgram,
+  TrainingProgramDay,
+  MealPlan,
+  Meal,
 } from '@mark2/shared';
 
 // --- Retry wrapper for EPIPE/fetch errors ---
@@ -790,6 +794,153 @@ export async function updateHealthGoal(id: string, input: Record<string, unknown
     const { data, error } = await sb.from('health_goals').update(toDbFields(input)).eq('id', id).select().single();
     if (error) throw error;
     return mapRow<HealthGoal>(data);
+  });
+}
+
+// --- Training Programs ---
+
+export async function getTrainingPrograms(): Promise<TrainingProgram[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('training_programs').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return mapRows<TrainingProgram>(data);
+  });
+}
+
+export async function createTrainingProgram(input: Record<string, unknown>): Promise<TrainingProgram> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('training_programs').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<TrainingProgram>(data);
+  });
+}
+
+export async function updateTrainingProgram(id: string, input: Record<string, unknown>): Promise<TrainingProgram> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const fields = toDbFields(input);
+    fields.updated_at = new Date().toISOString();
+    const { data, error } = await sb.from('training_programs').update(fields).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<TrainingProgram>(data);
+  });
+}
+
+export async function deleteTrainingProgram(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('training_programs').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+// --- Training Program Days ---
+
+export async function getTrainingProgramDays(programId: string): Promise<TrainingProgramDay[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('training_program_days').select('*')
+      .eq('program_id', programId).order('order_index', { ascending: true });
+    if (error) throw error;
+    return mapRows<TrainingProgramDay>(data);
+  });
+}
+
+export async function createTrainingProgramDay(input: Record<string, unknown>): Promise<TrainingProgramDay> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('training_program_days').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<TrainingProgramDay>(data);
+  });
+}
+
+export async function updateTrainingProgramDay(id: string, input: Record<string, unknown>): Promise<TrainingProgramDay> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('training_program_days').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<TrainingProgramDay>(data);
+  });
+}
+
+export async function deleteTrainingProgramDay(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('training_program_days').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+// --- Meal Plans ---
+
+export async function getMealPlans(): Promise<MealPlan[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('meal_plans').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return mapRows<MealPlan>(data);
+  });
+}
+
+export async function createMealPlan(input: Record<string, unknown>): Promise<MealPlan> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('meal_plans').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<MealPlan>(data);
+  });
+}
+
+export async function updateMealPlan(id: string, input: Record<string, unknown>): Promise<MealPlan> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('meal_plans').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<MealPlan>(data);
+  });
+}
+
+// --- Meals ---
+
+export async function getMeals(date?: string, dateFrom?: string, dateTo?: string): Promise<Meal[]> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    let query = sb.from('meals').select('*').order('created_at', { ascending: true });
+    if (date) query = query.eq('date', date);
+    if (dateFrom) query = query.gte('date', dateFrom);
+    if (dateTo) query = query.lte('date', dateTo);
+    const { data, error } = await query;
+    if (error) throw error;
+    return mapRows<Meal>(data);
+  });
+}
+
+export async function createMeal(input: Record<string, unknown>): Promise<Meal> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('meals').insert(toDbFields(input)).select().single();
+    if (error) throw error;
+    return mapRow<Meal>(data);
+  });
+}
+
+export async function updateMeal(id: string, input: Record<string, unknown>): Promise<Meal> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { data, error } = await sb.from('meals').update(toDbFields(input)).eq('id', id).select().single();
+    if (error) throw error;
+    return mapRow<Meal>(data);
+  });
+}
+
+export async function deleteMeal(id: string): Promise<void> {
+  return withRetry(async () => {
+    const sb = getSupabase();
+    const { error } = await sb.from('meals').delete().eq('id', id);
+    if (error) throw error;
   });
 }
 

@@ -336,6 +336,44 @@ const dbApi = {
       update: (id: string, data: Record<string, unknown>) =>
         ipcRenderer.invoke('db:health:goals:update', id, data),
     },
+    programs: {
+      list: () =>
+        ipcRenderer.invoke('db:health:programs:list'),
+      create: (data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:programs:create', data),
+      update: (id: string, data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:programs:update', id, data),
+      delete: (id: string) =>
+        ipcRenderer.invoke('db:health:programs:delete', id),
+    },
+    programDays: {
+      list: (programId: string) =>
+        ipcRenderer.invoke('db:health:program-days:list', programId),
+      create: (data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:program-days:create', data),
+      update: (id: string, data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:program-days:update', id, data),
+      delete: (id: string) =>
+        ipcRenderer.invoke('db:health:program-days:delete', id),
+    },
+    mealPlans: {
+      list: () =>
+        ipcRenderer.invoke('db:health:meal-plans:list'),
+      create: (data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:meal-plans:create', data),
+      update: (id: string, data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:meal-plans:update', id, data),
+    },
+    meals: {
+      list: (date?: string, dateFrom?: string, dateTo?: string) =>
+        ipcRenderer.invoke('db:health:meals:list', date, dateFrom, dateTo),
+      create: (data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:meals:create', data),
+      update: (id: string, data: Record<string, unknown>) =>
+        ipcRenderer.invoke('db:health:meals:update', id, data),
+      delete: (id: string) =>
+        ipcRenderer.invoke('db:health:meals:delete', id),
+    },
   },
   notes: {
     create: (data: Record<string, unknown>) =>

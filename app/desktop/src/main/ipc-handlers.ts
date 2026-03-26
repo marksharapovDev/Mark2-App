@@ -404,6 +404,70 @@ export function registerIpcHandlers(): void {
     return db.updateHealthGoal(id, data);
   });
 
+  // Health: Training Programs
+  ipcMain.handle('db:health:programs:list', async () => {
+    return db.getTrainingPrograms();
+  });
+
+  ipcMain.handle('db:health:programs:create', async (_event, data: Record<string, unknown>) => {
+    return db.createTrainingProgram(data);
+  });
+
+  ipcMain.handle('db:health:programs:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateTrainingProgram(id, data);
+  });
+
+  ipcMain.handle('db:health:programs:delete', async (_event, id: string) => {
+    return db.deleteTrainingProgram(id);
+  });
+
+  // Health: Training Program Days
+  ipcMain.handle('db:health:program-days:list', async (_event, programId: string) => {
+    return db.getTrainingProgramDays(programId);
+  });
+
+  ipcMain.handle('db:health:program-days:create', async (_event, data: Record<string, unknown>) => {
+    return db.createTrainingProgramDay(data);
+  });
+
+  ipcMain.handle('db:health:program-days:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateTrainingProgramDay(id, data);
+  });
+
+  ipcMain.handle('db:health:program-days:delete', async (_event, id: string) => {
+    return db.deleteTrainingProgramDay(id);
+  });
+
+  // Health: Meal Plans
+  ipcMain.handle('db:health:meal-plans:list', async () => {
+    return db.getMealPlans();
+  });
+
+  ipcMain.handle('db:health:meal-plans:create', async (_event, data: Record<string, unknown>) => {
+    return db.createMealPlan(data);
+  });
+
+  ipcMain.handle('db:health:meal-plans:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateMealPlan(id, data);
+  });
+
+  // Health: Meals
+  ipcMain.handle('db:health:meals:list', async (_event, date?: string, dateFrom?: string, dateTo?: string) => {
+    return db.getMeals(date, dateFrom, dateTo);
+  });
+
+  ipcMain.handle('db:health:meals:create', async (_event, data: Record<string, unknown>) => {
+    return db.createMeal(data);
+  });
+
+  ipcMain.handle('db:health:meals:update', async (_event, id: string, data: Record<string, unknown>) => {
+    return db.updateMeal(id, data);
+  });
+
+  ipcMain.handle('db:health:meals:delete', async (_event, id: string) => {
+    return db.deleteMeal(id);
+  });
+
   // Daily Notes
   ipcMain.handle('db:notes:create', async (_event, data: Record<string, unknown>) => {
     return db.createDailyNote(data);
