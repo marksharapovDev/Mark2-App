@@ -10,16 +10,18 @@ import {
   Dumbbell, Activity, Droplets, Moon, Scale, Brain,
   ChevronLeft, Plus, Trash2, X, Bike, Waves, PersonStanding, StretchHorizontal,
   Loader2, UtensilsCrossed, ClipboardList, Target, Pencil, Check,
+  BarChart3, TrendingUp, TrendingDown, CheckSquare, Square,
 } from 'lucide-react';
 
 // --- Types ---
 
-type TabId = 'overview' | 'program' | 'nutrition' | 'goals';
+type TabId = 'overview' | 'program' | 'nutrition' | 'stats' | 'goals';
 
 type MainView =
   | { kind: 'overview' }
   | { kind: 'program' }
   | { kind: 'nutrition' }
+  | { kind: 'stats' }
   | { kind: 'goals' }
   | { kind: 'workout-detail'; workoutId: string }
   | { kind: 'add-workout' };
@@ -30,6 +32,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Обзор', icon: <Activity size={14} /> },
   { id: 'program', label: 'Программа', icon: <ClipboardList size={14} /> },
   { id: 'nutrition', label: 'Питание', icon: <UtensilsCrossed size={14} /> },
+  { id: 'stats', label: 'Статистика', icon: <BarChart3 size={14} /> },
   { id: 'goals', label: 'Цели', icon: <Target size={14} /> },
 ];
 
@@ -96,6 +99,8 @@ export function Health() {
   const [programs, setPrograms] = useState<TrainingProgram[]>([]);
   const [todayMeals, setTodayMeals] = useState<Meal[]>([]);
   const [mealPlans, setMealPlans] = useState<MealPlan[]>([]);
+  const [allLogs, setAllLogs] = useState<HealthLog[]>([]);
+  const [allMeals, setAllMeals] = useState<Meal[]>([]);
   const [loading, setLoading] = useState(true);
 
   const SIDEBAR_MIN = 200;
@@ -104,13 +109,15 @@ export function Health() {
   const reloadData = useCallback(async () => {
     try {
       const today = todayStr();
-      const [w, g, logs, progs, meals, plans] = await Promise.all([
+      const [w, g, logs, progs, meals, plans, aLogs, aMeals] = await Promise.all([
         window.db.health.workouts.list(),
         window.db.health.goals.list(),
         window.db.health.logs.list(undefined, today, today),
         window.db.health.programs.list(),
         window.db.health.meals.list(today),
         window.db.health.mealPlans.list(),
+        window.db.health.logs.list(),
+        window.db.health.meals.list(),
       ]);
       setWorkouts(w);
       setGoals(g);
@@ -118,6 +125,8 @@ export function Health() {
       setPrograms(progs);
       setTodayMeals(meals);
       setMealPlans(plans);
+      setAllLogs(aLogs);
+      setAllMeals(aMeals);
     } catch (err) {
       console.error('Failed to load health data:', err);
     }
@@ -186,56 +195,18 @@ export function Health() {
           style={{ width: leftCollapsed ? 0 : sidebarWidth }}
         >
           <div className="flex-1 overflow-y-auto pb-4">
-            {/* Today section */}
-            <div className="px-3 pt-3 pb-2">
-              <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                Сегодня
-              </div>
-              <div className="space-y-1">
-                <SidebarTodayItem
-                  icon={<Dumbbell size={14} />}
-                  label="Тренировка"
-                  value={todayWorkout ? (todayWorkout.title ?? WORKOUT_TYPE_META[todayWorkout.type]?.label ?? todayWorkout.type) : 'Нет'}
-                  active={!!todayWorkout}
-                  onClick={() => todayWorkout ? setMainView({ kind: 'workout-detail', workoutId: todayWorkout.id }) : setMainView({ kind: 'add-workout' })}
-                />
-                <SidebarTodayItem
-                  icon={<Scale size={14} />}
-                  label="Вес"
-                  value={todayWeight ? `${todayWeight.value} кг` : '\u2014'}
-                  active={!!todayWeight}
-                  onClick={() => setMainView({ kind: 'overview' })}
-                />
-                <SidebarTodayItem
-                  icon={<Moon size={14} />}
-                  label="Сон"
-                  value={todaySleep ? `${todaySleep.value} ч` : '\u2014'}
-                  active={!!todaySleep}
-                  onClick={() => setMainView({ kind: 'overview' })}
-                />
-                <SidebarTodayItem
-                  icon={<Droplets size={14} />}
-                  label="Вода"
-                  value={todayWater ? `${todayWater.value} л` : '\u2014'}
-                  active={!!todayWater}
-                  onClick={() => setMainView({ kind: 'overview' })}
-                />
-                <SidebarTodayItem
-                  icon={<Brain size={14} />}
-                  label="Настроение"
-                  value={todayMood?.value != null ? `${todayMood.value}/5` : '\u2014'}
-                  active={!!todayMood}
-                  onClick={() => setMainView({ kind: 'overview' })}
-                />
-                <SidebarTodayItem
-                  icon={<UtensilsCrossed size={14} />}
-                  label="Калории"
-                  value={todayCalories > 0 ? `${todayCalories} ккал` : '\u2014'}
-                  active={todayCalories > 0}
-                  onClick={() => setMainView({ kind: 'nutrition' })}
-                />
-              </div>
-            </div>
+            {/* Today checklist */}
+            <DailyChecklist
+              hasWorkout={!!todayWorkout}
+              hasWeight={!!todayWeight}
+              hasSleep={!!todaySleep}
+              waterOk={todayWater != null && (todayWater.value ?? 0) >= 2}
+              hasMeals={todayMeals.length > 0}
+              todayCalories={todayCalories}
+              onClickWorkout={() => todayWorkout ? setMainView({ kind: 'workout-detail', workoutId: todayWorkout.id }) : setMainView({ kind: 'add-workout' })}
+              onClickOverview={() => setMainView({ kind: 'overview' })}
+              onClickNutrition={() => setMainView({ kind: 'nutrition' })}
+            />
 
             <div className="mx-3 border-t border-neutral-800 mt-1 mb-2" />
 
@@ -352,6 +323,7 @@ export function Health() {
               <OverviewView
                 workouts={workouts}
                 todayLogs={todayLogs}
+                allLogs={allLogs}
                 thisMonthCount={thisMonth.length}
                 latestWeight={latestWeight}
                 onOpenWorkout={(id) => setMainView({ kind: 'workout-detail', workoutId: id })}
@@ -366,6 +338,8 @@ export function Health() {
                 activePlan={activeMealPlan}
                 onChanged={reloadData}
               />
+            ) : mainView.kind === 'stats' ? (
+              <StatsView workouts={workouts} allLogs={allLogs} allMeals={allMeals} activePlan={activeMealPlan} />
             ) : mainView.kind === 'goals' ? (
               <GoalsView goals={goals} onChanged={reloadData} />
             ) : mainView.kind === 'workout-detail' ? (
@@ -424,10 +398,59 @@ function GoalProgress({ goal }: { goal: HealthGoal }) {
   );
 }
 
+// --- Daily Checklist ---
+
+function DailyChecklist({ hasWorkout, hasWeight, hasSleep, waterOk, hasMeals, todayCalories, onClickWorkout, onClickOverview, onClickNutrition }: {
+  hasWorkout: boolean; hasWeight: boolean; hasSleep: boolean; waterOk: boolean; hasMeals: boolean;
+  todayCalories: number; onClickWorkout: () => void; onClickOverview: () => void; onClickNutrition: () => void;
+}) {
+  const checks = [
+    { done: hasWorkout, label: 'Тренировка', onClick: onClickWorkout },
+    { done: hasWeight, label: 'Вес записан', onClick: onClickOverview },
+    { done: hasSleep, label: 'Сон записан', onClick: onClickOverview },
+    { done: waterOk, label: 'Вода 2л+', onClick: onClickOverview },
+    { done: hasMeals, label: 'Питание записано', onClick: onClickNutrition },
+  ];
+  const doneCount = checks.filter((c) => c.done).length;
+
+  return (
+    <div className="px-3 pt-3 pb-2">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Сегодня</div>
+        <span className="text-[10px] text-neutral-600">{doneCount} из {checks.length}</span>
+      </div>
+      <div className="space-y-0.5">
+        {checks.map((c) => (
+          <button
+            key={c.label}
+            onClick={c.onClick}
+            className="w-full text-left px-2 py-1 rounded text-xs hover:bg-neutral-800/50 transition-colors flex items-center gap-2"
+          >
+            {c.done
+              ? <CheckSquare size={13} className="text-emerald-400 shrink-0" />
+              : <Square size={13} className="text-neutral-600 shrink-0" />
+            }
+            <span className={c.done ? 'text-neutral-400 line-through' : 'text-neutral-300'}>{c.label}</span>
+          </button>
+        ))}
+      </div>
+      {todayCalories > 0 && (
+        <div className="mt-1.5 px-2 text-[10px] text-neutral-500">
+          Калории: {todayCalories} ккал
+        </div>
+      )}
+      {/* Progress bar */}
+      <div className="mt-2 h-1 bg-neutral-800 rounded-full overflow-hidden mx-2">
+        <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${(doneCount / checks.length) * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
 // --- Overview View ---
 
-function OverviewView({ workouts, todayLogs, thisMonthCount, latestWeight, onOpenWorkout, onAddWorkout, onLogSaved }: {
-  workouts: WorkoutV2[]; todayLogs: HealthLog[]; thisMonthCount: number; latestWeight: HealthLog | null;
+function OverviewView({ workouts, todayLogs, allLogs, thisMonthCount, latestWeight, onOpenWorkout, onAddWorkout, onLogSaved }: {
+  workouts: WorkoutV2[]; todayLogs: HealthLog[]; allLogs: HealthLog[]; thisMonthCount: number; latestWeight: HealthLog | null;
   onOpenWorkout: (id: string) => void; onAddWorkout: () => void; onLogSaved: () => void;
 }) {
   const [quickInput, setQuickInput] = useState<string | null>(null);
@@ -436,6 +459,37 @@ function OverviewView({ workouts, todayLogs, thisMonthCount, latestWeight, onOpe
 
   const todaySleep = todayLogs.find((l) => l.type === 'sleep');
   const todayWater = todayLogs.find((l) => l.type === 'water');
+
+  // Trends
+  const today = todayStr();
+  const monthStart = today.slice(0, 7) + '-01';
+  const prevMonthDate = new Date();
+  prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+  const prevMonthStart = prevMonthDate.toISOString().slice(0, 7) + '-01';
+  const prevMonthEnd = today.slice(0, 7) + '-01';
+
+  const prevMonthWorkouts = workouts.filter((w) => w.date >= prevMonthStart && w.date < prevMonthEnd).length;
+  const workoutTrend = thisMonthCount - prevMonthWorkouts;
+
+  // Sleep average this week
+  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekAgoStr = weekAgo.toISOString().slice(0, 10);
+  const weekSleepLogs = allLogs.filter((l) => l.type === 'sleep' && l.date >= weekAgoStr);
+  const avgSleep = weekSleepLogs.length > 0 ? (weekSleepLogs.reduce((s, l) => s + (l.value ?? 0), 0) / weekSleepLogs.length) : null;
+  const prevWeekStart = new Date(); prevWeekStart.setDate(prevWeekStart.getDate() - 14);
+  const prevWeekSleepLogs = allLogs.filter((l) => l.type === 'sleep' && l.date >= prevWeekStart.toISOString().slice(0, 10) && l.date < weekAgoStr);
+  const prevAvgSleep = prevWeekSleepLogs.length > 0 ? (prevWeekSleepLogs.reduce((s, l) => s + (l.value ?? 0), 0) / prevWeekSleepLogs.length) : null;
+  const sleepTrend = avgSleep != null && prevAvgSleep != null ? avgSleep - prevAvgSleep : null;
+
+  // Weight change this month
+  const monthWeightLogs = allLogs.filter((l) => l.type === 'weight' && l.date >= monthStart).sort((a, b) => a.date.localeCompare(b.date));
+  const weightChange = monthWeightLogs.length >= 2
+    ? ((monthWeightLogs[monthWeightLogs.length - 1]?.value ?? 0) - (monthWeightLogs[0]?.value ?? 0))
+    : null;
+
+  // Water average this week
+  const weekWaterLogs = allLogs.filter((l) => l.type === 'water' && l.date >= weekAgoStr);
+  const avgWater = weekWaterLogs.length > 0 ? (weekWaterLogs.reduce((s, l) => s + (l.value ?? 0), 0) / weekWaterLogs.length) : null;
 
   const handleQuickLog = useCallback(async (type: string, value: string) => {
     if (!value.trim()) return;
@@ -462,10 +516,13 @@ function OverviewView({ workouts, todayLogs, thisMonthCount, latestWeight, onOpe
   return (
     <div className="space-y-6 max-w-4xl">
       <div className="grid grid-cols-4 gap-3">
-        <StatCard label="Тренировок" value={String(thisMonthCount)} sub="этот месяц" icon={<Dumbbell size={16} />} color="text-blue-400" />
-        <StatCard label="Средний сон" value={todaySleep ? `${todaySleep.value}ч` : '\u2014'} sub="сегодня" icon={<Moon size={16} />} color="text-purple-400" />
-        <StatCard label="Текущий вес" value={latestWeight ? `${latestWeight.value}кг` : '\u2014'} sub="последний замер" icon={<Scale size={16} />} color="text-emerald-400" />
-        <StatCard label="Вода" value={todayWater ? `${todayWater.value}л` : '\u2014'} sub="сегодня" icon={<Droplets size={16} />} color="text-cyan-400" />
+        <StatCard label="Тренировок" value={String(thisMonthCount)} sub="этот месяц" icon={<Dumbbell size={16} />} color="text-blue-400"
+          trend={workoutTrend !== 0 ? workoutTrend : undefined} />
+        <StatCard label="Средний сон" value={avgSleep != null ? `${avgSleep.toFixed(1)}ч` : '\u2014'} sub="за неделю" icon={<Moon size={16} />} color="text-purple-400"
+          trend={sleepTrend != null ? Math.round(sleepTrend * 10) / 10 : undefined} trendUnit="ч" />
+        <StatCard label="Текущий вес" value={latestWeight ? `${latestWeight.value}кг` : '\u2014'} sub="последний замер" icon={<Scale size={16} />} color="text-emerald-400"
+          trend={weightChange != null ? Math.round(weightChange * 10) / 10 : undefined} trendUnit="кг" />
+        <StatCard label="Вода" value={avgWater != null ? `${avgWater.toFixed(1)}л` : '\u2014'} sub="среднее за неделю" icon={<Droplets size={16} />} color="text-cyan-400" />
       </div>
 
       <div>
@@ -539,11 +596,21 @@ function OverviewView({ workouts, todayLogs, thisMonthCount, latestWeight, onOpe
   );
 }
 
-function StatCard({ label, value, sub, icon, color }: { label: string; value: string; sub: string; icon: React.ReactNode; color: string }) {
+function StatCard({ label, value, sub, icon, color, trend, trendUnit }: {
+  label: string; value: string; sub: string; icon: React.ReactNode; color: string; trend?: number; trendUnit?: string;
+}) {
   return (
     <div className="bg-neutral-900/50 rounded-lg px-4 py-3">
       <div className="flex items-center gap-2 mb-1"><span className={color}>{icon}</span><span className="text-xs text-neutral-500">{label}</span></div>
-      <div className="text-xl font-semibold text-white">{value}</div>
+      <div className="flex items-center gap-2">
+        <span className="text-xl font-semibold text-white">{value}</span>
+        {trend != null && trend !== 0 && (
+          <span className={`flex items-center gap-0.5 text-[10px] ${trend > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {trend > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+            {trend > 0 ? '+' : ''}{trend}{trendUnit ?? ''}
+          </span>
+        )}
+      </div>
       <div className="text-[10px] text-neutral-600 mt-0.5">{sub}</div>
     </div>
   );
@@ -903,6 +970,277 @@ function NutritionView({ todayMeals, activePlan, onChanged }: {
       {!activePlan && (
         <div className="text-xs text-neutral-600 text-center py-2">
           Нет активного плана питания. Попросите ИИ составить план в чате.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Stats View ---
+
+type StatsPeriod = '1w' | '1m' | '3m' | '6m' | '1y';
+
+const PERIOD_LABELS: { id: StatsPeriod; label: string }[] = [
+  { id: '1w', label: 'Неделя' },
+  { id: '1m', label: 'Месяц' },
+  { id: '3m', label: '3 месяца' },
+  { id: '6m', label: 'Полгода' },
+  { id: '1y', label: 'Год' },
+];
+
+function getPeriodStart(period: StatsPeriod): string {
+  const d = new Date();
+  switch (period) {
+    case '1w': d.setDate(d.getDate() - 7); break;
+    case '1m': d.setMonth(d.getMonth() - 1); break;
+    case '3m': d.setMonth(d.getMonth() - 3); break;
+    case '6m': d.setMonth(d.getMonth() - 6); break;
+    case '1y': d.setFullYear(d.getFullYear() - 1); break;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+function groupByWeek(dates: string[]): Record<string, number> {
+  const weeks: Record<string, number> = {};
+  for (const d of dates) {
+    const dt = new Date(d);
+    const wStart = new Date(dt);
+    wStart.setDate(dt.getDate() - dt.getDay() + 1);
+    const key = wStart.toISOString().slice(0, 10);
+    weeks[key] = (weeks[key] ?? 0) + 1;
+  }
+  return weeks;
+}
+
+function StatsView({ workouts, allLogs, allMeals, activePlan }: {
+  workouts: WorkoutV2[]; allLogs: HealthLog[]; allMeals: Meal[]; activePlan: MealPlan | null;
+}) {
+  const [period, setPeriod] = useState<StatsPeriod>('1m');
+  const start = getPeriodStart(period);
+  const today = todayStr();
+
+  const filteredWorkouts = workouts.filter((w) => w.date >= start);
+  const filteredLogs = allLogs.filter((l) => l.date >= start);
+  const filteredMeals = allMeals.filter((m) => m.date >= start);
+
+  // Workout stats
+  const workoutWeeks = groupByWeek(filteredWorkouts.map((w) => w.date));
+  const totalDuration = filteredWorkouts.reduce((s, w) => s + (w.durationMinutes ?? 0), 0);
+  const totalHours = Math.floor(totalDuration / 60);
+  const totalMins = totalDuration % 60;
+
+  // Weight data
+  const weightLogs = filteredLogs.filter((l) => l.type === 'weight' && l.value != null).sort((a, b) => a.date.localeCompare(b.date));
+  const currentWeight = weightLogs.length > 0 ? weightLogs[weightLogs.length - 1]?.value ?? null : null;
+  const startWeight = weightLogs.length > 0 ? weightLogs[0]?.value ?? null : null;
+  const weightDelta = currentWeight != null && startWeight != null ? Math.round((currentWeight - startWeight) * 10) / 10 : null;
+
+  // Calories by day
+  const caloriesByDay: Record<string, number> = {};
+  for (const m of filteredMeals) {
+    caloriesByDay[m.date] = (caloriesByDay[m.date] ?? 0) + (m.calories ?? 0);
+  }
+  const calDays = Object.entries(caloriesByDay).sort((a, b) => a[0].localeCompare(b[0]));
+  const avgCalories = calDays.length > 0 ? Math.round(calDays.reduce((s, [, v]) => s + v, 0) / calDays.length) : 0;
+  const calTarget = activePlan?.dailyCalories ?? 0;
+
+  // Sleep data
+  const sleepLogs = filteredLogs.filter((l) => l.type === 'sleep' && l.value != null).sort((a, b) => a.date.localeCompare(b.date));
+  const avgSleep = sleepLogs.length > 0 ? Math.round((sleepLogs.reduce((s, l) => s + (l.value ?? 0), 0) / sleepLogs.length) * 10) / 10 : null;
+
+  // Water data
+  const waterLogs = filteredLogs.filter((l) => l.type === 'water' && l.value != null).sort((a, b) => a.date.localeCompare(b.date));
+
+  return (
+    <div className="max-w-4xl space-y-6">
+      {/* Period selector */}
+      <div className="flex items-center gap-1">
+        {PERIOD_LABELS.map((p) => (
+          <button key={p.id} onClick={() => setPeriod(p.id)}
+            className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
+              period === p.id ? 'bg-neutral-800 text-white' : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+            }`}>{p.label}</button>
+        ))}
+      </div>
+
+      {/* Chart 1: Workouts */}
+      <ChartSection title="Тренировки" subtitle={`Всего: ${filteredWorkouts.length} тренировок, ${totalHours}ч ${totalMins}мин`}>
+        {Object.keys(workoutWeeks).length === 0 ? (
+          <EmptyChart />
+        ) : (
+          <BarChart
+            data={Object.entries(workoutWeeks).sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => ({
+              label: formatDate(k), value: v,
+              color: 'bg-blue-500',
+            }))}
+            maxValue={Math.max(...Object.values(workoutWeeks), 1)}
+          />
+        )}
+      </ChartSection>
+
+      {/* Chart 2: Weight */}
+      <ChartSection title="Вес" subtitle={
+        currentWeight != null
+          ? `Текущий: ${currentWeight} кг${weightDelta != null ? ` (${weightDelta > 0 ? '+' : ''}${weightDelta} кг)` : ''}`
+          : 'Нет данных'
+      }>
+        {weightLogs.length === 0 ? (
+          <EmptyChart />
+        ) : (
+          <LineChart points={weightLogs.map((l) => ({ label: formatDate(l.date), value: l.value ?? 0 }))} />
+        )}
+      </ChartSection>
+
+      {/* Chart 3: Calories */}
+      <ChartSection title="Калории" subtitle={`Среднее: ${avgCalories} ккал/день`}>
+        {calDays.length === 0 ? (
+          <EmptyChart />
+        ) : (
+          <BarChart
+            data={calDays.map(([d, v]) => ({ label: formatDate(d), value: v, color: v > calTarget && calTarget > 0 ? 'bg-red-500' : 'bg-amber-500' }))}
+            maxValue={Math.max(...calDays.map(([, v]) => v), calTarget, 1)}
+            targetLine={calTarget > 0 ? calTarget : undefined}
+          />
+        )}
+      </ChartSection>
+
+      {/* Chart 4: Sleep */}
+      <ChartSection title="Сон" subtitle={avgSleep != null ? `Среднее: ${avgSleep} ч/день` : 'Нет данных'}>
+        {sleepLogs.length === 0 ? (
+          <EmptyChart />
+        ) : (
+          <BarChart
+            data={sleepLogs.map((l) => {
+              const v = l.value ?? 0;
+              const color = v < 6 ? 'bg-red-500' : v < 7 ? 'bg-yellow-500' : v <= 9 ? 'bg-emerald-500' : 'bg-blue-500';
+              return { label: formatDate(l.date), value: v, color };
+            })}
+            maxValue={Math.max(...sleepLogs.map((l) => l.value ?? 0), 10)}
+          />
+        )}
+      </ChartSection>
+
+      {/* Chart 5: Water */}
+      <ChartSection title="Вода" subtitle={`Цель: 2 л/день`}>
+        {waterLogs.length === 0 ? (
+          <EmptyChart />
+        ) : (
+          <BarChart
+            data={waterLogs.map((l) => ({
+              label: formatDate(l.date), value: l.value ?? 0,
+              color: (l.value ?? 0) >= 2 ? 'bg-cyan-500' : 'bg-cyan-800',
+            }))}
+            maxValue={Math.max(...waterLogs.map((l) => l.value ?? 0), 3)}
+            targetLine={2}
+          />
+        )}
+      </ChartSection>
+    </div>
+  );
+}
+
+function ChartSection({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-neutral-900/50 rounded-lg p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium text-neutral-200">{title}</h3>
+        <span className="text-[10px] text-neutral-500">{subtitle}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function EmptyChart() {
+  return <div className="h-32 flex items-center justify-center text-xs text-neutral-600">Нет данных за этот период</div>;
+}
+
+function BarChart({ data, maxValue, targetLine }: {
+  data: { label: string; value: number; color: string }[];
+  maxValue: number;
+  targetLine?: number;
+}) {
+  return (
+    <div className="relative">
+      {targetLine != null && maxValue > 0 && (
+        <div className="absolute left-0 right-0 border-t border-dashed border-neutral-600 z-10"
+          style={{ bottom: `${(targetLine / maxValue) * 128}px` }}>
+          <span className="absolute -top-3 right-0 text-[9px] text-neutral-500">{targetLine}</span>
+        </div>
+      )}
+      <div className="flex items-end gap-1 h-32 overflow-x-auto">
+        {data.map((d, i) => {
+          const pct = maxValue > 0 ? (d.value / maxValue) * 100 : 0;
+          return (
+            <div key={i} className="flex flex-col items-center flex-1 min-w-[16px] max-w-[40px] group" title={`${d.label}: ${d.value}`}>
+              <div className="w-full flex-1 flex items-end">
+                <div className={`w-full rounded-t ${d.color} transition-all`} style={{ height: `${Math.max(pct, 2)}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {data.length <= 20 && (
+        <div className="flex gap-1 mt-1">
+          {data.map((d, i) => (
+            <div key={i} className="flex-1 min-w-[16px] max-w-[40px] text-center text-[8px] text-neutral-600 truncate">{d.label}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LineChart({ points }: { points: { label: string; value: number }[] }) {
+  if (points.length === 0) return <EmptyChart />;
+  const min = Math.min(...points.map((p) => p.value));
+  const max = Math.max(...points.map((p) => p.value));
+  const range = max - min || 1;
+
+  return (
+    <div>
+      <div className="relative h-32">
+        {/* Y axis labels */}
+        <div className="absolute left-0 top-0 bottom-0 flex flex-col justify-between text-[8px] text-neutral-600 w-8">
+          <span>{max.toFixed(1)}</span>
+          <span>{((max + min) / 2).toFixed(1)}</span>
+          <span>{min.toFixed(1)}</span>
+        </div>
+        {/* Points + lines */}
+        <div className="ml-9 h-full flex items-end gap-0">
+          {points.map((p, i) => {
+            const pct = ((p.value - min) / range) * 100;
+            return (
+              <div key={i} className="flex-1 flex flex-col items-center justify-end h-full relative group" title={`${p.label}: ${p.value}`}>
+                <div className="absolute" style={{ bottom: `${pct}%` }}>
+                  <div className="w-2 h-2 rounded-full bg-emerald-400 border border-neutral-900" />
+                </div>
+                {/* Connect line */}
+                {i > 0 && (() => {
+                  const prevPct = (((points[i - 1]?.value ?? 0) - min) / range) * 100;
+                  const angle = Math.atan2(pct - prevPct, 100 / points.length) * (180 / Math.PI);
+                  const length = Math.sqrt(Math.pow(100 / points.length, 2) + Math.pow(pct - prevPct, 2));
+                  return (
+                    <div className="absolute h-px bg-emerald-500/50"
+                      style={{
+                        bottom: `${prevPct}%`,
+                        left: '-50%',
+                        width: `${length}%`,
+                        transform: `rotate(${-angle}deg)`,
+                        transformOrigin: 'left center',
+                      }} />
+                  );
+                })()}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {points.length <= 15 && (
+        <div className="flex gap-0 ml-9 mt-1">
+          {points.map((p, i) => (
+            <div key={i} className="flex-1 text-center text-[8px] text-neutral-600 truncate">{p.label}</div>
+          ))}
         </div>
       )}
     </div>
