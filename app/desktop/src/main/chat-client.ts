@@ -492,7 +492,24 @@ export async function sendToApi(
 
 // === Audio transcription (Whisper) ===
 
-export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
+const HALLUCINATION_PATTERNS = [
+  'субтитр', 'синецкая', 'егорова', 'amara.org', 'www.', 'http',
+  'copyright', 'подписывайтесь', 'редактор субтитров', 'корректор',
+  'переводчик', 'субтитры', 'srt', 'продолжение следует',
+];
+
+function isHallucination(text: string): boolean {
+  if (text.trim().length < 3) return true;
+  const lower = text.toLowerCase();
+  return HALLUCINATION_PATTERNS.some((p) => lower.includes(p));
+}
+
+export interface TranscriptionResult {
+  text: string;
+  error?: string;
+}
+
+export async function transcribeAudio(audioBuffer: Buffer): Promise<TranscriptionResult> {
   const sttUrl = process.env.STT_API_URL || process.env.CHAT_API_URL;
   const sttKey = process.env.STT_API_KEY || process.env.CHAT_API_KEY;
   const sttModel = process.env.STT_MODEL || 'whisper-1';
@@ -516,7 +533,13 @@ export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
       file: fs.createReadStream(tmpPath),
       language: 'ru',
     });
-    return transcription.text;
+
+    if (isHallucination(transcription.text)) {
+      console.log('[Whisper] Hallucination detected:', transcription.text);
+      return { text: '', error: 'unrecognized' };
+    }
+
+    return { text: transcription.text };
   } finally {
     // Clean up temp file
     try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }

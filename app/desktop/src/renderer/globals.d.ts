@@ -51,7 +51,7 @@ interface ChatAPI {
   onStreamStart: (callback: (sessionId: string) => void) => () => void;
   onStreamUpdate: (callback: (sessionId: string, text: string) => void) => () => void;
   onStreamEnd: (callback: (sessionId: string) => void) => () => void;
-  transcribeAudio: (audioData: ArrayBuffer) => Promise<string>;
+  transcribeAudio: (audioData: ArrayBuffer) => Promise<{ text: string; error?: string }>;
 }
 
 interface ClaudeAPI {

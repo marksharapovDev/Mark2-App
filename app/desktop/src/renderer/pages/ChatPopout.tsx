@@ -29,12 +29,16 @@ export function ChatPopout() {
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animFrameRef = useRef<number>(0);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -145,27 +149,54 @@ export function ChatPopout() {
       const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
+
+      const audioCtx = new AudioContext();
+      audioContextRef.current = audioCtx;
+      const analyser = audioCtx.createAnalyser();
+      audioCtx.createMediaStreamSource(stream).connect(analyser);
+      analyser.fftSize = 256;
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const checkVolume = () => {
+        analyser.getByteFrequencyData(dataArray);
+        setIsSpeaking(dataArray.reduce((a, b) => a + b, 0) / dataArray.length > 10);
+        animFrameRef.current = requestAnimationFrame(checkVolume);
+      };
+      checkVolume();
+
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
       mediaRecorder.onstop = async () => {
+        cancelAnimationFrame(animFrameRef.current);
+        setIsSpeaking(false);
+        audioCtx.close().catch(() => {});
+        audioContextRef.current = null;
         stream.getTracks().forEach((t) => t.stop());
         setIsRecording(false);
+
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         if (audioBlob.size === 0) return;
         setIsTranscribing(true);
         try {
           const arrayBuffer = await audioBlob.arrayBuffer();
-          const text = await window.chat.transcribeAudio(arrayBuffer);
-          if (text) setInput((prev) => (prev ? prev + ' ' + text : text));
+          const result = await window.chat.transcribeAudio(arrayBuffer);
+          if (result.error) {
+            setVoiceError('Не удалось распознать речь. Проверьте микрофон.');
+            setTimeout(() => setVoiceError(null), 3000);
+          } else if (result.text) {
+            setInput((prev) => (prev ? prev + ' ' + result.text : result.text));
+          }
         } catch (err) {
           console.error('[Voice] Transcription failed:', err);
+          setVoiceError('Ошибка транскрипции');
+          setTimeout(() => setVoiceError(null), 3000);
         } finally {
           setIsTranscribing(false);
         }
       };
       mediaRecorder.start();
       setIsRecording(true);
+      setVoiceError(null);
     } catch (err) {
       console.error('[Voice] Failed to access microphone:', err);
     }
@@ -270,58 +301,68 @@ export function ChatPopout() {
             ))}
           </div>
         )}
-        <div className="flex gap-1.5 items-end">
-          <button
-            type="button"
-            onClick={handleAttachFiles}
-            disabled={isThinking || !sessionId}
-            className="p-2 rounded text-neutral-500 hover:text-neutral-300 disabled:opacity-40 transition-colors"
-            title="Attach file"
-          >
-            <Paperclip className="w-4 h-4" />
-          </button>
+        {/* Unified input container */}
+        <div className="bg-neutral-800 border border-neutral-700 rounded-2xl px-3 py-2 flex items-end gap-1.5">
+          {!isRecording && (
+            <button
+              type="button"
+              onClick={handleAttachFiles}
+              disabled={isThinking || !sessionId}
+              className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-300 disabled:opacity-40 transition-colors shrink-0"
+              title="Attach file"
+            >
+              <Paperclip className="w-4 h-4" />
+            </button>
+          )}
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isTranscribing ? 'Transcribing...' : 'Message...'}
-            disabled={isThinking || isTranscribing || !sessionId}
+            placeholder={isRecording ? 'Говорите...' : isTranscribing ? 'Распознавание...' : 'Message...'}
+            disabled={isThinking || isTranscribing || isRecording || !sessionId}
             rows={1}
             style={{ maxHeight: '200px', overflowY: 'auto', resize: 'none' }}
-            className="flex-1 bg-neutral-900 text-neutral-200 rounded-lg px-3 py-2 text-sm border border-neutral-700 focus:outline-none focus:border-neutral-500 placeholder:text-neutral-600 disabled:opacity-50"
+            className={`flex-1 bg-transparent text-neutral-200 px-2 py-1.5 text-sm outline-none border-none placeholder:text-neutral-600 disabled:opacity-50 ${isRecording ? 'opacity-40' : ''}`}
           />
           <button
             type="button"
             onClick={toggleRecording}
             disabled={isThinking || isTranscribing || !sessionId}
-            className={`p-2 rounded transition-colors disabled:opacity-40 ${
-              isRecording ? 'text-red-400 animate-pulse' : isTranscribing ? 'text-yellow-400 animate-pulse' : 'text-neutral-500 hover:text-neutral-300'
+            className={`p-1.5 rounded-lg transition-all disabled:opacity-40 shrink-0 ${
+              isRecording
+                ? isSpeaking ? 'text-red-400 voice-wave' : 'text-red-400 ring-2 ring-red-500/50'
+                : isTranscribing ? 'text-yellow-400 animate-pulse' : 'text-neutral-500 hover:text-neutral-300'
             }`}
-            title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+            title={isRecording ? 'Stop recording' : isTranscribing ? 'Распознавание...' : 'Voice input'}
           >
             <Mic className="w-4 h-4" />
           </button>
-          {isThinking ? (
-            <button
-              type="button"
-              onClick={handleAbort}
-              className="w-9 h-9 shrink-0 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-colors"
-              title="Stop"
-            >
-              <Square className="w-3.5 h-3.5" fill="currentColor" />
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!input.trim() || !sessionId}
-              className="w-9 h-9 shrink-0 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center disabled:opacity-40 transition-colors"
-              title="Send"
-            >
-              <ArrowUp className="w-4 h-4" />
-            </button>
+          {!isRecording && (
+            isThinking ? (
+              <button
+                type="button"
+                onClick={handleAbort}
+                className="w-8 h-8 shrink-0 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-colors"
+                title="Stop"
+              >
+                <Square className="w-3 h-3" fill="currentColor" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!input.trim() || !sessionId}
+                className="w-8 h-8 shrink-0 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center disabled:opacity-40 transition-colors"
+                title="Send"
+              >
+                <ArrowUp className="w-4 h-4" />
+              </button>
+            )
           )}
         </div>
+        {voiceError && (
+          <div className="text-yellow-400 text-xs mt-1 px-1">{voiceError}</div>
+        )}
       </form>
     </div>
   );

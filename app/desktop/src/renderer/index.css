@@ -24,3 +24,14 @@
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
+
+/* Voice recording wave animation */
+@keyframes voice-wave {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+.voice-wave {
+  animation: voice-wave 1.5s infinite;
+  border-radius: 8px;
+}
