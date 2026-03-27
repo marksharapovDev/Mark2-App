@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Mic, Paperclip, ArrowUp, Square } from 'lucide-react';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { FileAttachmentCard, parseBotFileLinks } from '../components/FileAttachmentCard';
+import { UserMessageActions, BotMessageActions, InterruptedBanner, stripInterrupted } from '../components/MessageActions';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
 
@@ -179,6 +180,39 @@ export function ChatPopout() {
     setAttachedFiles((prev) => prev.filter((f) => f !== filePath));
   }, []);
 
+  const handleEditMessage = useCallback((msgIndex: number) => {
+    const msg = messages[msgIndex];
+    if (!msg || msg.role !== 'user') return;
+    setMessages((prev) => {
+      const next = [...prev];
+      if (next[msgIndex + 1]?.role === 'assistant') next.splice(msgIndex + 1, 1);
+      next.splice(msgIndex, 1);
+      return next;
+    });
+    setInput(msg.content);
+    if (msg.filePaths) setAttachedFiles(msg.filePaths);
+    inputRef.current?.focus();
+  }, [messages]);
+
+  const handleRetryMessage = useCallback((msgIndex: number) => {
+    const msg = messages[msgIndex];
+    if (!msg || !sessionId) return;
+    let userMsg: Message | undefined;
+    if (msg.role === 'assistant') {
+      for (let i = msgIndex - 1; i >= 0; i--) { if (messages[i]?.role === 'user') { userMsg = messages[i]; break; } }
+    } else { userMsg = msg; }
+    if (!userMsg) return;
+    setMessages((prev) => { const next = [...prev]; if (msg.role === 'assistant') next.splice(msgIndex, 1); return next; });
+    setIsThinking(true);
+    const retryText = userMsg.content + '\n\n(повторный запрос, дай другой ответ)';
+    window.chat.send(agent, sessionId, retryText, userMsg.filePaths).then((response) => {
+      if (response.notification) setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: response.notification ?? '', engine: 'claude-code', isNotification: true }]);
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: response.content, engine: response.engine }]);
+    }).catch((err) => {
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${err instanceof Error ? err.message : 'Unknown error'}` }]);
+    }).finally(() => { setIsThinking(false); inputRef.current?.focus(); });
+  }, [messages, sessionId, agent]);
+
   const handleAbort = useCallback(() => {
     if (sessionId) window.chat.abort(sessionId);
   }, [sessionId]);
@@ -208,7 +242,14 @@ export function ChatPopout() {
         {!isLoading && messages.length === 0 && (
           <div className="text-center text-neutral-600 text-sm py-8">Chat with {agent} agent</div>
         )}
-        {messages.map((msg) => <PopoutBubble key={msg.id} message={msg} />)}
+        {messages.map((msg, idx) => (
+          <PopoutBubble
+            key={msg.id}
+            message={msg}
+            onEdit={() => handleEditMessage(idx)}
+            onRetry={() => handleRetryMessage(idx)}
+          />
+        ))}
         {isThinking && streamingText && (
           <div className="flex justify-start">
             <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm break-words bg-neutral-800 text-neutral-300">
@@ -286,7 +327,7 @@ export function ChatPopout() {
   );
 }
 
-function PopoutBubble({ message }: { message: Message }) {
+function PopoutBubble({ message, onEdit, onRetry }: { message: Message; onEdit: () => void; onRetry: () => void }) {
   const isUser = message.role === 'user';
 
   if (message.isNotification) {
@@ -299,27 +340,29 @@ function PopoutBubble({ message }: { message: Message }) {
 
   if (isUser) {
     return (
-      <div className="flex justify-end">
+      <div className="flex justify-end group/msg">
         <div className="max-w-[85%]">
           {message.filePaths && message.filePaths.length > 0 && (
             <div className="flex flex-col gap-1.5 mb-1.5 items-end">
-              {message.filePaths.map((f) => (
-                <FileAttachmentCard key={f} filePath={f} />
-              ))}
+              {message.filePaths.map((f) => <FileAttachmentCard key={f} filePath={f} />)}
             </div>
           )}
           <div className="rounded-lg px-3 py-2 text-sm break-words bg-blue-600/20 text-blue-100 whitespace-pre-wrap">
             {message.content}
+          </div>
+          <div className="flex justify-end opacity-0 group-hover/msg:opacity-100 transition-opacity">
+            <UserMessageActions content={message.content} onEdit={onEdit} />
           </div>
         </div>
       </div>
     );
   }
 
-  const { cleanContent, filePaths: botFiles } = parseBotFileLinks(message.content);
+  const { text: rawContent, wasInterrupted } = stripInterrupted(message.content);
+  const { cleanContent, filePaths: botFiles } = parseBotFileLinks(rawContent);
 
   return (
-    <div className="flex justify-start">
+    <div className="flex justify-start group/msg">
       <div className="max-w-[85%]">
         <div className="rounded-lg px-3 py-2 text-sm break-words bg-neutral-800 text-neutral-300">
           {message.engine && (
@@ -328,14 +371,16 @@ function PopoutBubble({ message }: { message: Message }) {
             </span>
           )}
           <MarkdownRenderer content={cleanContent} />
+          {wasInterrupted && <InterruptedBanner onRetry={onRetry} />}
         </div>
         {botFiles.length > 0 && (
           <div className="flex flex-col gap-1.5 mt-1.5">
-            {botFiles.map((f) => (
-              <FileAttachmentCard key={f} filePath={f} />
-            ))}
+            {botFiles.map((f) => <FileAttachmentCard key={f} filePath={f} />)}
           </div>
         )}
+        <div className="opacity-0 group-hover/msg:opacity-100 transition-opacity">
+          <BotMessageActions content={rawContent} onRetry={onRetry} />
+        </div>
       </div>
     </div>
   );

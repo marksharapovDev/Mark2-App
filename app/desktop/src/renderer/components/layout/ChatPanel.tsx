@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, type FormEvent } from 'react'
 import { Mic, Paperclip, ArrowUp, Square } from 'lucide-react';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { FileAttachmentCard, parseBotFileLinks } from '../FileAttachmentCard';
+import { UserMessageActions, BotMessageActions, InterruptedBanner, stripInterrupted } from '../MessageActions';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
 
@@ -398,6 +399,64 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     setAttachedFiles((prev) => prev.filter((f) => f !== filePath));
   }, []);
 
+  // Edit user message: remove bot response, put text back in input
+  const handleEditMessage = useCallback((msgIndex: number) => {
+    const msg = messages[msgIndex];
+    if (!msg || msg.role !== 'user') return;
+    // Remove this message and the bot response after it
+    setMessages((prev) => {
+      const next = [...prev];
+      // Remove bot response (next message if it's assistant)
+      if (next[msgIndex + 1]?.role === 'assistant') next.splice(msgIndex + 1, 1);
+      next.splice(msgIndex, 1);
+      return next;
+    });
+    setInput(msg.content);
+    if (msg.filePaths) setAttachedFiles(msg.filePaths);
+    inputRef.current?.focus();
+  }, [messages]);
+
+  // Retry: resend the user message that precedes the bot response at msgIndex
+  const handleRetryMessage = useCallback((msgIndex: number) => {
+    const msg = messages[msgIndex];
+    if (!msg) return;
+
+    let userMsg: Message | undefined;
+    if (msg.role === 'assistant') {
+      // Find preceding user message
+      for (let i = msgIndex - 1; i >= 0; i--) {
+        if (messages[i]?.role === 'user') { userMsg = messages[i]; break; }
+      }
+    } else {
+      userMsg = msg;
+    }
+    if (!userMsg || !activeSessionId) return;
+
+    // Remove the bot response
+    setMessages((prev) => {
+      const next = [...prev];
+      if (msg.role === 'assistant') next.splice(msgIndex, 1);
+      return next;
+    });
+
+    // Resend with variation hint
+    setIsThinking(true);
+    const retryText = userMsg.content + '\n\n(повторный запрос, дай другой ответ)';
+    window.chat.send(agent, activeSessionId, retryText, userMsg.filePaths).then((response) => {
+      if (response.notification) {
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: response.notification ?? '', engine: 'claude-code', isNotification: true }]);
+      }
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: response.content, engine: response.engine }]);
+      if (response.changedEntities?.length) window.dataEvents.emitDataChanged(response.changedEntities);
+    }).catch((err) => {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${errorMsg}` }]);
+    }).finally(() => {
+      setIsThinking(false);
+      inputRef.current?.focus();
+    });
+  }, [messages, activeSessionId, agent]);
+
   // Abort current request
   const handleAbort = useCallback(() => {
     if (activeSessionId) {
@@ -532,7 +591,14 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
               </div>
             )}
 
-            {messages.map((msg) => <ChatBubble key={msg.id} message={msg} />)}
+            {messages.map((msg, idx) => (
+              <ChatBubble
+                key={msg.id}
+                message={msg}
+                onEdit={() => handleEditMessage(idx)}
+                onRetry={() => handleRetryMessage(idx)}
+              />
+            ))}
 
             {isThinking && streamingText && (
               <div className="flex justify-start">
@@ -700,7 +766,11 @@ function SessionList({
 
 // --- Chat Bubble ---
 
-function ChatBubble({ message }: { message: Message }) {
+function ChatBubble({ message, onEdit, onRetry }: {
+  message: Message;
+  onEdit: () => void;
+  onRetry: () => void;
+}) {
   const isUser = message.role === 'user';
 
   if (message.isNotification) {
@@ -715,29 +785,30 @@ function ChatBubble({ message }: { message: Message }) {
 
   if (isUser) {
     return (
-      <div className="flex justify-end">
+      <div className="flex justify-end group/msg">
         <div className="max-w-[90%]">
-          {/* File cards above text */}
           {message.filePaths && message.filePaths.length > 0 && (
             <div className="flex flex-col gap-1.5 mb-1.5 items-end">
-              {message.filePaths.map((f) => (
-                <FileAttachmentCard key={f} filePath={f} />
-              ))}
+              {message.filePaths.map((f) => <FileAttachmentCard key={f} filePath={f} />)}
             </div>
           )}
           <div className="rounded-lg px-3 py-2 text-xs break-words bg-blue-600/20 text-blue-100 whitespace-pre-wrap">
             {message.content}
+          </div>
+          <div className="flex justify-end opacity-0 group-hover/msg:opacity-100 transition-opacity">
+            <UserMessageActions content={message.content} onEdit={onEdit} />
           </div>
         </div>
       </div>
     );
   }
 
-  // Bot message — extract file links
-  const { cleanContent, filePaths: botFiles } = parseBotFileLinks(message.content);
+  // Bot message
+  const { text: rawContent, wasInterrupted } = stripInterrupted(message.content);
+  const { cleanContent, filePaths: botFiles } = parseBotFileLinks(rawContent);
 
   return (
-    <div className="flex justify-start">
+    <div className="flex justify-start group/msg">
       <div className="max-w-[90%]">
         <div className="rounded-lg px-3 py-2 text-xs break-words bg-neutral-800 text-neutral-300">
           {message.engine && (
@@ -748,15 +819,16 @@ function ChatBubble({ message }: { message: Message }) {
             </span>
           )}
           <MarkdownRenderer content={cleanContent} />
+          {wasInterrupted && <InterruptedBanner onRetry={onRetry} />}
         </div>
-        {/* Bot file cards below text */}
         {botFiles.length > 0 && (
           <div className="flex flex-col gap-1.5 mt-1.5">
-            {botFiles.map((f) => (
-              <FileAttachmentCard key={f} filePath={f} />
-            ))}
+            {botFiles.map((f) => <FileAttachmentCard key={f} filePath={f} />)}
           </div>
         )}
+        <div className="opacity-0 group-hover/msg:opacity-100 transition-opacity">
+          <BotMessageActions content={rawContent} onRetry={onRetry} />
+        </div>
       </div>
     </div>
   );
