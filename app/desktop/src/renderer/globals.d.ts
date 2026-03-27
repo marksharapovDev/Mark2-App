@@ -34,7 +34,7 @@ interface ChatSessionItem {
 }
 
 interface ChatAPI {
-  send: (agent: string, sessionId: string, message: string) => Promise<ChatResponse>;
+  send: (agent: string, sessionId: string, message: string, filePaths?: string[]) => Promise<ChatResponse>;
   setContext: (sessionId: string, ctx: Record<string, unknown>) => Promise<void>;
   setAgentContext: (agent: string, ctx: Record<string, unknown>) => Promise<void>;
   createSession: (agent: string, fromSessionId?: string) => Promise<ChatSessionItem>;

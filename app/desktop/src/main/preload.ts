@@ -36,7 +36,7 @@ export interface ChatSessionItem {
 }
 
 export interface ChatAPI {
-  send: (agent: string, sessionId: string, message: string) => Promise<ChatResponse>;
+  send: (agent: string, sessionId: string, message: string, filePaths?: string[]) => Promise<ChatResponse>;
   setContext: (sessionId: string, ctx: Record<string, unknown>) => Promise<void>;
   setAgentContext: (agent: string, ctx: Record<string, unknown>) => Promise<void>;
   createSession: (agent: string, fromSessionId?: string) => Promise<ChatSessionItem>;
@@ -66,8 +66,8 @@ export interface ClaudeAPI {
 }
 
 const chatApi: ChatAPI = {
-  send: (agent, sessionId, message) =>
-    ipcRenderer.invoke('chat:send', agent, sessionId, message),
+  send: (agent, sessionId, message, filePaths?) =>
+    ipcRenderer.invoke('chat:send', agent, sessionId, message, filePaths),
 
   setContext: (sessionId, ctx) =>
     ipcRenderer.invoke('chat:set-context', sessionId, ctx),

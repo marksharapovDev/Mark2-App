@@ -18,6 +18,7 @@ import {
   setAgentContext,
 } from './hybrid-engine';
 import { transcribeAudio } from './chat-client';
+import { processAttachedFiles } from './file-processor';
 import * as db from './db-service';
 import { getAggregatedTasks } from './task-aggregator';
 import type { Sphere } from '@mark2/shared';
@@ -78,8 +79,13 @@ export function registerIpcHandlers(): void {
 
   // === Hybrid chat (send message within a session) ===
 
-  ipcMain.handle('chat:send', async (_event, agent: string, sessionId: string, message: string) => {
+  ipcMain.handle('chat:send', async (_event, agent: string, sessionId: string, message: string, filePaths?: string[]) => {
     if (!isValidAgent(agent)) throw new Error(`Invalid agent: ${agent}`);
+
+    // Process attached files if any
+    const files = filePaths && filePaths.length > 0
+      ? await processAttachedFiles(filePaths)
+      : undefined;
 
     sendToRenderer('chat:stream-start', sessionId);
 
@@ -88,7 +94,7 @@ export function registerIpcHandlers(): void {
     };
 
     try {
-      const result = await sendMessage(agent, sessionId, message, onChunk);
+      const result = await sendMessage(agent, sessionId, message, onChunk, files);
       sendToRenderer('chat:stream-end', sessionId);
       return result;
     } catch (err) {

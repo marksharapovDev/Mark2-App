@@ -15,6 +15,7 @@ import {
   type ActionExecution,
 } from './ai-tools';
 import * as db from './db-service';
+import type { ProcessedFiles } from './file-processor';
 
 export type { AgentName };
 
@@ -273,12 +274,23 @@ async function executeViaClaudeCode(
   mode: InteractionMode = 'auto',
   questionRound = 0,
   onChunk?: (accumulated: string) => void,
+  files?: ProcessedFiles,
 ): Promise<HybridResponse> {
   // Prepend cross-context + append mode instruction
   const modeInstruction = getModePrompt(mode, questionRound);
+  // For Claude Code CLI: inject file content as text (no vision support)
+  let fileContext = '';
+  if (files) {
+    const parts: string[] = [];
+    if (files.textContent) parts.push(files.textContent);
+    if (files.images.length > 0) {
+      parts.push(`[${files.images.length} изображение(й) прикреплено — содержимое доступно только через API, не через CLI]`);
+    }
+    if (parts.length > 0) fileContext = parts.join('\n\n') + '\n\n---\n\n';
+  }
   const fullPrompt = crossContext
-    ? `${crossContext}\n\n---\n\n${prompt}\n\n${modeInstruction}`
-    : `${prompt}\n\n${modeInstruction}`;
+    ? `${crossContext}\n\n---\n\n${fileContext}${prompt}\n\n${modeInstruction}`
+    : `${fileContext}${prompt}\n\n${modeInstruction}`;
   const result = onChunk
     ? await claude.runStream({ agent, prompt: fullPrompt }, onChunk)
     : await claude.run({ agent, prompt: fullPrompt });
@@ -337,6 +349,7 @@ export async function sendMessage(
   sessionId: string,
   message: string,
   onChunk?: (accumulated: string) => void,
+  files?: ProcessedFiles,
 ): Promise<HybridResponse> {
   // Detect interaction mode before anything else
   const detectedMode = detectInteractionMode(message);
@@ -405,7 +418,7 @@ export async function sendMessage(
   const pending = pendingTask.get(sessionId);
   if (pending && isConfirmation(cleanMessage)) {
     pendingTask.delete(sessionId);
-    return executeViaClaudeCode(agent, sessionId, pending, crossContext, mode, questionRound, onChunk);
+    return executeViaClaudeCode(agent, sessionId, pending, crossContext, mode, questionRound, onChunk, files);
   }
   pendingTask.delete(sessionId);
 
@@ -413,31 +426,31 @@ export async function sendMessage(
   // Claude Code is smart enough to ask questions in consult mode and execute in execute mode
   if (mode !== 'auto') {
     console.log(`[HybridEngine] Explicit mode "${mode}", routing to Claude Code`);
-    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk);
+    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk, files);
   }
 
   // Data action → straight to Claude Code (no Level 2 classification)
   if (isDataAction(cleanMessage)) {
     console.log('[HybridEngine] Data action detected, routing to Claude Code');
-    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk);
+    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk, files);
   }
 
   // Level 1 + 2: heavy tasks that need classification
   if (maybeHeavyTask(cleanMessage)) {
     const classification = await classifyMessage(cleanMessage);
     if (classification === 'TASK') {
-      return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk);
+      return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk, files);
     }
   }
 
-  const apiResponse = await sendToApi(agent, sessionId, cleanMessage, crossContext, getModePrompt(mode, questionRound), onChunk);
+  const apiResponse = await sendToApi(agent, sessionId, cleanMessage, crossContext, getModePrompt(mode, questionRound), onChunk, files);
 
   console.log('[HybridEngine] Raw API response:', apiResponse.substring(0, 500));
   console.log('[HybridEngine] Contains ACTION tags:', apiResponse.includes('[ACTION:'));
 
   if (apiResponse.includes(EXECUTE_MARKER)) {
     const taskDescription = apiResponse.replace(EXECUTE_MARKER, '').trim();
-    return executeViaClaudeCode(agent, sessionId, taskDescription || cleanMessage, crossContext, mode, questionRound, onChunk);
+    return executeViaClaudeCode(agent, sessionId, taskDescription || cleanMessage, crossContext, mode, questionRound, onChunk, files);
   }
 
   // Process AI actions in the response

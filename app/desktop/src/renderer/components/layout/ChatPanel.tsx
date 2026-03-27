@@ -173,16 +173,11 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
       mediaRecorderRef.current.stop();
     }
 
-    // Build message with file context
-    let messageToSend = trimmed;
-    const files = attachedFiles;
-    if (files.length > 0) {
-      const fileList = files.map((f) => `  - ${f}`).join('\n');
-      messageToSend += `\n\nПользователь прикрепил файлы:\n${fileList}\nПрочитай их содержимое.`;
-    }
+    // Capture files and clear state
+    const filesToSend = attachedFiles.length > 0 ? [...attachedFiles] : undefined;
 
-    const displayContent = files.length > 0
-      ? `${trimmed}\n\n📎 ${files.map((f) => f.split('/').pop()).join(', ')}`
+    const displayContent = filesToSend
+      ? `${trimmed}\n\n📎 ${filesToSend.map((f) => f.split('/').pop()).join(', ')}`
       : trimmed;
 
     setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: displayContent }]);
@@ -192,7 +187,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     setIsThinking(true);
 
     try {
-      const response = await window.chat.send(agent, activeSessionId, messageToSend);
+      const response = await window.chat.send(agent, activeSessionId, trimmed, filesToSend);
 
       if (response.notification) {
         setMessages((prev) => [

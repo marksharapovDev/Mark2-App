@@ -390,6 +390,11 @@ export async function backfillAllSummaries(): Promise<number> {
   return count;
 }
 
+interface FileAttachments {
+  textContent: string;
+  images: Array<{ base64: string; mediaType: string }>;
+}
+
 export async function sendToApi(
   agent: AgentName,
   sessionId: string,
@@ -397,6 +402,7 @@ export async function sendToApi(
   crossContext?: string,
   modePrompt?: string,
   onChunk?: (accumulated: string) => void,
+  files?: FileAttachments,
 ): Promise<string> {
   const model = process.env.CHAT_MODEL ?? 'anthropic/claude-haiku-4.5';
   const openai = getOpenAIClient();
@@ -416,10 +422,34 @@ export async function sendToApi(
     content: row.content,
   }));
 
+  // Build user message: text + file content + images (multimodal)
+  let userText = message;
+  if (files?.textContent) {
+    userText += '\n\n' + files.textContent;
+  }
+
+  let userContent: OpenAI.ChatCompletionUserMessageParam['content'];
+  if (files?.images && files.images.length > 0) {
+    // Multimodal message with images
+    const parts: OpenAI.ChatCompletionContentPart[] = [];
+    for (const img of files.images) {
+      parts.push({
+        type: 'image_url',
+        image_url: {
+          url: `data:${img.mediaType};base64,${img.base64}`,
+        },
+      });
+    }
+    parts.push({ type: 'text', text: userText });
+    userContent = parts;
+  } else {
+    userContent = userText;
+  }
+
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: 'system', content: fullSystemPrompt },
     ...historyMessages,
-    { role: 'user', content: message },
+    { role: 'user', content: userContent },
   ];
 
   // Use streaming if onChunk callback is provided
