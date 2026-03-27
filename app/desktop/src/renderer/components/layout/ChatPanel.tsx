@@ -48,6 +48,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isDragging = useRef(false);
+  const msgCache = useRef<Map<string, Message[]>>(new Map());
 
   // Listen for pop-in
   useEffect(() => {
@@ -77,6 +78,8 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     }
     prevAgentRef.current = agent;
 
+    msgCache.current.clear();
+
     window.chat.getSessions(agent).then(async (list) => {
       if (cancelled) return;
       setSessions(list);
@@ -88,7 +91,9 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
         setActiveSessionTitle(latest.title);
         const msgs = await window.chat.getSessionMessages(latest.id);
         if (!cancelled) {
-          setMessages(msgs.map(toMessage));
+          const mapped = msgs.map(toMessage);
+          msgCache.current.set(latest.id, mapped);
+          setMessages(mapped);
         }
       } else {
         const session = await window.chat.createSession(agent);
@@ -96,6 +101,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
           setSessions([session]);
           setActiveSessionId(session.id);
           setActiveSessionTitle(session.title);
+          msgCache.current.set(session.id, []);
         }
       }
     }).catch(console.error).finally(() => {
@@ -173,37 +179,83 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     } finally {
       setIsThinking(false);
       inputRef.current?.focus();
+      // Update cache with latest messages
+      if (activeSessionId) {
+        setMessages((prev) => {
+          msgCache.current.set(activeSessionId, prev);
+          return prev;
+        });
+      }
     }
   }, [input, isThinking, activeSessionId, agent]);
 
-  // New chat — generate summary for the previous session
+  // New chat — show empty chat instantly, create in DB in background
   const handleNewChat = useCallback(async () => {
-    const session = await window.chat.createSession(agent, activeSessionId ?? undefined);
-    setSessions((prev) => [session, ...prev]);
-    setActiveSessionId(session.id);
-    setActiveSessionTitle(session.title);
+    // Save current messages to cache
+    if (activeSessionId) {
+      setMessages((prev) => {
+        msgCache.current.set(activeSessionId, prev);
+        return prev;
+      });
+    }
+
+    // Instantly show empty chat with temp ID
+    const tempId = crypto.randomUUID();
     setMessages([]);
+    setActiveSessionId(tempId);
+    setActiveSessionTitle('New chat');
     setShowHistory(false);
+
+    // Create session in DB in background
+    try {
+      const session = await window.chat.createSession(agent, activeSessionId ?? undefined);
+      setSessions((prev) => [session, ...prev]);
+      setActiveSessionId(session.id);
+      setActiveSessionTitle(session.title);
+      msgCache.current.set(session.id, []);
+    } catch (err) {
+      console.error('Failed to create session:', err);
+    }
   }, [agent, activeSessionId]);
 
-  // Switch session
+  // Switch session — use cache if available, fetch in background
   const handleSelectSession = useCallback(async (sessionId: string) => {
     if (sessionId === activeSessionId) {
       setShowHistory(false);
       return;
     }
-    setIsLoading(true);
-    try {
-      const msgs = await window.chat.switchSession(activeSessionId, sessionId);
-      setMessages(msgs.map(toMessage));
-      const session = sessions.find((s) => s.id === sessionId);
-      setActiveSessionId(sessionId);
-      setActiveSessionTitle(session?.title ?? 'Chat');
-      setShowHistory(false);
-    } catch (err) {
-      console.error('Failed to switch session:', err);
-    } finally {
-      setIsLoading(false);
+
+    // Save current messages to cache before switching
+    if (activeSessionId) {
+      setMessages((prev) => {
+        msgCache.current.set(activeSessionId, prev);
+        return prev;
+      });
+    }
+
+    const session = sessions.find((s) => s.id === sessionId);
+    setActiveSessionId(sessionId);
+    setActiveSessionTitle(session?.title ?? 'Chat');
+    setShowHistory(false);
+
+    // Use cached messages for instant switch
+    const cached = msgCache.current.get(sessionId);
+    if (cached) {
+      setMessages(cached);
+      // Still notify backend about switch (fire-and-forget)
+      window.chat.switchSession(activeSessionId, sessionId).catch(console.error);
+    } else {
+      setIsLoading(true);
+      try {
+        const msgs = await window.chat.switchSession(activeSessionId, sessionId);
+        const mapped = msgs.map(toMessage);
+        msgCache.current.set(sessionId, mapped);
+        setMessages(mapped);
+      } catch (err) {
+        console.error('Failed to switch session:', err);
+      } finally {
+        setIsLoading(false);
+      }
     }
   }, [activeSessionId, sessions]);
 

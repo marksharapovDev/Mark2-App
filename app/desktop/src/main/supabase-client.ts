@@ -15,10 +15,15 @@ export function getSupabase(): SupabaseClient {
   cachedClient = createClient(url, key, {
     auth: { persistSession: false },
     global: {
-      fetch: (input, init) => fetch(input, {
-        ...init,
-        keepalive: false,
-      }),
+      fetch: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set('Connection', 'close');
+        return fetch(input, {
+          ...init,
+          headers,
+          keepalive: false,
+        });
+      },
     },
   });
   return cachedClient;

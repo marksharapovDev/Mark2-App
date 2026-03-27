@@ -281,8 +281,10 @@ function TasksColumn({ todayStr }: { todayStr: string }) {
   }, [reload]);
 
   useEffect(() => {
-    return window.dataEvents.onDataChanged(() => {
-      reload();
+    return window.dataEvents.onDataChanged((entities) => {
+      if (entities.some((e) => ['reminders', 'tasks'].includes(e))) {
+        reload();
+      }
     });
   }, [reload]);
 
@@ -292,19 +294,28 @@ function TasksColumn({ todayStr }: { todayStr: string }) {
     }
   }, [addingTask]);
 
-  const handleComplete = async (task: AggregatedTask) => {
-    try {
-      if (task.isReminder) {
-        if (task.status === 'done') {
-          await window.db.reminders.uncomplete(task.id);
-        } else {
-          await window.db.reminders.complete(task.id);
-        }
-        window.dataEvents.emitDataChanged(['reminders']);
-      }
-    } catch {
-      // ignore
-    }
+  const handleComplete = (task: AggregatedTask) => {
+    if (!task.isReminder) return;
+
+    const newStatus = task.status === 'done' ? 'pending' : 'done';
+
+    // Optimistic update — instant UI feedback
+    setTasks((prev) =>
+      prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t)),
+    );
+
+    // Fire DB call in background — no await, no full reload
+    const dbCall = task.status === 'done'
+      ? window.db.reminders.uncomplete(task.id)
+      : window.db.reminders.complete(task.id);
+
+    dbCall.catch((err) => {
+      console.error('[TodayBlock] toggle failed, reverting:', err);
+      // Revert on error
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, status: task.status } : t)),
+      );
+    });
   };
 
   const handleAddTask = async () => {
