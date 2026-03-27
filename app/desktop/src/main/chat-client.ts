@@ -396,6 +396,7 @@ export async function sendToApi(
   message: string,
   crossContext?: string,
   modePrompt?: string,
+  onChunk?: (accumulated: string) => void,
 ): Promise<string> {
   const model = process.env.CHAT_MODEL ?? 'anthropic/claude-haiku-4.5';
   const openai = getOpenAIClient();
@@ -415,13 +416,35 @@ export async function sendToApi(
     content: row.content,
   }));
 
+  const messages: OpenAI.ChatCompletionMessageParam[] = [
+    { role: 'system', content: fullSystemPrompt },
+    ...historyMessages,
+    { role: 'user', content: message },
+  ];
+
+  // Use streaming if onChunk callback is provided
+  if (onChunk) {
+    const stream = await openai.chat.completions.create({
+      model,
+      messages,
+      max_tokens: 4096,
+      stream: true,
+    });
+
+    let accumulated = '';
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content;
+      if (delta) {
+        accumulated += delta;
+        onChunk(accumulated);
+      }
+    }
+    return accumulated;
+  }
+
   const response = await openai.chat.completions.create({
     model,
-    messages: [
-      { role: 'system', content: fullSystemPrompt },
-      ...historyMessages,
-      { role: 'user', content: message },
-    ],
+    messages,
     max_tokens: 4096,
   });
 

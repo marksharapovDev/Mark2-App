@@ -1,4 +1,4 @@
-import { exec, execSync, ChildProcess } from 'child_process';
+import { exec, execSync, spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import fs from 'fs';
 import os from 'os';
@@ -88,6 +88,56 @@ export class ClaudeBridge extends EventEmitter {
 
         reject(new Error(error.message ?? `Claude Code exited with code ${error.status ?? 1}`));
       }
+    });
+  }
+
+  /**
+   * Стриминг запрос к Claude Code.
+   * Использует spawn() для потоковой передачи stdout.
+   */
+  async runStream(options: RunOptions, onChunk: (accumulated: string) => void): Promise<string> {
+    const cwd = options.cwd ?? agentDir(options.agent);
+    const args = ['-p', options.prompt];
+
+    return new Promise((resolve, reject) => {
+      const proc = spawn('claude', args, {
+        cwd,
+        env: process.env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      let output = '';
+      let stderr = '';
+
+      proc.stdout?.on('data', (data: Buffer) => {
+        output += data.toString();
+        onChunk(output);
+      });
+
+      proc.stderr?.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on('close', (code) => {
+        this.emit('complete', {
+          agent: options.agent,
+          output,
+          exitCode: code ?? 0,
+        } satisfies CompleteEvent);
+
+        if (code !== 0 && code !== null) {
+          if (stderr) {
+            this.emit('error', { agent: options.agent, error: stderr } satisfies ErrorEvent);
+          }
+          reject(new Error(stderr || `Claude Code exited with code ${code}`));
+        } else {
+          resolve(output);
+        }
+      });
+
+      proc.on('error', (err) => {
+        reject(err);
+      });
     });
   }
 

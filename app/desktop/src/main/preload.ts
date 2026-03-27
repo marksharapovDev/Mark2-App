@@ -49,6 +49,9 @@ export interface ChatAPI {
   popout: (agent: string) => Promise<boolean>;
   popin: () => Promise<boolean>;
   onPoppedIn: (callback: () => void) => () => void;
+  onStreamStart: (callback: (sessionId: string) => void) => () => void;
+  onStreamUpdate: (callback: (sessionId: string, text: string) => void) => () => void;
+  onStreamEnd: (callback: (sessionId: string) => void) => () => void;
 }
 
 export interface ClaudeAPI {
@@ -102,6 +105,24 @@ const chatApi: ChatAPI = {
     const handler = () => { callback(); };
     ipcRenderer.on('chat:popped-in', handler);
     return () => { ipcRenderer.removeListener('chat:popped-in', handler); };
+  },
+
+  onStreamStart: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, sessionId: string) => { callback(sessionId); };
+    ipcRenderer.on('chat:stream-start', handler);
+    return () => { ipcRenderer.removeListener('chat:stream-start', handler); };
+  },
+
+  onStreamUpdate: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, sessionId: string, text: string) => { callback(sessionId, text); };
+    ipcRenderer.on('chat:stream-update', handler);
+    return () => { ipcRenderer.removeListener('chat:stream-update', handler); };
+  },
+
+  onStreamEnd: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, sessionId: string) => { callback(sessionId); };
+    ipcRenderer.on('chat:stream-end', handler);
+    return () => { ipcRenderer.removeListener('chat:stream-end', handler); };
   },
 };
 

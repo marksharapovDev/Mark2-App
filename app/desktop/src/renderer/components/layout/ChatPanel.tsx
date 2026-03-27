@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent } from 'react';
+import { MarkdownRenderer } from '../MarkdownRenderer';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
 
@@ -44,6 +45,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [streamingText, setStreamingText] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -56,10 +58,30 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     return unsub;
   }, []);
 
+  // Listen for streaming events
+  useEffect(() => {
+    const unsubStart = window.chat.onStreamStart((sid) => {
+      if (sid === activeSessionId) {
+        setStreamingText('');
+      }
+    });
+    const unsubUpdate = window.chat.onStreamUpdate((sid, text) => {
+      if (sid === activeSessionId) {
+        setStreamingText(text);
+      }
+    });
+    const unsubEnd = window.chat.onStreamEnd((sid) => {
+      if (sid === activeSessionId) {
+        setStreamingText(null);
+      }
+    });
+    return () => { unsubStart(); unsubUpdate(); unsubEnd(); };
+  }, [activeSessionId]);
+
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamingText]);
 
   // Track previous agent to generate summary on tab switch
   const prevAgentRef = useRef<AgentName | null>(null);
@@ -142,6 +164,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
 
     setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: trimmed }]);
     setInput('');
+    if (inputRef.current) inputRef.current.style.height = 'auto';
     setIsThinking(true);
 
     try {
@@ -418,7 +441,16 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
 
             {messages.map((msg) => <ChatBubble key={msg.id} message={msg} />)}
 
-            {isThinking && (
+            {isThinking && streamingText && (
+              <div className="flex justify-start">
+                <div className="max-w-[90%] rounded-lg px-3 py-2 text-xs break-words bg-neutral-800 text-neutral-300">
+                  <MarkdownRenderer content={streamingText} />
+                  <span className="inline-block w-1.5 h-3 bg-neutral-400 animate-pulse ml-0.5 align-middle" />
+                </div>
+              </div>
+            )}
+
+            {isThinking && !streamingText && (
               <div className="text-neutral-500 text-xs py-1">
                 <span className="animate-pulse">Thinking...</span>
               </div>
@@ -429,21 +461,27 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
 
           {/* Input */}
           <form onSubmit={handleSubmit} className="px-3 py-2 border-t border-neutral-800">
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-end">
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onInput={(e) => {
+                  const el = e.currentTarget;
+                  el.style.height = 'auto';
+                  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+                }}
                 placeholder="Message..."
                 disabled={isThinking || !activeSessionId}
                 rows={1}
-                className="flex-1 bg-neutral-900 text-neutral-200 rounded px-3 py-2 text-xs border border-neutral-700 focus:outline-none focus:border-neutral-500 resize-none placeholder:text-neutral-600 disabled:opacity-50"
+                style={{ maxHeight: '200px', overflowY: 'auto', resize: 'none' }}
+                className="flex-1 bg-neutral-900 text-neutral-200 rounded px-3 py-2 text-xs border border-neutral-700 focus:outline-none focus:border-neutral-500 placeholder:text-neutral-600 disabled:opacity-50"
               />
               <button
                 type="submit"
                 disabled={isThinking || !input.trim() || !activeSessionId}
-                className="self-end px-3 py-2 rounded text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
+                className="px-3 py-2 rounded text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
               >
                 Send
               </button>
@@ -550,8 +588,8 @@ function ChatBubble({ message }: { message: Message }) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[90%] rounded-lg px-3 py-2 text-xs whitespace-pre-wrap break-words ${
-          isUser ? 'bg-blue-600/20 text-blue-100' : 'bg-neutral-800 text-neutral-300'
+        className={`max-w-[90%] rounded-lg px-3 py-2 text-xs break-words ${
+          isUser ? 'bg-blue-600/20 text-blue-100 whitespace-pre-wrap' : 'bg-neutral-800 text-neutral-300'
         }`}
       >
         {!isUser && message.engine && (
@@ -561,7 +599,7 @@ function ChatBubble({ message }: { message: Message }) {
             {message.engine === 'claude-code' ? 'CC' : 'API'}
           </span>
         )}
-        {message.content}
+        {isUser ? message.content : <MarkdownRenderer content={message.content} />}
       </div>
     </div>
   );

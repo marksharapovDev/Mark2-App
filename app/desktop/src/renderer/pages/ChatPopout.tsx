@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
+import { MarkdownRenderer } from '../components/MarkdownRenderer';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
 
@@ -21,13 +22,28 @@ export function ChatPopout() {
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [streamingText, setStreamingText] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamingText]);
+
+  // Listen for streaming events
+  useEffect(() => {
+    const unsubStart = window.chat.onStreamStart((sid) => {
+      if (sid === sessionId) setStreamingText('');
+    });
+    const unsubUpdate = window.chat.onStreamUpdate((sid, text) => {
+      if (sid === sessionId) setStreamingText(text);
+    });
+    const unsubEnd = window.chat.onStreamEnd((sid) => {
+      if (sid === sessionId) setStreamingText(null);
+    });
+    return () => { unsubStart(); unsubUpdate(); unsubEnd(); };
+  }, [sessionId]);
 
   // Load or create session
   useEffect(() => {
@@ -64,6 +80,7 @@ export function ChatPopout() {
 
     setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: trimmed }]);
     setInput('');
+    if (inputRef.current) inputRef.current.style.height = 'auto';
     setIsThinking(true);
 
     try {
@@ -120,26 +137,40 @@ export function ChatPopout() {
           <div className="text-center text-neutral-600 text-sm py-8">Chat with {agent} agent</div>
         )}
         {messages.map((msg) => <PopoutBubble key={msg.id} message={msg} />)}
-        {isThinking && <div className="text-neutral-500 text-sm py-1"><span className="animate-pulse">Thinking...</span></div>}
+        {isThinking && streamingText && (
+          <div className="flex justify-start">
+            <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm break-words bg-neutral-800 text-neutral-300">
+              <MarkdownRenderer content={streamingText} />
+              <span className="inline-block w-1.5 h-3.5 bg-neutral-400 animate-pulse ml-0.5 align-middle" />
+            </div>
+          </div>
+        )}
+        {isThinking && !streamingText && <div className="text-neutral-500 text-sm py-1"><span className="animate-pulse">Thinking...</span></div>}
         <div ref={messagesEndRef} />
       </div>
 
       <form onSubmit={handleSubmit} className="px-4 py-3 border-t border-neutral-800">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-end">
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onInput={(e) => {
+              const el = e.currentTarget;
+              el.style.height = 'auto';
+              el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+            }}
             placeholder="Message..."
             disabled={isThinking || !sessionId}
-            rows={2}
-            className="flex-1 bg-neutral-900 text-neutral-200 rounded-lg px-3 py-2 text-sm border border-neutral-700 focus:outline-none focus:border-neutral-500 resize-none placeholder:text-neutral-600 disabled:opacity-50"
+            rows={1}
+            style={{ maxHeight: '200px', overflowY: 'auto', resize: 'none' }}
+            className="flex-1 bg-neutral-900 text-neutral-200 rounded-lg px-3 py-2 text-sm border border-neutral-700 focus:outline-none focus:border-neutral-500 placeholder:text-neutral-600 disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={isThinking || !input.trim() || !sessionId}
-            className="self-end px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
           >
             Send
           </button>
@@ -162,15 +193,15 @@ function PopoutBubble({ message }: { message: { role: string; content: string; e
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
-        isUser ? 'bg-blue-600/20 text-blue-100' : 'bg-neutral-800 text-neutral-300'
+      <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm break-words ${
+        isUser ? 'bg-blue-600/20 text-blue-100 whitespace-pre-wrap' : 'bg-neutral-800 text-neutral-300'
       }`}>
         {!isUser && message.engine && (
           <span className={`text-[10px] font-medium mr-1 ${message.engine === 'claude-code' ? 'text-orange-400' : 'text-neutral-500'}`}>
             {message.engine === 'claude-code' ? 'CC' : 'API'}
           </span>
         )}
-        {message.content}
+        {isUser ? message.content : <MarkdownRenderer content={message.content} />}
       </div>
     </div>
   );

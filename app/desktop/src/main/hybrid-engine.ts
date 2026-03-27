@@ -272,13 +272,16 @@ async function executeViaClaudeCode(
   crossContext?: string,
   mode: InteractionMode = 'auto',
   questionRound = 0,
+  onChunk?: (accumulated: string) => void,
 ): Promise<HybridResponse> {
   // Prepend cross-context + append mode instruction
   const modeInstruction = getModePrompt(mode, questionRound);
   const fullPrompt = crossContext
     ? `${crossContext}\n\n---\n\n${prompt}\n\n${modeInstruction}`
     : `${prompt}\n\n${modeInstruction}`;
-  const result = await claude.run({ agent, prompt: fullPrompt });
+  const result = onChunk
+    ? await claude.runStream({ agent, prompt: fullPrompt }, onChunk)
+    : await claude.run({ agent, prompt: fullPrompt });
   const content = result.trim();
 
   // In consult round 0: ignore any ACTION tags — this is the questions-only phase
@@ -333,6 +336,7 @@ export async function sendMessage(
   agent: AgentName,
   sessionId: string,
   message: string,
+  onChunk?: (accumulated: string) => void,
 ): Promise<HybridResponse> {
   // Detect interaction mode before anything else
   const detectedMode = detectInteractionMode(message);
@@ -401,7 +405,7 @@ export async function sendMessage(
   const pending = pendingTask.get(sessionId);
   if (pending && isConfirmation(cleanMessage)) {
     pendingTask.delete(sessionId);
-    return executeViaClaudeCode(agent, sessionId, pending, crossContext, mode, questionRound);
+    return executeViaClaudeCode(agent, sessionId, pending, crossContext, mode, questionRound, onChunk);
   }
   pendingTask.delete(sessionId);
 
@@ -409,31 +413,31 @@ export async function sendMessage(
   // Claude Code is smart enough to ask questions in consult mode and execute in execute mode
   if (mode !== 'auto') {
     console.log(`[HybridEngine] Explicit mode "${mode}", routing to Claude Code`);
-    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound);
+    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk);
   }
 
   // Data action → straight to Claude Code (no Level 2 classification)
   if (isDataAction(cleanMessage)) {
     console.log('[HybridEngine] Data action detected, routing to Claude Code');
-    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound);
+    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk);
   }
 
   // Level 1 + 2: heavy tasks that need classification
   if (maybeHeavyTask(cleanMessage)) {
     const classification = await classifyMessage(cleanMessage);
     if (classification === 'TASK') {
-      return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound);
+      return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk);
     }
   }
 
-  const apiResponse = await sendToApi(agent, sessionId, cleanMessage, crossContext, getModePrompt(mode, questionRound));
+  const apiResponse = await sendToApi(agent, sessionId, cleanMessage, crossContext, getModePrompt(mode, questionRound), onChunk);
 
   console.log('[HybridEngine] Raw API response:', apiResponse.substring(0, 500));
   console.log('[HybridEngine] Contains ACTION tags:', apiResponse.includes('[ACTION:'));
 
   if (apiResponse.includes(EXECUTE_MARKER)) {
     const taskDescription = apiResponse.replace(EXECUTE_MARKER, '').trim();
-    return executeViaClaudeCode(agent, sessionId, taskDescription || cleanMessage, crossContext, mode, questionRound);
+    return executeViaClaudeCode(agent, sessionId, taskDescription || cleanMessage, crossContext, mode, questionRound, onChunk);
   }
 
   // Process AI actions in the response

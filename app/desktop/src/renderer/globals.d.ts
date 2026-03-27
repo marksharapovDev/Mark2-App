@@ -47,6 +47,9 @@ interface ChatAPI {
   popout: (agent: string) => Promise<boolean>;
   popin: () => Promise<boolean>;
   onPoppedIn: (callback: () => void) => () => void;
+  onStreamStart: (callback: (sessionId: string) => void) => () => void;
+  onStreamUpdate: (callback: (sessionId: string, text: string) => void) => () => void;
+  onStreamEnd: (callback: (sessionId: string) => void) => () => void;
 }
 
 interface ClaudeAPI {

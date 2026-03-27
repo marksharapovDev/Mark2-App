@@ -79,7 +79,21 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('chat:send', async (_event, agent: string, sessionId: string, message: string) => {
     if (!isValidAgent(agent)) throw new Error(`Invalid agent: ${agent}`);
-    return sendMessage(agent, sessionId, message);
+
+    sendToRenderer('chat:stream-start', sessionId);
+
+    const onChunk = (accumulated: string) => {
+      sendToRenderer('chat:stream-update', sessionId, accumulated);
+    };
+
+    try {
+      const result = await sendMessage(agent, sessionId, message, onChunk);
+      sendToRenderer('chat:stream-end', sessionId);
+      return result;
+    } catch (err) {
+      sendToRenderer('chat:stream-end', sessionId);
+      throw err;
+    }
   });
 
   ipcMain.handle('chat:set-context', (_event, sessionId: string, ctx: Record<string, unknown>) => {
