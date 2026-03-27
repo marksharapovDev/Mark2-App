@@ -17,6 +17,7 @@ import {
   setSessionContext,
   setAgentContext,
 } from './hybrid-engine';
+import { transcribeAudio } from './chat-client';
 import * as db from './db-service';
 import { getAggregatedTasks } from './task-aggregator';
 import type { Sphere } from '@mark2/shared';
@@ -103,6 +104,10 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('chat:set-agent-context', (_event, agent: string, ctx: Record<string, unknown>) => {
     if (!isValidAgent(agent)) throw new Error(`Invalid agent: ${agent}`);
     setAgentContext(agent, ctx);
+  });
+
+  ipcMain.handle('chat:transcribe-audio', async (_event, audioData: ArrayBuffer) => {
+    return transcribeAudio(Buffer.from(audioData));
   });
 
   // === Claude Code direct ===

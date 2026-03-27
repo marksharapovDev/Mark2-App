@@ -450,3 +450,36 @@ export async function sendToApi(
 
   return response.choices[0]?.message?.content ?? '';
 }
+
+// === Audio transcription (Whisper) ===
+
+export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
+  const sttUrl = process.env.STT_API_URL || process.env.CHAT_API_URL;
+  const sttKey = process.env.STT_API_KEY || process.env.CHAT_API_KEY;
+  const sttModel = process.env.STT_MODEL || 'whisper-1';
+
+  if (!sttKey) {
+    throw new Error('No API key for transcription (STT_API_KEY or CHAT_API_KEY)');
+  }
+
+  const openai = new OpenAI({
+    apiKey: sttKey,
+    baseURL: sttUrl || undefined,
+  });
+
+  // Write buffer to temp file (OpenAI SDK expects a file)
+  const tmpPath = path.join(os.tmpdir(), `mark2-audio-${Date.now()}.webm`);
+  fs.writeFileSync(tmpPath, audioBuffer);
+
+  try {
+    const transcription = await openai.audio.transcriptions.create({
+      model: sttModel,
+      file: fs.createReadStream(tmpPath),
+      language: 'ru',
+    });
+    return transcription.text;
+  } finally {
+    // Clean up temp file
+    try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+  }
+}

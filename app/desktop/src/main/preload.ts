@@ -52,6 +52,7 @@ export interface ChatAPI {
   onStreamStart: (callback: (sessionId: string) => void) => () => void;
   onStreamUpdate: (callback: (sessionId: string, text: string) => void) => () => void;
   onStreamEnd: (callback: (sessionId: string) => void) => () => void;
+  transcribeAudio: (audioData: ArrayBuffer) => Promise<string>;
 }
 
 export interface ClaudeAPI {
@@ -124,6 +125,9 @@ const chatApi: ChatAPI = {
     ipcRenderer.on('chat:stream-end', handler);
     return () => { ipcRenderer.removeListener('chat:stream-end', handler); };
   },
+
+  transcribeAudio: (audioData) =>
+    ipcRenderer.invoke('chat:transcribe-audio', audioData),
 };
 
 const claudeApi: ClaudeAPI = {

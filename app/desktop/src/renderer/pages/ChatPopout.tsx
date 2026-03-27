@@ -5,10 +5,6 @@ import { MarkdownRenderer } from '../components/MarkdownRenderer';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
 
-const SpeechRecognitionCtor: (new () => SpeechRecognition) | null =
-  typeof window !== 'undefined'
-    ? (window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null)
-    : null;
 
 interface Message {
   id: string;
@@ -30,12 +26,13 @@ export function ChatPopout() {
   const [isLoading, setIsLoading] = useState(true);
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
-  const [interimText, setInterimText] = useState('');
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -88,10 +85,8 @@ export function ChatPopout() {
     const trimmed = input.trim();
     if (!trimmed || isThinking || !sessionId) return;
 
-    if (isRecording && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsRecording(false);
-      setInterimText('');
+    if (isRecording && mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
     }
 
     let messageToSend = trimmed;
@@ -147,36 +142,40 @@ export function ChatPopout() {
     }
   }, [handleSubmit]);
 
-  const toggleRecording = useCallback(() => {
-    if (!SpeechRecognitionCtor) return;
-    if (isRecording && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsRecording(false);
-      setInterimText('');
+  const toggleRecording = useCallback(async () => {
+    if (isRecording && mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
       return;
     }
-    const recognition = new SpeechRecognitionCtor();
-    recognition.lang = 'ru-RU';
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognitionRef.current = recognition;
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let finalTranscript = '';
-      let interim = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result && result[0]) {
-          if (result.isFinal) finalTranscript += result[0].transcript;
-          else interim += result[0].transcript;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setIsRecording(false);
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (audioBlob.size === 0) return;
+        setIsTranscribing(true);
+        try {
+          const arrayBuffer = await audioBlob.arrayBuffer();
+          const text = await window.chat.transcribeAudio(arrayBuffer);
+          if (text) setInput((prev) => (prev ? prev + ' ' + text : text));
+        } catch (err) {
+          console.error('[Voice] Transcription failed:', err);
+        } finally {
+          setIsTranscribing(false);
         }
-      }
-      if (finalTranscript) { setInput((prev) => prev + finalTranscript); setInterimText(''); }
-      else setInterimText(interim);
-    };
-    recognition.onerror = () => { setIsRecording(false); setInterimText(''); };
-    recognition.onend = () => { setIsRecording(false); setInterimText(''); };
-    recognition.start();
-    setIsRecording(true);
+      };
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error('[Voice] Failed to access microphone:', err);
+    }
   }, [isRecording]);
 
   const handleAttachFiles = useCallback(async () => {
@@ -243,33 +242,31 @@ export function ChatPopout() {
           </button>
           <textarea
             ref={inputRef}
-            value={interimText ? input + interimText : input}
-            onChange={(e) => { setInput(e.target.value); setInterimText(''); }}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             onInput={(e) => {
               const el = e.currentTarget;
               el.style.height = 'auto';
               el.style.height = Math.min(el.scrollHeight, 200) + 'px';
             }}
-            placeholder="Message..."
-            disabled={isThinking || !sessionId}
+            placeholder={isTranscribing ? 'Transcribing...' : 'Message...'}
+            disabled={isThinking || isTranscribing || !sessionId}
             rows={1}
             style={{ maxHeight: '200px', overflowY: 'auto', resize: 'none' }}
             className="flex-1 bg-neutral-900 text-neutral-200 rounded-lg px-3 py-2 text-sm border border-neutral-700 focus:outline-none focus:border-neutral-500 placeholder:text-neutral-600 disabled:opacity-50"
           />
-          {SpeechRecognitionCtor && (
-            <button
-              type="button"
-              onClick={toggleRecording}
-              disabled={isThinking || !sessionId}
-              className={`p-2 rounded transition-colors disabled:opacity-40 ${
-                isRecording ? 'text-red-400 animate-pulse' : 'text-neutral-500 hover:text-neutral-300'
-              }`}
-              title={isRecording ? 'Stop recording' : 'Voice input'}
-            >
-              <Mic className="w-4 h-4" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={toggleRecording}
+            disabled={isThinking || isTranscribing || !sessionId}
+            className={`p-2 rounded transition-colors disabled:opacity-40 ${
+              isRecording ? 'text-red-400 animate-pulse' : isTranscribing ? 'text-yellow-400 animate-pulse' : 'text-neutral-500 hover:text-neutral-300'
+            }`}
+            title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+          >
+            <Mic className="w-4 h-4" />
+          </button>
           <button
             type="submit"
             disabled={isThinking || !input.trim() || !sessionId}

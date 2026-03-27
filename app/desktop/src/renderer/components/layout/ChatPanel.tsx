@@ -4,16 +4,6 @@ import { MarkdownRenderer } from '../MarkdownRenderer';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
 
-// Check SpeechRecognition support
-const SpeechRecognitionCtor: (new () => SpeechRecognition) | null =
-  typeof window !== 'undefined'
-    ? (window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null)
-    : null;
-
-if (!SpeechRecognitionCtor) {
-  console.warn('[ChatPanel] SpeechRecognition not supported in this environment');
-}
-
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -58,14 +48,15 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
   const [isLoading, setIsLoading] = useState(true);
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
-  const [interimText, setInterimText] = useState('');
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isDragging = useRef(false);
   const msgCache = useRef<Map<string, Message[]>>(new Map());
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   // Listen for pop-in
   useEffect(() => {
@@ -178,10 +169,8 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     if (!trimmed || isThinking || !activeSessionId) return;
 
     // Stop recording if active
-    if (isRecording && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsRecording(false);
-      setInterimText('');
+    if (isRecording && mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
     }
 
     // Build message with file context
@@ -355,57 +344,52 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     }
   }, [handleSubmit]);
 
-  // Voice input toggle
-  const toggleRecording = useCallback(() => {
-    if (!SpeechRecognitionCtor) return;
-
-    if (isRecording && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsRecording(false);
-      setInterimText('');
+  // Voice input toggle (MediaRecorder + Whisper)
+  const toggleRecording = useCallback(async () => {
+    if (isRecording && mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
       return;
     }
 
-    const recognition = new SpeechRecognitionCtor();
-    recognition.lang = 'ru-RU';
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognitionRef.current = recognition;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let finalTranscript = '';
-      let interim = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result && result[0]) {
-          if (result.isFinal) {
-            finalTranscript += result[0].transcript;
-          } else {
-            interim += result[0].transcript;
-          }
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
         }
-      }
-      if (finalTranscript) {
-        setInput((prev) => prev + finalTranscript);
-        setInterimText('');
-      } else {
-        setInterimText(interim);
-      }
-    };
+      };
 
-    recognition.onerror = (event) => {
-      console.error('[SpeechRecognition] Error:', event.error);
-      setIsRecording(false);
-      setInterimText('');
-    };
+      mediaRecorder.onstop = async () => {
+        // Stop all tracks to release mic
+        stream.getTracks().forEach((t) => t.stop());
+        setIsRecording(false);
 
-    recognition.onend = () => {
-      setIsRecording(false);
-      setInterimText('');
-    };
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (audioBlob.size === 0) return;
 
-    recognition.start();
-    setIsRecording(true);
+        setIsTranscribing(true);
+        try {
+          const arrayBuffer = await audioBlob.arrayBuffer();
+          const text = await window.chat.transcribeAudio(arrayBuffer);
+          if (text) {
+            setInput((prev) => (prev ? prev + ' ' + text : text));
+          }
+        } catch (err) {
+          console.error('[Voice] Transcription failed:', err);
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error('[Voice] Failed to access microphone:', err);
+    }
   }, [isRecording]);
 
   // File attachment
@@ -586,33 +570,31 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
               </button>
               <textarea
                 ref={inputRef}
-                value={interimText ? input + interimText : input}
-                onChange={(e) => { setInput(e.target.value); setInterimText(''); }}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onInput={(e) => {
                   const el = e.currentTarget;
                   el.style.height = 'auto';
                   el.style.height = Math.min(el.scrollHeight, 200) + 'px';
                 }}
-                placeholder="Message..."
-                disabled={isThinking || !activeSessionId}
+                placeholder={isTranscribing ? 'Transcribing...' : 'Message...'}
+                disabled={isThinking || isTranscribing || !activeSessionId}
                 rows={1}
                 style={{ maxHeight: '200px', overflowY: 'auto', resize: 'none' }}
                 className="flex-1 bg-neutral-900 text-neutral-200 rounded px-3 py-2 text-xs border border-neutral-700 focus:outline-none focus:border-neutral-500 placeholder:text-neutral-600 disabled:opacity-50"
               />
-              {SpeechRecognitionCtor && (
-                <button
-                  type="button"
-                  onClick={toggleRecording}
-                  disabled={isThinking || !activeSessionId}
-                  className={`p-2 rounded transition-colors disabled:opacity-40 ${
-                    isRecording ? 'text-red-400 animate-pulse' : 'text-neutral-500 hover:text-neutral-300'
-                  }`}
-                  title={isRecording ? 'Stop recording' : 'Voice input'}
-                >
-                  <Mic className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={toggleRecording}
+                disabled={isThinking || isTranscribing || !activeSessionId}
+                className={`p-2 rounded transition-colors disabled:opacity-40 ${
+                  isRecording ? 'text-red-400 animate-pulse' : isTranscribing ? 'text-yellow-400 animate-pulse' : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+                title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+              >
+                <Mic className="w-3.5 h-3.5" />
+              </button>
               <button
                 type="submit"
                 disabled={isThinking || !input.trim() || !activeSessionId}
