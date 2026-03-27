@@ -1,29 +1,30 @@
 import { MainLayout } from '../components/layout/MainLayout';
-import { TodayWidget } from '../components/dashboard/TodayWidget';
 import { DevWidget } from '../components/dashboard/DevWidget';
 import { TeachingWidget } from '../components/dashboard/TeachingWidget';
 import { StudyWidget } from '../components/dashboard/StudyWidget';
 import { HealthWidget } from '../components/dashboard/HealthWidget';
 import { FinanceWidget } from '../components/dashboard/FinanceWidget';
+import { TodayPanel } from '../components/dashboard/TodayPanel';
 
 export function Dashboard() {
   return (
-    <MainLayout agent="general" defaultChatWidthPct={35}>
-      <div className="max-w-5xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
-
-        {/* Today — full width */}
-        <div className="mb-6">
-          <TodayWidget />
+    <MainLayout agent="general" defaultChatWidthPct={30}>
+      <div className="flex h-full overflow-hidden">
+        {/* Left column — sphere widgets */}
+        <div className="flex-[3] overflow-y-auto p-6 space-y-4">
+          <TeachingWidget />
+          <DevWidget />
+          <StudyWidget />
+          <FinanceWidget />
+          <HealthWidget />
         </div>
 
-        {/* Sphere widgets — adaptive grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <DevWidget />
-          <TeachingWidget />
-          <StudyWidget />
-          <HealthWidget />
-          <FinanceWidget />
+        {/* Divider */}
+        <div className="w-px bg-neutral-800 shrink-0" />
+
+        {/* Right column — today tasks */}
+        <div className="flex-[2] overflow-y-auto">
+          <TodayPanel />
         </div>
       </div>
     </MainLayout>

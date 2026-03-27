@@ -2,36 +2,77 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen } from 'lucide-react';
 
+interface DeadlineInfo {
+  title: string;
+  subject: string;
+  date: string;
+}
+
+interface ExamInfo {
+  title: string;
+  date: string;
+}
+
 export function StudyWidget() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [inProgressCount, setInProgressCount] = useState(0);
-  const [nextDeadline, setNextDeadline] = useState<{ title: string; subject: string; deadline: string } | null>(null);
+  const [nextDeadline, setNextDeadline] = useState<DeadlineInfo | null>(null);
+  const [nextExam, setNextExam] = useState<ExamInfo | null>(null);
 
   const reload = useCallback(async () => {
     try {
-      const [assignments, subjects] = await Promise.all([
+      const [assignments, subjects, exams] = await Promise.all([
         window.db.assignments.list(),
         window.db.subjects.list(),
+        window.db.exams.list(),
       ]);
 
-      const inProgress = assignments.filter((a) => a.status === 'in_progress');
+      const today = new Date().toISOString().slice(0, 10);
+
+      // In-progress assignments
+      const inProgress = assignments.filter(
+        (a: { status: string }) => a.status === 'in_progress' || a.status === 'pending'
+      );
       setInProgressCount(inProgress.length);
 
+      // Nearest assignment deadline
       const withDeadline = assignments
-        .filter((a) => a.deadline && a.status !== 'graded' && a.status !== 'submitted')
-        .sort((a, b) => (a.deadline ?? '').localeCompare(b.deadline ?? ''));
+        .filter((a: { deadline: string | null; status: string }) =>
+          a.deadline && a.deadline >= today && a.status !== 'graded' && a.status !== 'submitted'
+        )
+        .sort((a: { deadline: string }, b: { deadline: string }) =>
+          a.deadline.localeCompare(b.deadline)
+        );
 
       if (withDeadline.length > 0 && withDeadline[0]) {
         const a = withDeadline[0];
-        const subj = subjects.find((s) => s.id === a.subjectId);
+        const subj = subjects.find((s: { id: string }) => s.id === a.subjectId);
         setNextDeadline({
           title: a.title,
           subject: subj?.name ?? '',
-          deadline: a.deadline ?? '',
+          date: a.deadline ?? '',
         });
       } else {
         setNextDeadline(null);
+      }
+
+      // Nearest exam
+      const upcomingExams = exams
+        .filter((e: { date: string | null; status: string }) =>
+          e.date && e.date >= today && e.status === 'upcoming'
+        )
+        .sort((a: { date: string }, b: { date: string }) =>
+          a.date.localeCompare(b.date)
+        );
+
+      if (upcomingExams.length > 0 && upcomingExams[0]) {
+        setNextExam({
+          title: upcomingExams[0].title,
+          date: upcomingExams[0].date ?? '',
+        });
+      } else {
+        setNextExam(null);
       }
     } catch {
       // keep empty state
@@ -44,7 +85,7 @@ export function StudyWidget() {
 
   useEffect(() => {
     return window.dataEvents.onDataChanged((entities) => {
-      if (entities.some((e) => ['tasks', 'subjects', 'assignments', 'exams'].includes(e))) {
+      if (entities.some((e) => ['subjects', 'assignments', 'exams'].includes(e))) {
         reload();
       }
     });
@@ -59,35 +100,46 @@ export function StudyWidget() {
   }
 
   return (
-    <div className="bg-neutral-900/50 border border-purple-500/10 rounded-xl p-5 flex flex-col">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-purple-400"><BookOpen size={16} strokeWidth={1.5} /></span>
+    <div
+      className="bg-neutral-900/50 border border-purple-500/10 rounded-xl p-5 cursor-pointer hover:border-purple-500/25 transition-colors"
+      onClick={() => navigate('/study')}
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-purple-400"><BookOpen size={18} strokeWidth={1.5} /></span>
         <h3 className="text-sm font-semibold text-neutral-200">Учёба</h3>
+        <span className="ml-auto text-[11px] text-neutral-500">
+          {inProgressCount} {inProgressCount === 1 ? 'задание' : 'заданий'} в работе
+        </span>
       </div>
 
-      <div className="space-y-2 flex-1">
+      <div className="space-y-3">
+        {/* Nearest assignment deadline */}
         {nextDeadline && (
           <div>
-            <span className="text-xs text-neutral-500">Ближайший дедлайн</span>
-            <div className="text-xs text-neutral-300 mt-0.5">{nextDeadline.title}</div>
+            <span className="text-[11px] text-neutral-500 uppercase tracking-wide">Ближайший дедлайн</span>
+            <div className="text-sm text-neutral-200 mt-0.5">{nextDeadline.title}</div>
             <div className="text-[11px] text-neutral-500">
-              {nextDeadline.subject && <>{nextDeadline.subject} &middot; </>}{formatDate(nextDeadline.deadline)}
+              {nextDeadline.subject && <>{nextDeadline.subject} &middot; </>}
+              {formatDate(nextDeadline.date)}
             </div>
           </div>
         )}
 
-        <div className="flex items-baseline justify-between">
-          <span className="text-xs text-neutral-500">Заданий в работе</span>
-          <span className="text-sm font-bold text-purple-400">{inProgressCount}</span>
-        </div>
-      </div>
+        {!nextDeadline && (
+          <div className="text-xs text-neutral-500">Нет ближайших дедлайнов</div>
+        )}
 
-      <button
-        onClick={() => navigate('/study')}
-        className="mt-4 text-xs text-purple-400/70 hover:text-purple-300 transition-colors text-left"
-      >
-        Перейти в Study &rarr;
-      </button>
+        {/* Nearest exam */}
+        {nextExam && (
+          <div className="flex items-baseline justify-between">
+            <span className="text-[11px] text-neutral-500">Ближайший экзамен</span>
+            <span className="text-xs">
+              <span className="text-neutral-300">{nextExam.title}</span>
+              <span className="text-neutral-600 ml-1.5">{formatDate(nextExam.date)}</span>
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
