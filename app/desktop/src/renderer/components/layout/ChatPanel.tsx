@@ -187,6 +187,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     setIsThinking(true);
 
     try {
+      console.log('[ChatPanel] Sending with filesToSend:', filesToSend);
       const response = await window.chat.send(agent, activeSessionId, trimmed, filesToSend);
 
       if (response.notification) {

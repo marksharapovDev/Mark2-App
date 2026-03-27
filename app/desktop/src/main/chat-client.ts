@@ -423,6 +423,8 @@ export async function sendToApi(
   }));
 
   // Build user message: text + file content + images (multimodal)
+  console.log('[sendToApi] files param:', files ? `textContent=${files.textContent.length}chars, images=${files.images.length}` : 'none');
+
   let userText = message;
   if (files?.textContent) {
     userText += '\n\n' + files.textContent;

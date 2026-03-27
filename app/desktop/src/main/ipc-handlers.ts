@@ -82,10 +82,16 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('chat:send', async (_event, agent: string, sessionId: string, message: string, filePaths?: string[]) => {
     if (!isValidAgent(agent)) throw new Error(`Invalid agent: ${agent}`);
 
+    console.log('[IPC chat:send] filePaths received:', filePaths);
+
     // Process attached files if any
     const files = filePaths && filePaths.length > 0
       ? await processAttachedFiles(filePaths)
       : undefined;
+
+    if (files) {
+      console.log('[IPC chat:send] Processed files — textContent length:', files.textContent.length, ', images:', files.images.length, ', unsupported:', files.unsupported);
+    }
 
     sendToRenderer('chat:stream-start', sessionId);
 
