@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
-import { Mic, Paperclip, X } from 'lucide-react';
+import { Mic, Paperclip, ArrowUp, Square } from 'lucide-react';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
+import { FileAttachmentCard, parseBotFileLinks } from '../components/FileAttachmentCard';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
-
 
 interface Message {
   id: string;
@@ -12,6 +12,7 @@ interface Message {
   content: string;
   engine?: 'api' | 'claude-code';
   isNotification?: boolean;
+  filePaths?: string[];
 }
 
 export function ChatPopout() {
@@ -91,11 +92,7 @@ export function ChatPopout() {
 
     const filesToSend = attachedFiles.length > 0 ? [...attachedFiles] : undefined;
 
-    const displayContent = filesToSend
-      ? `${trimmed}\n\n📎 ${filesToSend.map((f) => f.split('/').pop()).join(', ')}`
-      : trimmed;
-
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: displayContent }]);
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: trimmed, filePaths: filesToSend }]);
     setInput('');
     setAttachedFiles([]);
     if (inputRef.current) inputRef.current.style.height = 'auto';
@@ -182,6 +179,18 @@ export function ChatPopout() {
     setAttachedFiles((prev) => prev.filter((f) => f !== filePath));
   }, []);
 
+  const handleAbort = useCallback(() => {
+    if (sessionId) window.chat.abort(sessionId);
+  }, [sessionId]);
+
+  // Auto-resize textarea on programmatic input changes
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 200) + 'px';
+    }
+  }, [input]);
+
   return (
     <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100">
       <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
@@ -214,14 +223,9 @@ export function ChatPopout() {
 
       <form onSubmit={handleSubmit} className="px-4 py-3 border-t border-neutral-800">
         {attachedFiles.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-1.5">
+          <div className="flex flex-col gap-1.5 mb-2">
             {attachedFiles.map((f) => (
-              <span key={f} className="inline-flex items-center gap-1 bg-neutral-800 text-neutral-300 text-xs px-2 py-0.5 rounded">
-                <span className="truncate max-w-[140px]">{f.split('/').pop()}</span>
-                <button type="button" onClick={() => handleRemoveFile(f)} className="text-neutral-500 hover:text-neutral-300">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
+              <FileAttachmentCard key={f} filePath={f} onRemove={handleRemoveFile} />
             ))}
           </div>
         )}
@@ -240,11 +244,6 @@ export function ChatPopout() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            onInput={(e) => {
-              const el = e.currentTarget;
-              el.style.height = 'auto';
-              el.style.height = Math.min(el.scrollHeight, 200) + 'px';
-            }}
             placeholder={isTranscribing ? 'Transcribing...' : 'Message...'}
             disabled={isThinking || isTranscribing || !sessionId}
             rows={1}
@@ -262,20 +261,32 @@ export function ChatPopout() {
           >
             <Mic className="w-4 h-4" />
           </button>
-          <button
-            type="submit"
-            disabled={isThinking || !input.trim() || !sessionId}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
-          >
-            Send
-          </button>
+          {isThinking ? (
+            <button
+              type="button"
+              onClick={handleAbort}
+              className="w-9 h-9 shrink-0 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-colors"
+              title="Stop"
+            >
+              <Square className="w-3.5 h-3.5" fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!input.trim() || !sessionId}
+              className="w-9 h-9 shrink-0 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center disabled:opacity-40 transition-colors"
+              title="Send"
+            >
+              <ArrowUp className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </form>
     </div>
   );
 }
 
-function PopoutBubble({ message }: { message: { role: string; content: string; engine?: string; isNotification?: boolean } }) {
+function PopoutBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
 
   if (message.isNotification) {
@@ -286,17 +297,45 @@ function PopoutBubble({ message }: { message: { role: string; content: string; e
     );
   }
 
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%]">
+          {message.filePaths && message.filePaths.length > 0 && (
+            <div className="flex flex-col gap-1.5 mb-1.5 items-end">
+              {message.filePaths.map((f) => (
+                <FileAttachmentCard key={f} filePath={f} />
+              ))}
+            </div>
+          )}
+          <div className="rounded-lg px-3 py-2 text-sm break-words bg-blue-600/20 text-blue-100 whitespace-pre-wrap">
+            {message.content}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const { cleanContent, filePaths: botFiles } = parseBotFileLinks(message.content);
+
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm break-words ${
-        isUser ? 'bg-blue-600/20 text-blue-100 whitespace-pre-wrap' : 'bg-neutral-800 text-neutral-300'
-      }`}>
-        {!isUser && message.engine && (
-          <span className={`text-[10px] font-medium mr-1 ${message.engine === 'claude-code' ? 'text-orange-400' : 'text-neutral-500'}`}>
-            {message.engine === 'claude-code' ? 'CC' : 'API'}
-          </span>
+    <div className="flex justify-start">
+      <div className="max-w-[85%]">
+        <div className="rounded-lg px-3 py-2 text-sm break-words bg-neutral-800 text-neutral-300">
+          {message.engine && (
+            <span className={`text-[10px] font-medium mr-1 ${message.engine === 'claude-code' ? 'text-orange-400' : 'text-neutral-500'}`}>
+              {message.engine === 'claude-code' ? 'CC' : 'API'}
+            </span>
+          )}
+          <MarkdownRenderer content={cleanContent} />
+        </div>
+        {botFiles.length > 0 && (
+          <div className="flex flex-col gap-1.5 mt-1.5">
+            {botFiles.map((f) => (
+              <FileAttachmentCard key={f} filePath={f} />
+            ))}
+          </div>
         )}
-        {isUser ? message.content : <MarkdownRenderer content={message.content} />}
       </div>
     </div>
   );

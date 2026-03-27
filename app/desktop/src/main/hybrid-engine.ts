@@ -275,6 +275,7 @@ async function executeViaClaudeCode(
   questionRound = 0,
   onChunk?: (accumulated: string) => void,
   files?: ProcessedFiles,
+  signal?: AbortSignal,
 ): Promise<HybridResponse> {
   // Prepend cross-context + append mode instruction
   const modeInstruction = getModePrompt(mode, questionRound);
@@ -292,7 +293,7 @@ async function executeViaClaudeCode(
     ? `${crossContext}\n\n---\n\n${fileContext}${prompt}\n\n${modeInstruction}`
     : `${fileContext}${prompt}\n\n${modeInstruction}`;
   const result = onChunk
-    ? await claude.runStream({ agent, prompt: fullPrompt }, onChunk)
+    ? await claude.runStream({ agent, prompt: fullPrompt }, onChunk, signal)
     : await claude.run({ agent, prompt: fullPrompt });
   const content = result.trim();
 
@@ -344,6 +345,18 @@ function proposesTask(response: string): boolean {
   return proposals.some((p) => lower.includes(p));
 }
 
+// Active abort controllers per session
+const abortControllers = new Map<string, AbortController>();
+
+export function abortSession(sessionId: string): void {
+  const controller = abortControllers.get(sessionId);
+  if (controller) {
+    controller.abort();
+    abortControllers.delete(sessionId);
+    console.log(`[HybridEngine] Aborted session ${sessionId}`);
+  }
+}
+
 export async function sendMessage(
   agent: AgentName,
   sessionId: string,
@@ -351,6 +364,10 @@ export async function sendMessage(
   onChunk?: (accumulated: string) => void,
   files?: ProcessedFiles,
 ): Promise<HybridResponse> {
+  // Create abort controller for this request
+  const controller = new AbortController();
+  abortControllers.set(sessionId, controller);
+  const { signal } = controller;
   // Detect interaction mode before anything else
   const detectedMode = detectInteractionMode(message);
   const cleanMessage = stripInteractionMarkers(message);
@@ -418,7 +435,7 @@ export async function sendMessage(
   const pending = pendingTask.get(sessionId);
   if (pending && isConfirmation(cleanMessage)) {
     pendingTask.delete(sessionId);
-    return executeViaClaudeCode(agent, sessionId, pending, crossContext, mode, questionRound, onChunk, files);
+    return executeViaClaudeCode(agent, sessionId, pending, crossContext, mode, questionRound, onChunk, files, signal);
   }
   pendingTask.delete(sessionId);
 
@@ -426,31 +443,31 @@ export async function sendMessage(
   // Claude Code is smart enough to ask questions in consult mode and execute in execute mode
   if (mode !== 'auto') {
     console.log(`[HybridEngine] Explicit mode "${mode}", routing to Claude Code`);
-    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk, files);
+    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk, files, signal);
   }
 
   // Data action → straight to Claude Code (no Level 2 classification)
   if (isDataAction(cleanMessage)) {
     console.log('[HybridEngine] Data action detected, routing to Claude Code');
-    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk, files);
+    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk, files, signal);
   }
 
   // Level 1 + 2: heavy tasks that need classification
   if (maybeHeavyTask(cleanMessage)) {
     const classification = await classifyMessage(cleanMessage);
     if (classification === 'TASK') {
-      return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk, files);
+      return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk, files, signal);
     }
   }
 
-  const apiResponse = await sendToApi(agent, sessionId, cleanMessage, crossContext, getModePrompt(mode, questionRound), onChunk, files);
+  const apiResponse = await sendToApi(agent, sessionId, cleanMessage, crossContext, getModePrompt(mode, questionRound), onChunk, files, signal);
 
   console.log('[HybridEngine] Raw API response:', apiResponse.substring(0, 500));
   console.log('[HybridEngine] Contains ACTION tags:', apiResponse.includes('[ACTION:'));
 
   if (apiResponse.includes(EXECUTE_MARKER)) {
     const taskDescription = apiResponse.replace(EXECUTE_MARKER, '').trim();
-    return executeViaClaudeCode(agent, sessionId, taskDescription || cleanMessage, crossContext, mode, questionRound, onChunk, files);
+    return executeViaClaudeCode(agent, sessionId, taskDescription || cleanMessage, crossContext, mode, questionRound, onChunk, files, signal);
   }
 
   // Process AI actions in the response
@@ -499,6 +516,7 @@ export async function sendMessage(
     console.log(`[HybridEngine] auto-summary for session ${sessionId}: ${summary.slice(0, 80)}...`);
   }
 
+  abortControllers.delete(sessionId);
   return result;
 }
 

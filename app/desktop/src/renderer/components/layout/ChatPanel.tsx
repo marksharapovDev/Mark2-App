@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent } from 'react';
-import { Mic, Paperclip, X } from 'lucide-react';
+import { Mic, Paperclip, ArrowUp, Square } from 'lucide-react';
 import { MarkdownRenderer } from '../MarkdownRenderer';
+import { FileAttachmentCard, parseBotFileLinks } from '../FileAttachmentCard';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
 
@@ -10,6 +11,7 @@ interface Message {
   content: string;
   engine?: 'api' | 'claude-code';
   isNotification?: boolean;
+  filePaths?: string[];
 }
 
 interface ChatPanelProps {
@@ -176,11 +178,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     // Capture files and clear state
     const filesToSend = attachedFiles.length > 0 ? [...attachedFiles] : undefined;
 
-    const displayContent = filesToSend
-      ? `${trimmed}\n\n📎 ${filesToSend.map((f) => f.split('/').pop()).join(', ')}`
-      : trimmed;
-
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: displayContent }]);
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: trimmed, filePaths: filesToSend }]);
     setInput('');
     setAttachedFiles([]);
     if (inputRef.current) inputRef.current.style.height = 'auto';
@@ -400,6 +398,21 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     setAttachedFiles((prev) => prev.filter((f) => f !== filePath));
   }, []);
 
+  // Abort current request
+  const handleAbort = useCallback(() => {
+    if (activeSessionId) {
+      window.chat.abort(activeSessionId);
+    }
+  }, [activeSessionId]);
+
+  // Auto-resize textarea on programmatic input changes (dictation, paste)
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 200) + 'px';
+    }
+  }, [input]);
+
   // --- Render states ---
 
   if (isPoppedOut) {
@@ -541,16 +554,11 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
 
           {/* Input */}
           <form onSubmit={handleSubmit} className="px-3 py-2 border-t border-neutral-800">
-            {/* Attached files chips */}
+            {/* Attached files */}
             {attachedFiles.length > 0 && (
-              <div className="flex flex-wrap gap-1 mb-1.5">
+              <div className="flex flex-col gap-1.5 mb-2">
                 {attachedFiles.map((f) => (
-                  <span key={f} className="inline-flex items-center gap-1 bg-neutral-800 text-neutral-300 text-[10px] px-2 py-0.5 rounded">
-                    <span className="truncate max-w-[120px]">{f.split('/').pop()}</span>
-                    <button type="button" onClick={() => handleRemoveFile(f)} className="text-neutral-500 hover:text-neutral-300">
-                      <X className="w-2.5 h-2.5" />
-                    </button>
-                  </span>
+                  <FileAttachmentCard key={f} filePath={f} onRemove={handleRemoveFile} />
                 ))}
               </div>
             )}
@@ -569,11 +577,6 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                onInput={(e) => {
-                  const el = e.currentTarget;
-                  el.style.height = 'auto';
-                  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
-                }}
                 placeholder={isTranscribing ? 'Transcribing...' : 'Message...'}
                 disabled={isThinking || isTranscribing || !activeSessionId}
                 rows={1}
@@ -591,13 +594,25 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
               >
                 <Mic className="w-3.5 h-3.5" />
               </button>
-              <button
-                type="submit"
-                disabled={isThinking || !input.trim() || !activeSessionId}
-                className="px-3 py-2 rounded text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
-              >
-                Send
-              </button>
+              {isThinking ? (
+                <button
+                  type="button"
+                  onClick={handleAbort}
+                  className="w-[30px] h-[30px] shrink-0 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-colors"
+                  title="Stop"
+                >
+                  <Square className="w-3 h-3" fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim() || !activeSessionId}
+                  className="w-[30px] h-[30px] shrink-0 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center disabled:opacity-40 transition-colors"
+                  title="Send"
+                >
+                  <ArrowUp className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -698,21 +713,50 @@ function ChatBubble({ message }: { message: Message }) {
     );
   }
 
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[90%]">
+          {/* File cards above text */}
+          {message.filePaths && message.filePaths.length > 0 && (
+            <div className="flex flex-col gap-1.5 mb-1.5 items-end">
+              {message.filePaths.map((f) => (
+                <FileAttachmentCard key={f} filePath={f} />
+              ))}
+            </div>
+          )}
+          <div className="rounded-lg px-3 py-2 text-xs break-words bg-blue-600/20 text-blue-100 whitespace-pre-wrap">
+            {message.content}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Bot message — extract file links
+  const { cleanContent, filePaths: botFiles } = parseBotFileLinks(message.content);
+
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-[90%] rounded-lg px-3 py-2 text-xs break-words ${
-          isUser ? 'bg-blue-600/20 text-blue-100 whitespace-pre-wrap' : 'bg-neutral-800 text-neutral-300'
-        }`}
-      >
-        {!isUser && message.engine && (
-          <span className={`text-[9px] font-medium mr-1 ${
-            message.engine === 'claude-code' ? 'text-orange-400' : 'text-neutral-500'
-          }`}>
-            {message.engine === 'claude-code' ? 'CC' : 'API'}
-          </span>
+    <div className="flex justify-start">
+      <div className="max-w-[90%]">
+        <div className="rounded-lg px-3 py-2 text-xs break-words bg-neutral-800 text-neutral-300">
+          {message.engine && (
+            <span className={`text-[9px] font-medium mr-1 ${
+              message.engine === 'claude-code' ? 'text-orange-400' : 'text-neutral-500'
+            }`}>
+              {message.engine === 'claude-code' ? 'CC' : 'API'}
+            </span>
+          )}
+          <MarkdownRenderer content={cleanContent} />
+        </div>
+        {/* Bot file cards below text */}
+        {botFiles.length > 0 && (
+          <div className="flex flex-col gap-1.5 mt-1.5">
+            {botFiles.map((f) => (
+              <FileAttachmentCard key={f} filePath={f} />
+            ))}
+          </div>
         )}
-        {isUser ? message.content : <MarkdownRenderer content={message.content} />}
       </div>
     </div>
   );

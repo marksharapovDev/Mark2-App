@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { FileText } from 'lucide-react';
+import { FileText, Image, Code } from 'lucide-react';
 
 interface MarkdownRendererProps {
   content: string;
@@ -10,14 +10,24 @@ interface MarkdownRendererProps {
 const FILE_PATH_REGEX = /((?:\/[\w.@-]+)+\/[\w.@-]+\.(?:docx|pdf|xlsx|pptx|md|txt|csv|json|png|jpg|jpeg|html|py|ts|tsx|js|jsx))/g;
 const FILE_SAVED_REGEX = /✅\s*(?:Файл\s+(?:сохранён|прикреплён|создан)|File\s+saved):\s*(.+?)(?:\s|$)/g;
 
+const MD_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
+const MD_CODE_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.py', '.html', '.css', '.json', '.yml', '.yaml', '.sh', '.sql']);
+
+function getFileIcon(ext: string) {
+  if (MD_IMAGE_EXTS.has(ext)) return <Image className="w-3.5 h-3.5 text-purple-400" />;
+  if (MD_CODE_EXTS.has(ext)) return <Code className="w-3.5 h-3.5 text-green-400" />;
+  return <FileText className="w-3.5 h-3.5 text-blue-400" />;
+}
+
 function FileLink({ filePath }: { filePath: string }) {
   const fileName = filePath.split('/').pop() ?? filePath;
+  const ext = ('.' + (fileName.split('.').pop() ?? '')).toLowerCase();
   return (
     <button
       onClick={() => window.electronAPI.openFile(filePath)}
-      className="inline-flex items-center gap-1 bg-neutral-700/50 hover:bg-neutral-700 text-blue-400 hover:text-blue-300 text-[0.85em] px-1.5 py-0.5 rounded transition-colors cursor-pointer border border-neutral-600"
+      className="inline-flex items-center gap-1.5 bg-neutral-700/50 hover:bg-neutral-700 text-neutral-300 hover:text-neutral-100 text-[0.85em] px-2 py-1 rounded-lg transition-colors cursor-pointer border border-neutral-600"
     >
-      <FileText className="w-3 h-3" />
+      {getFileIcon(ext)}
       <span>{fileName}</span>
     </button>
   );

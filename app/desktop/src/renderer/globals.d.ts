@@ -35,6 +35,7 @@ interface ChatSessionItem {
 
 interface ChatAPI {
   send: (agent: string, sessionId: string, message: string, filePaths?: string[]) => Promise<ChatResponse>;
+  abort: (sessionId: string) => Promise<void>;
   setContext: (sessionId: string, ctx: Record<string, unknown>) => Promise<void>;
   setAgentContext: (agent: string, ctx: Record<string, unknown>) => Promise<void>;
   createSession: (agent: string, fromSessionId?: string) => Promise<ChatSessionItem>;
@@ -256,6 +257,8 @@ interface DataEventsAPI {
 interface ElectronAPI {
   openFile: (filePath: string) => Promise<string>;
   openFiles: () => Promise<string[]>;
+  getFileInfo: (filePath: string) => Promise<{ size: number; isFile: boolean } | null>;
+  readFileBase64: (filePath: string) => Promise<string | null>;
 }
 
 interface StudyFileEntry {

@@ -95,7 +95,7 @@ export class ClaudeBridge extends EventEmitter {
    * Стриминг запрос к Claude Code.
    * Использует spawn() для потоковой передачи stdout.
    */
-  async runStream(options: RunOptions, onChunk: (accumulated: string) => void): Promise<string> {
+  async runStream(options: RunOptions, onChunk: (accumulated: string) => void, signal?: AbortSignal): Promise<string> {
     const cwd = options.cwd ?? agentDir(options.agent);
     const args = ['-p', options.prompt];
 
@@ -108,6 +108,16 @@ export class ClaudeBridge extends EventEmitter {
 
       let output = '';
       let stderr = '';
+
+      if (signal) {
+        const onAbort = () => {
+          proc.kill();
+          resolve(output + '\n\n(прервано)');
+        };
+        if (signal.aborted) { proc.kill(); resolve('(прервано)'); return; }
+        signal.addEventListener('abort', onAbort, { once: true });
+        proc.on('close', () => signal.removeEventListener('abort', onAbort));
+      }
 
       proc.stdout?.on('data', (data: Buffer) => {
         output += data.toString();
@@ -129,7 +139,12 @@ export class ClaudeBridge extends EventEmitter {
           if (stderr) {
             this.emit('error', { agent: options.agent, error: stderr } satisfies ErrorEvent);
           }
-          reject(new Error(stderr || `Claude Code exited with code ${code}`));
+          // If aborted, resolve with partial output instead of rejecting
+          if (signal?.aborted) {
+            resolve(output + '\n\n(прервано)');
+          } else {
+            reject(new Error(stderr || `Claude Code exited with code ${code}`));
+          }
         } else {
           resolve(output);
         }

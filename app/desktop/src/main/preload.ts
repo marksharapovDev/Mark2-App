@@ -37,6 +37,7 @@ export interface ChatSessionItem {
 
 export interface ChatAPI {
   send: (agent: string, sessionId: string, message: string, filePaths?: string[]) => Promise<ChatResponse>;
+  abort: (sessionId: string) => Promise<void>;
   setContext: (sessionId: string, ctx: Record<string, unknown>) => Promise<void>;
   setAgentContext: (agent: string, ctx: Record<string, unknown>) => Promise<void>;
   createSession: (agent: string, fromSessionId?: string) => Promise<ChatSessionItem>;
@@ -68,6 +69,9 @@ export interface ClaudeAPI {
 const chatApi: ChatAPI = {
   send: (agent, sessionId, message, filePaths?) =>
     ipcRenderer.invoke('chat:send', agent, sessionId, message, filePaths),
+
+  abort: (sessionId) =>
+    ipcRenderer.invoke('chat:abort', sessionId),
 
   setContext: (sessionId, ctx) =>
     ipcRenderer.invoke('chat:set-context', sessionId, ctx),
@@ -193,6 +197,10 @@ const electronAPI = {
     ipcRenderer.invoke('file:open', filePath),
   openFiles: () =>
     ipcRenderer.invoke('dialog:open-files') as Promise<string[]>,
+  getFileInfo: (filePath: string) =>
+    ipcRenderer.invoke('file:get-info', filePath) as Promise<{ size: number; isFile: boolean } | null>,
+  readFileBase64: (filePath: string) =>
+    ipcRenderer.invoke('file:read-base64', filePath) as Promise<string | null>,
 };
 
 const dbApi = {

@@ -403,6 +403,7 @@ export async function sendToApi(
   modePrompt?: string,
   onChunk?: (accumulated: string) => void,
   files?: FileAttachments,
+  signal?: AbortSignal,
 ): Promise<string> {
   const model = process.env.CHAT_MODEL ?? 'anthropic/claude-haiku-4.5';
   const openai = getOpenAIClient();
@@ -464,13 +465,19 @@ export async function sendToApi(
     });
 
     let accumulated = '';
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta?.content;
-      if (delta) {
-        accumulated += delta;
-        onChunk(accumulated);
+    try {
+      for await (const chunk of stream) {
+        if (signal?.aborted) break;
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) {
+          accumulated += delta;
+          onChunk(accumulated);
+        }
       }
+    } catch (err) {
+      if (!signal?.aborted) throw err;
     }
+    if (signal?.aborted) return accumulated + '\n\n(прервано)';
     return accumulated;
   }
 

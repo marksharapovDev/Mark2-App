@@ -7,6 +7,7 @@ import fs from 'fs';
 import { claude, AgentName } from './claude-bridge';
 import {
   sendMessage,
+  abortSession,
   handleCreateSession,
   handleGetSessions,
   handleDeleteSession,
@@ -107,6 +108,10 @@ export function registerIpcHandlers(): void {
       sendToRenderer('chat:stream-end', sessionId);
       throw err;
     }
+  });
+
+  ipcMain.handle('chat:abort', (_event, sessionId: string) => {
+    abortSession(sessionId);
   });
 
   ipcMain.handle('chat:set-context', (_event, sessionId: string, ctx: Record<string, unknown>) => {
@@ -611,6 +616,22 @@ export function registerIpcHandlers(): void {
       : path.resolve(os.homedir(), 'mark2', filePath);
     console.log('[File] Opening:', resolved, '(original:', filePath, ')');
     return shell.openPath(resolved);
+  });
+
+  ipcMain.handle('file:get-info', async (_event, filePath: string) => {
+    try {
+      const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(os.homedir(), 'mark2', filePath);
+      const stats = fs.statSync(resolved);
+      return { size: stats.size, isFile: stats.isFile() };
+    } catch { return null; }
+  });
+
+  ipcMain.handle('file:read-base64', async (_event, filePath: string) => {
+    try {
+      const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(os.homedir(), 'mark2', filePath);
+      const buf = fs.readFileSync(resolved);
+      return buf.toString('base64');
+    } catch { return null; }
   });
 
   ipcMain.handle('dialog:open-files', async () => {
