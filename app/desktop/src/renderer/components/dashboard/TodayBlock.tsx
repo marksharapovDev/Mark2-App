@@ -295,9 +295,27 @@ function TasksColumn({ todayStr }: { todayStr: string }) {
   }, [addingTask]);
 
   const handleComplete = (task: AggregatedTask) => {
-    if (!task.isReminder) return;
+    console.log('[TodayBlock] Toggle clicked:', task.id, 'sourceType:', task.sourceType, 'isReminder:', task.isReminder, 'status:', task.status);
 
-    const newStatus = task.status === 'done' ? 'pending' : 'done';
+    const isDone = task.status === 'done';
+    const newStatus = isDone ? 'pending' : 'done';
+
+    // Build the DB call based on sourceType
+    let dbCall: Promise<unknown> | null = null;
+
+    if (task.isReminder) {
+      dbCall = isDone
+        ? window.db.reminders.uncomplete(task.id)
+        : window.db.reminders.complete(task.id);
+    } else if (task.sourceType === 'dev_task' && task.sourceId) {
+      dbCall = window.db.dev.tasks.update(task.sourceId, { status: isDone ? 'todo' : 'done' });
+    } else if (task.sourceType === 'study_assignment' && task.sourceId) {
+      dbCall = window.db.assignments.update(task.sourceId, { status: isDone ? 'pending' : 'submitted' });
+    } else {
+      // teaching_lesson, health_workout, finance_tax, study_exam — not toggleable
+      console.log('[TodayBlock] sourceType not toggleable:', task.sourceType);
+      return;
+    }
 
     // Optimistic update — instant UI feedback
     setTasks((prev) =>
@@ -305,10 +323,6 @@ function TasksColumn({ todayStr }: { todayStr: string }) {
     );
 
     // Fire DB call in background — no await, no full reload
-    const dbCall = task.status === 'done'
-      ? window.db.reminders.uncomplete(task.id)
-      : window.db.reminders.complete(task.id);
-
     dbCall.catch((err) => {
       console.error('[TodayBlock] toggle failed, reverting:', err);
       // Revert on error
