@@ -187,6 +187,8 @@ const calendarApi: CalendarAPI = {
 const electronAPI = {
   openFile: (filePath: string) =>
     ipcRenderer.invoke('file:open', filePath),
+  openFiles: () =>
+    ipcRenderer.invoke('dialog:open-files') as Promise<string[]>,
 };
 
 const dbApi = {

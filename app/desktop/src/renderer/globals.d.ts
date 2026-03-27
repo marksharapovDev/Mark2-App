@@ -254,6 +254,7 @@ interface DataEventsAPI {
 
 interface ElectronAPI {
   openFile: (filePath: string) => Promise<string>;
+  openFiles: () => Promise<string[]>;
 }
 
 interface StudyFileEntry {
@@ -271,6 +272,49 @@ interface StudyAPI {
   };
 }
 
+// Web Speech API
+interface SpeechRecognitionResultItem {
+  transcript: string;
+  confidence: number;
+}
+
+interface SpeechRecognitionResult {
+  readonly length: number;
+  readonly isFinal: boolean;
+  [index: number]: SpeechRecognitionResultItem;
+}
+
+interface SpeechRecognitionResultList {
+  readonly length: number;
+  [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  readonly resultIndex: number;
+  readonly results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  readonly error: string;
+}
+
+interface SpeechRecognition extends EventTarget {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  onstart: (() => void) | null;
+}
+
+declare const SpeechRecognition: {
+  new (): SpeechRecognition;
+};
+
 interface Window {
   chat: ChatAPI;
   claude: ClaudeAPI;
@@ -280,4 +324,6 @@ interface Window {
   study: StudyAPI;
   dataEvents: DataEventsAPI;
   electronAPI: ElectronAPI;
+  SpeechRecognition?: typeof SpeechRecognition;
+  webkitSpeechRecognition?: typeof SpeechRecognition;
 }

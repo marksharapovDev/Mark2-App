@@ -1,8 +1,14 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
+import { Mic, Paperclip, X } from 'lucide-react';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
+
+const SpeechRecognitionCtor: (new () => SpeechRecognition) | null =
+  typeof window !== 'undefined'
+    ? (window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null)
+    : null;
 
 interface Message {
   id: string;
@@ -23,9 +29,13 @@ export function ChatPopout() {
   const [isThinking, setIsThinking] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [interimText, setInterimText] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -78,13 +88,31 @@ export function ChatPopout() {
     const trimmed = input.trim();
     if (!trimmed || isThinking || !sessionId) return;
 
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: trimmed }]);
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+      setInterimText('');
+    }
+
+    let messageToSend = trimmed;
+    const files = attachedFiles;
+    if (files.length > 0) {
+      const fileList = files.map((f) => `  - ${f}`).join('\n');
+      messageToSend += `\n\nПользователь прикрепил файлы:\n${fileList}\nПрочитай их содержимое.`;
+    }
+
+    const displayContent = files.length > 0
+      ? `${trimmed}\n\n📎 ${files.map((f) => f.split('/').pop()).join(', ')}`
+      : trimmed;
+
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: displayContent }]);
     setInput('');
+    setAttachedFiles([]);
     if (inputRef.current) inputRef.current.style.height = 'auto';
     setIsThinking(true);
 
     try {
-      const response = await window.chat.send(agent, sessionId, trimmed);
+      const response = await window.chat.send(agent, sessionId, messageToSend);
       if (response.notification) {
         setMessages((prev) => [
           ...prev,
@@ -119,6 +147,47 @@ export function ChatPopout() {
     }
   }, [handleSubmit]);
 
+  const toggleRecording = useCallback(() => {
+    if (!SpeechRecognitionCtor) return;
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+      setInterimText('');
+      return;
+    }
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = 'ru-RU';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognitionRef.current = recognition;
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let finalTranscript = '';
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result && result[0]) {
+          if (result.isFinal) finalTranscript += result[0].transcript;
+          else interim += result[0].transcript;
+        }
+      }
+      if (finalTranscript) { setInput((prev) => prev + finalTranscript); setInterimText(''); }
+      else setInterimText(interim);
+    };
+    recognition.onerror = () => { setIsRecording(false); setInterimText(''); };
+    recognition.onend = () => { setIsRecording(false); setInterimText(''); };
+    recognition.start();
+    setIsRecording(true);
+  }, [isRecording]);
+
+  const handleAttachFiles = useCallback(async () => {
+    const paths = await window.electronAPI.openFiles();
+    if (paths && paths.length > 0) setAttachedFiles((prev) => [...prev, ...paths]);
+  }, []);
+
+  const handleRemoveFile = useCallback((filePath: string) => {
+    setAttachedFiles((prev) => prev.filter((f) => f !== filePath));
+  }, []);
+
   return (
     <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100">
       <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
@@ -150,11 +219,32 @@ export function ChatPopout() {
       </div>
 
       <form onSubmit={handleSubmit} className="px-4 py-3 border-t border-neutral-800">
-        <div className="flex gap-2 items-end">
+        {attachedFiles.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            {attachedFiles.map((f) => (
+              <span key={f} className="inline-flex items-center gap-1 bg-neutral-800 text-neutral-300 text-xs px-2 py-0.5 rounded">
+                <span className="truncate max-w-[140px]">{f.split('/').pop()}</span>
+                <button type="button" onClick={() => handleRemoveFile(f)} className="text-neutral-500 hover:text-neutral-300">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-1.5 items-end">
+          <button
+            type="button"
+            onClick={handleAttachFiles}
+            disabled={isThinking || !sessionId}
+            className="p-2 rounded text-neutral-500 hover:text-neutral-300 disabled:opacity-40 transition-colors"
+            title="Attach file"
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
           <textarea
             ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
+            value={interimText ? input + interimText : input}
+            onChange={(e) => { setInput(e.target.value); setInterimText(''); }}
             onKeyDown={handleKeyDown}
             onInput={(e) => {
               const el = e.currentTarget;
@@ -167,6 +257,19 @@ export function ChatPopout() {
             style={{ maxHeight: '200px', overflowY: 'auto', resize: 'none' }}
             className="flex-1 bg-neutral-900 text-neutral-200 rounded-lg px-3 py-2 text-sm border border-neutral-700 focus:outline-none focus:border-neutral-500 placeholder:text-neutral-600 disabled:opacity-50"
           />
+          {SpeechRecognitionCtor && (
+            <button
+              type="button"
+              onClick={toggleRecording}
+              disabled={isThinking || !sessionId}
+              className={`p-2 rounded transition-colors disabled:opacity-40 ${
+                isRecording ? 'text-red-400 animate-pulse' : 'text-neutral-500 hover:text-neutral-300'
+              }`}
+              title={isRecording ? 'Stop recording' : 'Voice input'}
+            >
+              <Mic className="w-4 h-4" />
+            </button>
+          )}
           <button
             type="submit"
             disabled={isThinking || !input.trim() || !sessionId}

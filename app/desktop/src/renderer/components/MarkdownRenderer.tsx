@@ -1,8 +1,26 @@
 import React, { useMemo } from 'react';
+import { FileText } from 'lucide-react';
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+}
+
+// File path pattern: matches paths with known extensions
+const FILE_PATH_REGEX = /((?:\/[\w.@-]+)+\/[\w.@-]+\.(?:docx|pdf|xlsx|pptx|md|txt|csv|json|png|jpg|jpeg|html|py|ts|tsx|js|jsx))/g;
+const FILE_SAVED_REGEX = /✅\s*(?:Файл\s+(?:сохранён|прикреплён|создан)|File\s+saved):\s*(.+?)(?:\s|$)/g;
+
+function FileLink({ filePath }: { filePath: string }) {
+  const fileName = filePath.split('/').pop() ?? filePath;
+  return (
+    <button
+      onClick={() => window.electronAPI.openFile(filePath)}
+      className="inline-flex items-center gap-1 bg-neutral-700/50 hover:bg-neutral-700 text-blue-400 hover:text-blue-300 text-[0.85em] px-1.5 py-0.5 rounded transition-colors cursor-pointer border border-neutral-600"
+    >
+      <FileText className="w-3 h-3" />
+      <span>{fileName}</span>
+    </button>
+  );
 }
 
 // Split content into code blocks and regular text blocks
@@ -29,6 +47,58 @@ function splitBlocks(text: string): Array<{ type: 'code' | 'text'; content: stri
 
 // Parse inline markdown elements
 function parseInline(text: string): Array<string | React.ReactElement> {
+  // First pass: handle "✅ Файл сохранён: path" patterns
+  const withFileSaved = parseFileSavedPatterns(text);
+
+  // Second pass: handle remaining markdown in string segments
+  const result: Array<string | React.ReactElement> = [];
+  for (const segment of withFileSaved) {
+    if (typeof segment !== 'string') {
+      result.push(segment);
+      continue;
+    }
+    result.push(...parseMarkdownInline(segment));
+  }
+
+  return result;
+}
+
+function parseFileSavedPatterns(text: string): Array<string | React.ReactElement> {
+  const elements: Array<string | React.ReactElement> = [];
+  // Combine both patterns: explicit "Файл сохранён:" and bare file paths
+  const combined = new RegExp(
+    `(${FILE_SAVED_REGEX.source})|(${FILE_PATH_REGEX.source})`,
+    'g',
+  );
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = combined.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      elements.push(text.slice(lastIndex, match.index));
+    }
+
+    if (match[1]) {
+      // "✅ Файл сохранён: path" — extract path from group 2
+      const filePath = (match[2] ?? '').trim();
+      elements.push(<FileLink key={`fl-${key++}`} filePath={filePath} />);
+    } else if (match[3]) {
+      // Bare file path
+      elements.push(<FileLink key={`fl-${key++}`} filePath={match[3]} />);
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    elements.push(text.slice(lastIndex));
+  }
+
+  return elements;
+}
+
+function parseMarkdownInline(text: string): Array<string | React.ReactElement> {
   const elements: Array<string | React.ReactElement> = [];
   // Match: bold, italic, inline code, links
   const inlineRegex = /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))/g;

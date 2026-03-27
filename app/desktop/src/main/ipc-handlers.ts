@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, shell } from 'electron';
+import { ipcMain, BrowserWindow, shell, dialog } from 'electron';
 import { ChildProcess } from 'child_process';
 import crypto from 'crypto';
 import path from 'path';
@@ -594,6 +594,15 @@ export function registerIpcHandlers(): void {
       : path.resolve(os.homedir(), 'mark2', filePath);
     console.log('[File] Opening:', resolved, '(original:', filePath, ')');
     return shell.openPath(resolved);
+  });
+
+  ipcMain.handle('dialog:open-files', async () => {
+    const win = getWindow();
+    if (!win) return [];
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile', 'multiSelections'],
+    });
+    return result.canceled ? [] : result.filePaths;
   });
 
   // === Study file operations ===
