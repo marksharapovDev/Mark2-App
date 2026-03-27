@@ -259,6 +259,12 @@ function EventsColumn({ todayStr }: { todayStr: string }) {
 
 /* ── Right column: tasks & reminders ──────────────────────── */
 
+const TOGGLEABLE_TYPES = new Set(['manual', 'dev_task', 'study_assignment']);
+
+function isToggleable(task: AggregatedTask): boolean {
+  return task.isReminder || TOGGLEABLE_TYPES.has(task.sourceType);
+}
+
 function TasksColumn({ todayStr }: { todayStr: string }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -266,6 +272,8 @@ function TasksColumn({ todayStr }: { todayStr: string }) {
   const [addingTask, setAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const tasksRef = useRef<AggregatedTask[]>(tasks);
+  tasksRef.current = tasks;
 
   const reload = useCallback(async () => {
     try {
@@ -294,14 +302,21 @@ function TasksColumn({ todayStr }: { todayStr: string }) {
     }
   }, [addingTask]);
 
-  const handleComplete = (task: AggregatedTask) => {
-    console.log('[TodayBlock] Toggle clicked:', task.id, 'sourceType:', task.sourceType, 'isReminder:', task.isReminder, 'status:', task.status);
+  // Stable callback — reads latest task from ref, no stale closures
+  const handleComplete = useCallback((taskId: string) => {
+    const task = tasksRef.current.find((t) => t.id === taskId);
+    if (!task) {
+      console.warn('[TodayBlock] handleComplete: task not found', taskId);
+      return;
+    }
+
+    console.log('[TodayBlock] handleComplete called:', taskId, 'sourceType:', task.sourceType, 'isReminder:', task.isReminder, 'status:', task.status);
 
     const isDone = task.status === 'done';
     const newStatus = isDone ? 'pending' : 'done';
 
     // Build the DB call based on sourceType
-    let dbCall: Promise<unknown> | null = null;
+    let dbCall: Promise<unknown>;
 
     if (task.isReminder) {
       dbCall = isDone
@@ -312,25 +327,24 @@ function TasksColumn({ todayStr }: { todayStr: string }) {
     } else if (task.sourceType === 'study_assignment' && task.sourceId) {
       dbCall = window.db.assignments.update(task.sourceId, { status: isDone ? 'pending' : 'submitted' });
     } else {
-      // teaching_lesson, health_workout, finance_tax, study_exam — not toggleable
       console.log('[TodayBlock] sourceType not toggleable:', task.sourceType);
       return;
     }
 
     // Optimistic update — instant UI feedback
+    const prevStatus = task.status;
     setTasks((prev) =>
-      prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t)),
+      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)),
     );
 
     // Fire DB call in background — no await, no full reload
     dbCall.catch((err) => {
       console.error('[TodayBlock] toggle failed, reverting:', err);
-      // Revert on error
       setTasks((prev) =>
-        prev.map((t) => (t.id === task.id ? { ...t, status: task.status } : t)),
+        prev.map((t) => (t.id === taskId ? { ...t, status: prevStatus } : t)),
       );
     });
-  };
+  }, []);
 
   const handleAddTask = async () => {
     const title = newTaskTitle.trim();
@@ -418,7 +432,8 @@ function TasksColumn({ todayStr }: { todayStr: string }) {
                       <TaskRow
                         key={task.id}
                         task={task}
-                        onComplete={() => handleComplete(task)}
+                        toggleable={isToggleable(task)}
+                        onComplete={() => handleComplete(task.id)}
                         onClick={() => handleTaskClick(task)}
                       />
                     ))}
@@ -437,7 +452,8 @@ function TasksColumn({ todayStr }: { todayStr: string }) {
                     <TaskRow
                       key={task.id}
                       task={task}
-                      onComplete={() => handleComplete(task)}
+                      toggleable={isToggleable(task)}
+                      onComplete={() => handleComplete(task.id)}
                       onClick={() => handleTaskClick(task)}
                     />
                   ))}
@@ -496,10 +512,12 @@ function TasksColumn({ todayStr }: { todayStr: string }) {
 
 function TaskRow({
   task,
+  toggleable,
   onComplete,
   onClick,
 }: {
   task: AggregatedTask;
+  toggleable: boolean;
   onComplete: () => void;
   onClick: () => void;
 }) {
@@ -507,16 +525,24 @@ function TaskRow({
 
   return (
     <div className="flex items-center gap-2 py-1 group">
-      <button
-        onClick={(e) => { e.stopPropagation(); onComplete(); }}
-        className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center transition-colors ${
-          isDone
-            ? 'bg-emerald-500/20 border-emerald-500/40'
-            : 'border-neutral-600 hover:border-neutral-400'
-        }`}
-      >
-        {isDone && <Check size={8} className="text-emerald-400" />}
-      </button>
+      {toggleable ? (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            console.log('[TodayBlock] CHECKBOX CLICKED', task.id, task.title, task.sourceType, task.isReminder);
+            onComplete();
+          }}
+          className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center transition-colors ${
+            isDone
+              ? 'bg-emerald-500/20 border-emerald-500/40'
+              : 'border-neutral-600 hover:border-neutral-400'
+          }`}
+        >
+          {isDone && <Check size={8} className="text-emerald-400" />}
+        </button>
+      ) : (
+        <span className="w-3.5 h-3.5 rounded border border-neutral-700/40 shrink-0 flex items-center justify-center opacity-30" />
+      )}
 
       <div className="flex-1 min-w-0 cursor-pointer" onClick={onClick}>
         <span className={`text-xs truncate block ${isDone ? 'line-through text-neutral-600' : 'text-neutral-300'}`}>
