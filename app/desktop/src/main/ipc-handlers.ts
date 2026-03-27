@@ -124,7 +124,16 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('chat:transcribe-audio', async (_event, audioData: ArrayBuffer) => {
-    return transcribeAudio(Buffer.from(audioData));
+    console.log('[IPC transcribe] Received audio buffer, size:', audioData.byteLength);
+    try {
+      const result = await transcribeAudio(Buffer.from(audioData));
+      console.log('[IPC transcribe] Result:', JSON.stringify(result));
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[IPC transcribe] Error:', msg);
+      return { text: '', error: msg };
+    }
   });
 
   // === Claude Code direct ===

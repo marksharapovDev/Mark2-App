@@ -392,6 +392,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
         try {
           const arrayBuffer = await audioBlob.arrayBuffer();
           const result = await window.chat.transcribeAudio(arrayBuffer);
+          console.log('[Voice] Transcribe result:', result);
           if (result.error) {
             setVoiceError('Не удалось распознать речь. Проверьте микрофон.');
             setTimeout(() => setVoiceError(null), 3000);

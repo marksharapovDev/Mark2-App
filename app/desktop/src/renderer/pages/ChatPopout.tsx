@@ -180,6 +180,7 @@ export function ChatPopout() {
         try {
           const arrayBuffer = await audioBlob.arrayBuffer();
           const result = await window.chat.transcribeAudio(arrayBuffer);
+          console.log('[Voice] Transcribe result:', result);
           if (result.error) {
             setVoiceError('Не удалось распознать речь. Проверьте микрофон.');
             setTimeout(() => setVoiceError(null), 3000);
