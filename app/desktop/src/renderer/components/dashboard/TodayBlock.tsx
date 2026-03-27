@@ -442,7 +442,6 @@ function TasksColumn({ todayStr }: { todayStr: string }) {
                     <TaskRow
                       key={task.id}
                       task={task}
-                      toggleable={isToggleable(task)}
                       onComplete={() => handleComplete(task.id)}
                       onClick={() => handleTaskClick(task)}
                     />
