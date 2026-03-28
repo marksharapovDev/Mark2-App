@@ -1,6 +1,6 @@
 import * as db from './db-service';
 import crypto from 'crypto';
-import { mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { resolve, dirname, basename, extname } from 'path';
 import os from 'os';
 import {
@@ -678,7 +678,8 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     const fullPath = resolve(base, 'notes', filename);
     writeFileSync(fullPath, content, 'utf-8');
 
-    return { success: true, message: `Заметка сохранена: ${filename}`, entity: 'files', data: { path: fullPath } };
+    console.log('[AI Tools] save_note: saved to', fullPath, 'exists:', existsSync(fullPath));
+    return { success: true, message: `Заметка сохранена: ${fullPath}`, entity: 'files', data: { path: fullPath } };
   },
 
   generate_summary: async (params) => {
@@ -700,7 +701,8 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     const fullPath = resolve(base, 'summaries', summaryFilename);
     writeFileSync(fullPath, summary, 'utf-8');
 
-    return { success: true, message: `Конспект сохранён: ${summaryFilename}`, entity: 'files', data: { path: fullPath } };
+    console.log('[AI Tools] generate_summary: saved to', fullPath, 'exists:', existsSync(fullPath));
+    return { success: true, message: `Конспект сохранён: ${fullPath}`, entity: 'files', data: { path: fullPath } };
   },
 
   // Transactions
@@ -1085,7 +1087,8 @@ const AI_TOOLS: Record<string, ActionHandler> = {
       writeFileSync(fullPath, content, 'utf-8');
     }
 
-    return { success: true, message: `Файл сохранён: ${basename(fullPath)}`, entity: 'files', data: { path: fullPath } };
+    console.log('[AI Tools] save_file: saved to', fullPath, 'exists:', existsSync(fullPath));
+    return { success: true, message: `Файл сохранён: ${fullPath}`, entity: 'files', data: { path: fullPath } };
   },
 
   // Learning Path
