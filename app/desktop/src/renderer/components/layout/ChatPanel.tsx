@@ -13,6 +13,7 @@ interface Message {
   engine?: 'api' | 'claude-code';
   isNotification?: boolean;
   filePaths?: string[];
+  timestamp?: string;
 }
 
 interface ChatPanelProps {
@@ -196,7 +197,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     // Capture files and clear state
     const filesToSend = attachedFiles.length > 0 ? [...attachedFiles] : undefined;
 
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: trimmed, filePaths: filesToSend }]);
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: trimmed, filePaths: filesToSend, timestamp: new Date().toISOString() }]);
     setInput('');
     setAttachedFiles([]);
     if (inputRef.current) inputRef.current.style.height = 'auto';
@@ -209,13 +210,13 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
       if (response.notification) {
         setMessages((prev) => [
           ...prev,
-          { id: crypto.randomUUID(), role: 'assistant', content: response.notification ?? '', engine: 'claude-code', isNotification: true },
+          { id: crypto.randomUUID(), role: 'assistant', content: response.notification ?? '', engine: 'claude-code', isNotification: true, timestamp: new Date().toISOString() },
         ]);
       }
 
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: 'assistant', content: response.content, engine: response.engine },
+        { id: crypto.randomUUID(), role: 'assistant', content: response.content, engine: response.engine, timestamp: new Date().toISOString() },
       ]);
 
       if (response.sessionTitle) {
@@ -233,7 +234,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${errorMsg}` },
+        { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${errorMsg}`, timestamp: new Date().toISOString() },
       ]);
     } finally {
       setStreamingText(null);
@@ -488,13 +489,13 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     const retryText = userMsg.content + '\n\n(повторный запрос, дай другой ответ)';
     window.chat.send(agent, activeSessionId, retryText, userMsg.filePaths).then((response) => {
       if (response.notification) {
-        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: response.notification ?? '', engine: 'claude-code', isNotification: true }]);
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: response.notification ?? '', engine: 'claude-code', isNotification: true, timestamp: new Date().toISOString() }]);
       }
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: response.content, engine: response.engine }]);
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: response.content, engine: response.engine, timestamp: new Date().toISOString() }]);
       if (response.changedEntities?.length) window.dataEvents.emitDataChanged(response.changedEntities);
     }).catch((err) => {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${errorMsg}` }]);
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${errorMsg}`, timestamp: new Date().toISOString() }]);
     }).finally(() => {
       setStreamingText(null);
       setStreamingDone(false);
@@ -855,6 +856,9 @@ function ChatBubble({ message, onEdit, onRetry }: {
           <div className="rounded-lg px-3 py-2 text-xs break-words bg-blue-600/20 text-blue-100 whitespace-pre-wrap">
             {message.content}
           </div>
+          {message.timestamp && (
+            <div className="text-[11px] text-gray-500 text-right mt-0.5">{formatMessageTime(message.timestamp)}</div>
+          )}
           <div className="flex justify-end opacity-0 group-hover/msg:opacity-100 transition-opacity">
             <UserMessageActions content={message.content} onEdit={onEdit} />
           </div>
@@ -886,6 +890,9 @@ function ChatBubble({ message, onEdit, onRetry }: {
             {botFiles.map((f) => <FileAttachmentCard key={f} filePath={f} />)}
           </div>
         )}
+        {message.timestamp && (
+          <div className="text-[11px] text-gray-500 mt-0.5">{formatMessageTime(message.timestamp)}</div>
+        )}
         <div className="opacity-0 group-hover/msg:opacity-100 transition-opacity">
           <BotMessageActions content={rawContent} onRetry={onRetry} />
         </div>
@@ -897,7 +904,7 @@ function ChatBubble({ message, onEdit, onRetry }: {
 // --- Helpers ---
 
 function toMessage(h: ChatHistoryItem): Message {
-  return { id: h.id, role: h.role, content: h.content, engine: h.engine };
+  return { id: h.id, role: h.role, content: h.content, engine: h.engine, timestamp: h.created_at };
 }
 
 function formatDate(iso: string): string {
@@ -908,4 +915,17 @@ function formatDate(iso: string): string {
     return d.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
   }
   return d.toLocaleDateString('ru', { day: 'numeric', month: 'short' });
+}
+
+function formatMessageTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const time = d.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+  const isToday = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  if (isToday) return time;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth() && d.getFullYear() === yesterday.getFullYear();
+  if (isYesterday) return `Вчера, ${time}`;
+  return `${d.toLocaleDateString('ru', { day: 'numeric', month: 'short' })}, ${time}`;
 }

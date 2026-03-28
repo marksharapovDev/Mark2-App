@@ -14,6 +14,7 @@ interface Message {
   engine?: 'api' | 'claude-code';
   isNotification?: boolean;
   filePaths?: string[];
+  timestamp?: string;
 }
 
 export function ChatPopout() {
@@ -80,7 +81,7 @@ export function ChatPopout() {
           window.chat.isThinking(latest.id),
         ]);
         if (!cancelled) {
-          setMessages(msgs.map((h) => ({ id: h.id, role: h.role, content: h.content, engine: h.engine })));
+          setMessages(msgs.map((h) => ({ id: h.id, role: h.role, content: h.content, engine: h.engine, timestamp: h.created_at })));
           if (thinking) setIsThinking(true);
         }
       } else {
@@ -108,7 +109,7 @@ export function ChatPopout() {
 
     const filesToSend = attachedFiles.length > 0 ? [...attachedFiles] : undefined;
 
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: trimmed, filePaths: filesToSend }]);
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: trimmed, filePaths: filesToSend, timestamp: new Date().toISOString() }]);
     setInput('');
     setAttachedFiles([]);
     if (inputRef.current) inputRef.current.style.height = 'auto';
@@ -119,19 +120,19 @@ export function ChatPopout() {
       if (response.notification) {
         setMessages((prev) => [
           ...prev,
-          { id: crypto.randomUUID(), role: 'assistant', content: response.notification ?? '', engine: 'claude-code', isNotification: true },
+          { id: crypto.randomUUID(), role: 'assistant', content: response.notification ?? '', engine: 'claude-code', isNotification: true, timestamp: new Date().toISOString() },
         ]);
       }
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: 'assistant', content: response.content, engine: response.engine },
+        { id: crypto.randomUUID(), role: 'assistant', content: response.content, engine: response.engine, timestamp: new Date().toISOString() },
       ]);
       if (response.sessionTitle) setSessionTitle(response.sessionTitle);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${errorMsg}` },
+        { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${errorMsg}`, timestamp: new Date().toISOString() },
       ]);
     } finally {
       setStreamingText(null);
@@ -251,10 +252,10 @@ export function ChatPopout() {
     setIsThinking(true);
     const retryText = userMsg.content + '\n\n(повторный запрос, дай другой ответ)';
     window.chat.send(agent, sessionId, retryText, userMsg.filePaths).then((response) => {
-      if (response.notification) setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: response.notification ?? '', engine: 'claude-code', isNotification: true }]);
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: response.content, engine: response.engine }]);
+      if (response.notification) setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: response.notification ?? '', engine: 'claude-code', isNotification: true, timestamp: new Date().toISOString() }]);
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: response.content, engine: response.engine, timestamp: new Date().toISOString() }]);
     }).catch((err) => {
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${err instanceof Error ? err.message : 'Unknown error'}` }]);
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${err instanceof Error ? err.message : 'Unknown error'}`, timestamp: new Date().toISOString() }]);
     }).finally(() => { setStreamingText(null); setStreamingDone(false); setIsThinking(false); inputRef.current?.focus(); });
   }, [messages, sessionId, agent]);
 
@@ -385,6 +386,19 @@ export function ChatPopout() {
   );
 }
 
+function formatMessageTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const time = d.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+  const isToday = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  if (isToday) return time;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth() && d.getFullYear() === yesterday.getFullYear();
+  if (isYesterday) return `Вчера, ${time}`;
+  return `${d.toLocaleDateString('ru', { day: 'numeric', month: 'short' })}, ${time}`;
+}
+
 function PopoutBubble({ message, onEdit, onRetry }: { message: Message; onEdit: () => void; onRetry: () => void }) {
   const isUser = message.role === 'user';
 
@@ -408,6 +422,9 @@ function PopoutBubble({ message, onEdit, onRetry }: { message: Message; onEdit: 
           <div className="rounded-lg px-3 py-2 text-sm break-words bg-blue-600/20 text-blue-100 whitespace-pre-wrap">
             {message.content}
           </div>
+          {message.timestamp && (
+            <div className="text-[11px] text-gray-500 text-right mt-0.5">{formatMessageTime(message.timestamp)}</div>
+          )}
           <div className="flex justify-end opacity-0 group-hover/msg:opacity-100 transition-opacity">
             <UserMessageActions content={message.content} onEdit={onEdit} />
           </div>
@@ -435,6 +452,9 @@ function PopoutBubble({ message, onEdit, onRetry }: { message: Message; onEdit: 
           <div className="flex flex-col gap-1.5 mt-1.5">
             {botFiles.map((f) => <FileAttachmentCard key={f} filePath={f} />)}
           </div>
+        )}
+        {message.timestamp && (
+          <div className="text-[11px] text-gray-500 mt-0.5">{formatMessageTime(message.timestamp)}</div>
         )}
         <div className="opacity-0 group-hover/msg:opacity-100 transition-opacity">
           <BotMessageActions content={rawContent} onRetry={onRetry} />
