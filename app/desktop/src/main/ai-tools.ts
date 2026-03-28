@@ -381,6 +381,7 @@ function isDestructive(action: string): boolean {
 const AI_TOOLS: Record<string, ActionHandler> = {
   // Tasks
   create_task: async (params) => {
+    if (params.sphere === 'general') params.sphere = 'personal';
     const result = await db.createTask(params);
     return { success: true, message: `Задача создана: ${params.title}`, entity: 'tasks', data: result as unknown as Record<string, unknown> };
   },
@@ -397,6 +398,7 @@ const AI_TOOLS: Record<string, ActionHandler> = {
 
   // Calendar
   create_event: async (params) => {
+    if (params.sphere === 'general') params.sphere = 'personal';
     const result = await db.createCalendarEvent(params);
     return { success: true, message: `Событие создано: ${params.title}`, entity: 'events', data: result as unknown as Record<string, unknown> };
   },
@@ -1370,6 +1372,7 @@ const AI_TOOLS: Record<string, ActionHandler> = {
 
   // Reminders
   create_reminder: async (params) => {
+    if (params.sphere === 'general') params.sphere = 'personal';
     const data: Record<string, unknown> = {
       title: params.title,
       date: params.date ?? new Date().toISOString().slice(0, 10),
