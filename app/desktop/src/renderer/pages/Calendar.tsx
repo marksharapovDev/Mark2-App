@@ -94,6 +94,13 @@ interface ContextMenuState {
   min: number;
 }
 
+interface EventContextMenu {
+  x: number;
+  y: number;
+  event?: CalendarEvent;
+  reminder?: CalendarReminder;
+}
+
 interface EventDragState {
   event: CalendarEvent;
   mode: 'move' | 'resize';
@@ -197,6 +204,10 @@ function eventDuration(e: CalendarEvent): number {
 function yToMinutes(y: number, hh: number): number {
   const raw = (y / hh) * 60;
   return Math.max(0, Math.min(23 * 60 + 45, Math.round(raw / 15) * 15));
+}
+
+function yToMinutesRaw(y: number, hh: number): number {
+  return Math.max(0, Math.min(24 * 60 - 1, (y / hh) * 60));
 }
 
 // --- DB ↔ Local mapping ---
@@ -425,6 +436,7 @@ export function Calendar() {
   const [editReminder, setEditReminder] = useState<{ reminder: CalendarReminder; rect: DOMRect } | null>(null);
   const [createModal, setCreateModal] = useState<CreateModalData | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [eventContextMenu, setEventContextMenu] = useState<EventContextMenu | null>(null);
   const [recurringChoice, setRecurringChoice] = useState<{
     event: CalendarEvent;
     updates: { date: string; startHour: number; startMin: number; endHour: number; endMin: number };
@@ -711,6 +723,16 @@ export function Calendar() {
     return () => window.removeEventListener('click', handler);
   }, [contextMenu]);
 
+  // Close event context menu on click or Escape
+  useEffect(() => {
+    if (!eventContextMenu) return;
+    const handleClick = () => setEventContextMenu(null);
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setEventContextMenu(null); };
+    window.addEventListener('click', handleClick);
+    window.addEventListener('keydown', handleKey);
+    return () => { window.removeEventListener('click', handleClick); window.removeEventListener('keydown', handleKey); };
+  }, [eventContextMenu]);
+
   const addEvent = useCallback((event: CalendarEvent) => {
     commitEvents((prev) => [...prev, event]);
     setCreateModal(null);
@@ -952,6 +974,7 @@ export function Calendar() {
               onMoveEvent={moveEvent}
               onZoom={handleZoom}
               onToggleDone={toggleEventDone}
+              onEventContextMenu={setEventContextMenu}
             />
           )}
           {view === 'month' && (
@@ -980,6 +1003,7 @@ export function Calendar() {
               onMoveEvent={moveEvent}
               onZoom={handleZoom}
               onToggleDone={toggleEventDone}
+              onEventContextMenu={setEventContextMenu}
             />
           )}
           {view === 'list' && (
@@ -1103,6 +1127,50 @@ export function Calendar() {
         />
       )}
 
+      {/* Event/reminder right-click context menu */}
+      {eventContextMenu && (
+        <EventContextMenuComponent
+          x={eventContextMenu.x}
+          y={eventContextMenu.y}
+          event={eventContextMenu.event}
+          reminder={eventContextMenu.reminder}
+          onEdit={() => {
+            if (eventContextMenu.event) {
+              const ev = eventContextMenu.event;
+              setCreateModal({
+                date: ev.date,
+                startHour: ev.startHour,
+                startMin: ev.startMin,
+                endHour: ev.endHour,
+                endMin: ev.endMin,
+                editEvent: ev,
+              });
+            } else if (eventContextMenu.reminder) {
+              const r = eventContextMenu.reminder;
+              const fakeRect = new DOMRect(eventContextMenu.x, eventContextMenu.y, 0, 0);
+              setEditReminder({ reminder: r, rect: fakeRect });
+            }
+            setEventContextMenu(null);
+          }}
+          onDelete={() => {
+            if (eventContextMenu.event) {
+              deleteEvent(eventContextMenu.event.id);
+            } else if (eventContextMenu.reminder) {
+              window.db.reminders.delete(eventContextMenu.reminder.id).then(() => reloadEvents()).catch(() => {});
+            }
+            setEventContextMenu(null);
+          }}
+          onToggleDone={eventContextMenu.event ? () => {
+            toggleEventDone(eventContextMenu.event!.id);
+            setEventContextMenu(null);
+          } : undefined}
+          onCompleteReminder={eventContextMenu.reminder ? () => {
+            handleToggleReminder(eventContextMenu.reminder!.id);
+            setEventContextMenu(null);
+          } : undefined}
+        />
+      )}
+
       {/* Reminder edit popup */}
       {editReminder && (
         <ReminderEditPopup
@@ -1196,6 +1264,7 @@ function WeekView({
   onMoveEvent,
   onZoom,
   onToggleDone,
+  onEventContextMenu,
 }: {
   weekDates: string[];
   selectedDate: string;
@@ -1212,6 +1281,7 @@ function WeekView({
   onMoveEvent: (id: string, updates: { date: string; startHour: number; startMin: number; endHour: number; endMin: number }) => void;
   onZoom: (delta: number) => void;
   onToggleDone: (id: string) => void;
+  onEventContextMenu: (data: EventContextMenu) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -1319,7 +1389,7 @@ function WeekView({
     const gridRect = grid.getBoundingClientRect();
     const gutterWidth = 56;
     const relY = e.clientY - gridRect.top + scroll.scrollTop;
-    const grabMin = yToMinutes(relY, hourHeight);
+    const grabMin = yToMinutesRaw(relY, hourHeight);
 
     const initial: EventDragState = {
       event: ev,
@@ -1350,18 +1420,18 @@ function WeekView({
       const colWidth = (gr.width - gutterWidth) / 7;
       const newDayIdx = Math.max(0, Math.min(6, Math.floor((me.clientX - colAreaLeft) / colWidth)));
       const relYNow = me.clientY - gr.top + scrollEl.scrollTop;
-      const min = yToMinutes(relYNow, hourHeight);
+      const rawMin = yToMinutesRaw(relYNow, hourHeight);
 
       const drag = eventDragRef.current;
       let updated: EventDragState;
 
       if (drag.mode === 'move') {
         const duration = eventDuration(drag.event);
-        const newStart = Math.max(0, Math.round((min - drag.offsetMin) / 15) * 15);
+        const newStart = Math.max(0, Math.round((rawMin - drag.offsetMin) / 15) * 15);
         const newEnd = Math.min(24 * 60, newStart + duration);
         updated = { ...drag, currentDayIdx: newDayIdx, currentStartMin: newStart, currentEndMin: newEnd };
       } else {
-        const newEnd = Math.max(drag.currentStartMin + 15, Math.round(min / 15) * 15);
+        const newEnd = Math.max(drag.currentStartMin + 15, Math.round(rawMin / 15) * 15);
         updated = { ...drag, currentEndMin: Math.min(24 * 60, newEnd) };
       }
 
@@ -1406,6 +1476,18 @@ function WeekView({
       hour: Math.floor(min / 60),
       min: min % 60,
     });
+  };
+
+  const handleEventRightClick = (e: React.MouseEvent, ev: CalendarEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onEventContextMenu({ x: e.clientX, y: e.clientY, event: ev });
+  };
+
+  const handleReminderRightClick = (e: React.MouseEvent, r: CalendarReminder) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onEventContextMenu({ x: e.clientX, y: e.clientY, reminder: r });
   };
 
   return (
@@ -1567,6 +1649,7 @@ function WeekView({
                           opacity: isDragging ? 0.3 : ev.done ? 0.4 : 1,
                         }}
                         onMouseDown={(e) => handleEventMouseDown(e, ev)}
+                        onContextMenu={(e) => handleEventRightClick(e, ev)}
                       >
                         <button
                           className="shrink-0"
@@ -1607,6 +1690,7 @@ function WeekView({
                           borderLeftStyle: 'dashed',
                         }}
                         onMouseDown={(e) => handleEventMouseDown(e, ev)}
+                        onContextMenu={(e) => handleEventRightClick(e, ev)}
                       >
                         <div className={`text-[10px] font-medium truncate flex items-center gap-1 ${ev.done ? 'text-neutral-600 line-through' : SPHERE_META[ev.sphere].color}`}>
                           <button
@@ -1653,6 +1737,7 @@ function WeekView({
                         opacity: isDragging ? 0.3 : 1,
                       }}
                       onMouseDown={(e) => handleEventMouseDown(e, ev)}
+                      onContextMenu={(e) => handleEventRightClick(e, ev)}
                     >
                       <div className={`text-[10px] font-medium truncate ${SPHERE_META[ev.sphere].color}`}>
                         {ev.title}
@@ -1685,6 +1770,7 @@ function WeekView({
                         border-l-2 ${SPHERE_META[r.sphere].border} hover:bg-neutral-800/50 transition-all cursor-pointer
                         ${r.status === 'done' ? 'opacity-40' : ''}`}
                       style={{ top, height: 20, left: '2%', width: '96%', zIndex: 2 }}
+                      onContextMenu={(e) => handleReminderRightClick(e, r)}
                     >
                       <span className="shrink-0" onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}>
                         {r.status === 'done'
@@ -1931,6 +2017,7 @@ function DayView({
   onMoveEvent,
   onZoom,
   onToggleDone,
+  onEventContextMenu,
 }: {
   date: string;
   eventsForDate: (date: string) => CalendarEvent[];
@@ -1945,6 +2032,7 @@ function DayView({
   onMoveEvent: (id: string, updates: { date: string; startHour: number; startMin: number; endHour: number; endMin: number }) => void;
   onZoom: (delta: number) => void;
   onToggleDone: (id: string) => void;
+  onEventContextMenu: (data: EventContextMenu) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -2045,7 +2133,7 @@ function DayView({
 
     const gridRect = grid.getBoundingClientRect();
     const relY = e.clientY - gridRect.top;
-    const grabMin = yToMinutes(relY, hourHeight);
+    const grabMin = yToMinutesRaw(relY, hourHeight);
 
     const initial: EventDragState = {
       event: ev,
@@ -2072,17 +2160,17 @@ function DayView({
 
       const gr = gridEl.getBoundingClientRect();
       const relYNow = me.clientY - gr.top;
-      const min = yToMinutes(relYNow, hourHeight);
+      const rawMin = yToMinutesRaw(relYNow, hourHeight);
       const drag = eventDragRef.current;
       let updated: EventDragState;
 
       if (drag.mode === 'move') {
         const duration = eventDuration(drag.event);
-        const newStart = Math.max(0, Math.round((min - drag.offsetMin) / 15) * 15);
+        const newStart = Math.max(0, Math.round((rawMin - drag.offsetMin) / 15) * 15);
         const newEnd = Math.min(24 * 60, newStart + duration);
         updated = { ...drag, currentStartMin: newStart, currentEndMin: newEnd };
       } else {
-        const newEnd = Math.max(drag.currentStartMin + 15, Math.round(min / 15) * 15);
+        const newEnd = Math.max(drag.currentStartMin + 15, Math.round(rawMin / 15) * 15);
         updated = { ...drag, currentEndMin: Math.min(24 * 60, newEnd) };
       }
 
@@ -2125,6 +2213,18 @@ function DayView({
       hour: Math.floor(min / 60),
       min: min % 60,
     });
+  };
+
+  const handleEventRightClick = (e: React.MouseEvent, ev: CalendarEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onEventContextMenu({ x: e.clientX, y: e.clientY, event: ev });
+  };
+
+  const handleReminderRightClick = (e: React.MouseEvent, r: CalendarReminder) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onEventContextMenu({ x: e.clientX, y: e.clientY, reminder: r });
   };
 
   return (
@@ -2218,6 +2318,7 @@ function DayView({
                       opacity: isDragging ? 0.3 : evnt.done ? 0.4 : 1,
                     }}
                     onMouseDown={(e) => handleEventMouseDown(e, evnt)}
+                    onContextMenu={(e) => handleEventRightClick(e, evnt)}
                   >
                     <button
                       className="shrink-0"
@@ -2257,6 +2358,7 @@ function DayView({
                       borderLeftColor: 'currentColor',
                     }}
                     onMouseDown={(e) => handleEventMouseDown(e, evnt)}
+                    onContextMenu={(e) => handleEventRightClick(e, evnt)}
                   >
                     <div className={`text-xs font-medium flex items-center gap-1.5 ${evnt.done ? 'text-neutral-600 line-through' : SPHERE_META[evnt.sphere].color}`}>
                       <button
@@ -2304,6 +2406,7 @@ function DayView({
                     opacity: isDragging ? 0.3 : 1,
                   }}
                   onMouseDown={(e) => handleEventMouseDown(e, evnt)}
+                  onContextMenu={(e) => handleEventRightClick(e, evnt)}
                 >
                   <div className={`text-xs font-medium truncate ${SPHERE_META[evnt.sphere].color}`}>
                     {evnt.title}
@@ -2337,6 +2440,7 @@ function DayView({
                     border-l-2 ${SPHERE_META[r.sphere].border} hover:bg-neutral-800/50 transition-all cursor-pointer
                     ${r.status === 'done' ? 'opacity-40' : ''}`}
                   style={{ top, height: 22, left: 0, right: 0, zIndex: 2 }}
+                  onContextMenu={(e) => handleReminderRightClick(e, r)}
                 >
                   <span className="shrink-0" onClick={(e) => { e.stopPropagation(); onCompleteReminder(r.id); }}>
                     {r.status === 'done'
@@ -3356,6 +3460,86 @@ function ContextMenuComponent({
       >
         <Bell size={12} strokeWidth={1.5} />
         Новое напоминание
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// EVENT CONTEXT MENU (right-click on event/reminder)
+// ============================================================
+
+function EventContextMenuComponent({
+  x,
+  y,
+  event,
+  reminder,
+  onEdit,
+  onDelete,
+  onToggleDone,
+  onCompleteReminder,
+}: {
+  x: number;
+  y: number;
+  event?: CalendarEvent;
+  reminder?: CalendarReminder;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggleDone?: () => void;
+  onCompleteReminder?: () => void;
+}) {
+  const isReminder = !!reminder;
+  const isTaskOrRem = event ? (event.type === 'task' || event.type === 'reminder') : false;
+  const isDone = reminder ? reminder.status === 'done' : event?.done ?? false;
+
+  // Clamp to viewport
+  const menuW = 200;
+  const menuH = 140;
+  const left = Math.min(x, window.innerWidth - menuW - 8);
+  const top = Math.min(y, window.innerHeight - menuH - 8);
+
+  return (
+    <div
+      className="fixed z-50 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[180px]"
+      style={{ left, top }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        onClick={onEdit}
+        className="w-full text-left px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-700 transition-colors flex items-center gap-2"
+      >
+        <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+        </svg>
+        Редактировать
+      </button>
+
+      {(isTaskOrRem || isReminder) && (
+        <button
+          onClick={isReminder ? onCompleteReminder : onToggleDone}
+          className="w-full text-left px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-700 transition-colors flex items-center gap-2"
+        >
+          {isDone ? (
+            <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+          )}
+          {isDone ? 'Вернуть' : 'Выполнить'}
+        </button>
+      )}
+
+      <div className="border-t border-neutral-700 my-1" />
+
+      <button
+        onClick={onDelete}
+        className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-neutral-700 transition-colors flex items-center gap-2"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+        </svg>
+        Удалить
       </button>
     </div>
   );
