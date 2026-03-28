@@ -175,28 +175,53 @@ export function setAgentContext(agent: AgentName, ctx: SessionContext): void {
 }
 
 async function buildTeachingContext(sessionId: string, agent: AgentName): Promise<string> {
-  // Session-level context takes priority, then agent-level
-  const ctx = sessionContext.get(sessionId) ?? agentContext.get(agent);
-  if (!ctx?.studentId) return '';
-
   try {
     const students = await db.getStudents();
-    const student = students.find((s) => s.id === ctx.studentId);
-    if (!student) return '';
+    if (students.length === 0) return '';
 
-    const topics = await db.getLearningPath(ctx.studentId);
-    if (topics.length === 0) {
-      return `## Текущий ученик: ${student.name}\n\nПлан обучения пока не создан.\n`;
+    // Build roster of ALL students with schedules and rates
+    const rosterLines: string[] = [];
+    for (const s of students) {
+      const parts: string[] = [];
+      if (s.subject) parts.push(s.subject);
+      if (s.schedule && typeof s.schedule === 'object') {
+        const schedArr = Array.isArray(s.schedule) ? s.schedule : [];
+        if (schedArr.length > 0) {
+          const schedStr = schedArr.map((slot: Record<string, unknown>) =>
+            slot.time ? `${slot.day} ${slot.time}` : String(slot.day)
+          ).join(' ');
+          parts.push(`расписание ${schedStr}`);
+        }
+      }
+      const rate = await db.getStudentRate(s.id);
+      if (rate) parts.push(`ставка ${rate.ratePerLesson}₽`);
+      rosterLines.push(`- ${s.name}: ${parts.join(', ')}`);
     }
 
-    const lines = topics.map((t, i) => {
-      let line = `${i + 1}. [id:${t.id}] ${t.title} — ${t.status}`;
-      if (t.description) {
-        line += `\n   Описание: ${t.description}`;
+    let result = `## Ученики\n\n${rosterLines.join('\n')}\n`;
+
+    // If a specific student is selected, also show their learning path
+    const ctx = sessionContext.get(sessionId) ?? agentContext.get(agent);
+    if (ctx?.studentId) {
+      const student = students.find((s) => s.id === ctx.studentId);
+      if (student) {
+        const topics = await db.getLearningPath(ctx.studentId);
+        if (topics.length === 0) {
+          result += `\n## Текущий ученик: ${student.name}\n\nПлан обучения пока не создан.\n`;
+        } else {
+          const lines = topics.map((t, i) => {
+            let line = `${i + 1}. [id:${t.id}] ${t.title} — ${t.status}`;
+            if (t.description) {
+              line += `\n   Описание: ${t.description}`;
+            }
+            return line;
+          });
+          result += `\n## Текущий план обучения: ${student.name}\n\n${lines.join('\n')}\n`;
+        }
       }
-      return line;
-    });
-    return `## Текущий план обучения: ${student.name}\n\n${lines.join('\n')}\n`;
+    }
+
+    return result;
   } catch (err) {
     console.error('[HybridEngine] Failed to load teaching context:', err);
     return '';

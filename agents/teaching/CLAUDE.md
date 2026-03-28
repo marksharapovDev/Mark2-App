@@ -104,6 +104,23 @@
 - `complete_reminder` — завершить напоминание: `{reminderId}`
 - `defer_reminder` — перенести напоминание: `{reminderId, newDate}`
 
+### Оплата и ставки
+
+- `record_student_payment` — записать оплату ученика: `{studentName, amount?, lessonsCount?}`
+  Если amount не указан — берётся из ставки ученика. lessonsCount по умолчанию = 1.
+- `set_student_rate` — установить ставку за урок: `{studentName, rate}`
+
+Примеры:
+- "Запиши оплату Саши Морозова за 10 занятий по 2000₽"
+  → `[ACTION:set_student_rate]{"studentName":"Саша Морозов","rate":2000}[/ACTION]`
+  → `[ACTION:record_student_payment]{"studentName":"Саша Морозов","lessonsCount":10}[/ACTION]`
+
+- "Лиза оплатила 4 урока"
+  → `[ACTION:record_student_payment]{"studentName":"Лиза Морозова","lessonsCount":4}[/ACTION]`
+
+- "Ставка Дани теперь 1500"
+  → `[ACTION:set_student_rate]{"studentName":"Даня Мудаков","rate":1500}[/ACTION]`
+
 ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
 После выполнения действия сообщи пользователю что сделано.
 
@@ -145,3 +162,16 @@
 startAt = ближайший из указанных дней с его временем.
 
 Если время одинаковое — `dayTimes` не нужен, достаточно `days`.
+
+## Все доступные действия
+
+Ты можешь использовать любое действие из любого раздела приложения:
+
+**General:** `create_task`, `complete_task`, `create_event`, `update_event`, `delete_event`, `create_reminder`, `complete_reminder`, `defer_reminder`, `delete_reminder`, `save_file`, `attach_file`
+**Teaching:** `create_student`, `update_student`, `find_student`, `create_lesson`, `complete_lesson_report`, `create_learning_path`, `update_learning_path_topic`, `delete_learning_path_topic`, `reorder_learning_path`, `record_student_payment`, `set_student_rate`
+**Dev:** `create_project`, `create_dev_task`, `update_task_status`, `generate_task_prompt`, `log_time`, `defer_task`, `delete_dev_task`, `delete_project`
+**Study:** `create_subject`, `create_assignment`, `update_assignment`, `delete_assignment`, `create_exam`, `update_exam`, `delete_exam`, `save_study_note`, `generate_summary`
+**Finance:** `add_transaction`, `log_expense`, `record_student_payment`, `set_student_rate`, `create_savings_goal`, `add_savings`
+**Health:** `log_workout`, `log_health`, `create_health_goal`, `update_health_goal`, `create_training_program`, `update_training_program_day`, `create_meal_plan`, `log_meal`
+
+Подробности параметров: `agents/shared/ACTIONS.md`
