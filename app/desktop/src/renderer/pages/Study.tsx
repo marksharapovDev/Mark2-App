@@ -6,7 +6,9 @@ import {
   BookOpen, PenLine, ClipboardList, BarChart3, FileText, MapPin, NotebookText,
   CheckCircle2, Clock, RefreshCw, Loader2, Plus, Trash2,
   GraduationCap, Calendar, FolderOpen, FileQuestion, Save, Sparkles,
+  ChevronRight, ChevronDown, File, Folder, Eye, Pencil,
 } from 'lucide-react';
+import { MarkdownRenderer } from '../components/MarkdownRenderer';
 
 // --- Types ---
 
@@ -611,6 +613,27 @@ export function Study() {
                   })}
                 </div>
               </div>
+
+              <div className="mx-3 border-t border-neutral-800" />
+
+              {/* All files tree */}
+              <div className="px-3 pt-3 pb-3">
+                <AllFilesTree onFileOpen={(filePath) => {
+                  // Try to find which subject the file belongs to and switch to it
+                  const pathParts = filePath.split('/');
+                  const subjectsIdx = pathParts.indexOf('subjects');
+                  if (subjectsIdx >= 0) {
+                    const slugFromPath = pathParts[subjectsIdx + 1];
+                    const matchSubject = subjects.find((s) => toSlug(s.name) === slugFromPath);
+                    if (matchSubject) {
+                      selectSubject(matchSubject.id);
+                      setTimeout(() => {
+                        window.dispatchEvent(new CustomEvent('study:open-file', { detail: { filePath } }));
+                      }, 100);
+                    }
+                  }
+                }} />
+              </div>
             </div>
           )}
         </aside>
@@ -991,7 +1014,12 @@ function SubjectView({
       )}
 
       {activeTab === 'files' && (
-        <FilesView subjectName={subject.name} onSwitchToNotes={() => onTabChange('notes')} />
+        <FilesView subjectName={subject.name} onOpenFile={(filePath) => {
+          // Switch to notes tab and open the file
+          onTabChange('notes');
+          // Pass via a custom event so NotesEditorView can pick it up
+          window.dispatchEvent(new CustomEvent('study:open-file', { detail: { filePath } }));
+        }} />
       )}
 
       {activeTab === 'notes' && (
@@ -1001,49 +1029,373 @@ function SubjectView({
   );
 }
 
-// --- Files view ---
+// --- File tree component ---
 
-const FOLDER_META: Record<string, string> = {
-  notes: 'Заметки с пар',
-  summaries: 'AI-конспекты',
-  assignments: 'Задания и решения',
-  materials: 'Учебные материалы',
-  exams: 'Подготовка к экзаменам',
-  templates: 'Шаблоны документов',
-};
+function FileTreeNode({
+  node, depth, onFileClick, onDrop, expandedPaths, toggleExpand,
+  contextMenu, setContextMenu,
+}: {
+  node: FileTreeNode;
+  depth: number;
+  onFileClick: (node: FileTreeNode) => void;
+  onDrop: (files: FileList, destFolder: string) => void;
+  expandedPaths: Set<string>;
+  toggleExpand: (path: string) => void;
+  contextMenu: { x: number; y: number; node: FileTreeNode } | null;
+  setContextMenu: (menu: { x: number; y: number; node: FileTreeNode } | null) => void;
+}) {
+  const isExpanded = expandedPaths.has(node.path);
+  const [dragOver, setDragOver] = useState(false);
 
-function FilesView({ subjectName, onSwitchToNotes }: { subjectName: string; onSwitchToNotes: () => void }) {
-  const slug = toSlug(subjectName);
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!node.isDir) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = () => setDragOver(false);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    if (node.isDir && e.dataTransfer.files.length > 0) {
+      onDrop(e.dataTransfer.files, node.path);
+    }
+  };
+
   return (
     <div>
-      <p className="text-sm text-neutral-400 mb-4">
+      <button
+        onClick={() => node.isDir ? toggleExpand(node.path) : onFileClick(node)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY, node });
+        }}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`w-full text-left flex items-center gap-1.5 py-1 px-2 text-xs transition-colors rounded
+          ${dragOver ? 'bg-blue-900/40 ring-1 ring-blue-500/50' : 'hover:bg-neutral-800/50'}
+          ${node.isDir ? 'text-neutral-300' : 'text-neutral-400 hover:text-neutral-200'}`}
+        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+      >
+        {node.isDir ? (
+          <>
+            {isExpanded ? <ChevronDown size={12} className="shrink-0 text-neutral-500" /> : <ChevronRight size={12} className="shrink-0 text-neutral-500" />}
+            <Folder size={14} className="shrink-0 text-yellow-500/70" />
+          </>
+        ) : (
+          <>
+            <span className="w-3 shrink-0" />
+            <File size={14} className="shrink-0 text-neutral-500" />
+          </>
+        )}
+        <span className="truncate">{node.name}</span>
+      </button>
+      {node.isDir && isExpanded && node.children && (
+        <div>
+          {node.children.map((child) => (
+            <FileTreeNode
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              onFileClick={onFileClick}
+              onDrop={onDrop}
+              expandedPaths={expandedPaths}
+              toggleExpand={toggleExpand}
+              contextMenu={contextMenu}
+              setContextMenu={setContextMenu}
+            />
+          ))}
+          {node.children.length === 0 && (
+            <div className="text-[10px] text-neutral-600 py-1" style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}>
+              Пусто
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FileTreeView({
+  tree, onFileClick, onRefresh, onDrop, title,
+}: {
+  tree: FileTreeNode[];
+  onFileClick: (node: FileTreeNode) => void;
+  onRefresh: () => void;
+  onDrop: (files: FileList, destFolder: string) => void;
+  title?: string;
+}) {
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
+    // Auto-expand top-level directories
+    const initial = new Set<string>();
+    for (const node of tree) {
+      if (node.isDir) initial.add(node.path);
+    }
+    return initial;
+  });
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: FileTreeNode } | null>(null);
+  const [renaming, setRenaming] = useState<{ node: FileTreeNode; newName: string } | null>(null);
+
+  // Update expanded when tree changes (keep existing, add new top-level)
+  useEffect(() => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      for (const node of tree) {
+        if (node.isDir && !prev.has(node.path)) next.add(node.path);
+      }
+      return next;
+    });
+  }, [tree]);
+
+  const toggleExpand = useCallback((path: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const handleContextAction = useCallback(async (action: 'open' | 'rename' | 'delete', node: FileTreeNode) => {
+    setContextMenu(null);
+    if (action === 'open') {
+      if (node.isDir) {
+        window.electronAPI.openFile(node.path);
+      } else {
+        onFileClick(node);
+      }
+    } else if (action === 'rename') {
+      setRenaming({ node, newName: node.name });
+    } else if (action === 'delete') {
+      await window.study.files.delete(node.path);
+      onRefresh();
+    }
+  }, [onFileClick, onRefresh]);
+
+  const handleRenameSubmit = useCallback(async () => {
+    if (!renaming || !renaming.newName.trim()) { setRenaming(null); return; }
+    const dir = renaming.node.path.substring(0, renaming.node.path.lastIndexOf('/'));
+    const newPath = `${dir}/${renaming.newName.trim()}`;
+    if (newPath !== renaming.node.path) {
+      await window.study.files.rename(renaming.node.path, newPath);
+      onRefresh();
+    }
+    setRenaming(null);
+  }, [renaming, onRefresh]);
+
+  // Root-level drag & drop
+  const handleRootDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+  const handleRootDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.files.length > 0 && tree.length > 0) {
+      // Drop at root: use the first dir's parent
+      const rootPath = tree[0]!.path.substring(0, tree[0]!.path.lastIndexOf('/'));
+      onDrop(e.dataTransfer.files, rootPath);
+    }
+  };
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => setContextMenu(null);
+    window.addEventListener('click', handler);
+    return () => window.removeEventListener('click', handler);
+  }, [contextMenu]);
+
+  return (
+    <div>
+      {title && (
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">{title}</span>
+          <button
+            onClick={onRefresh}
+            className="p-1 rounded text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 transition-colors"
+            title="Обновить"
+          >
+            <RefreshCw size={12} />
+          </button>
+        </div>
+      )}
+      <div
+        className="border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden"
+        onDragOver={handleRootDragOver}
+        onDrop={handleRootDrop}
+      >
+        <div className="max-h-[60vh] overflow-y-auto scrollbar-thin py-1">
+          {tree.length === 0 && (
+            <div className="text-xs text-neutral-600 text-center py-4">Нет файлов</div>
+          )}
+          {tree.map((node) => (
+            <FileTreeNode
+              key={node.path}
+              node={node}
+              depth={0}
+              onFileClick={onFileClick}
+              onDrop={onDrop}
+              expandedPaths={expandedPaths}
+              toggleExpand={toggleExpand}
+              contextMenu={contextMenu}
+              setContextMenu={setContextMenu}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[140px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            onClick={() => handleContextAction('open', contextMenu.node)}
+            className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
+          >
+            Открыть
+          </button>
+          <button
+            onClick={() => handleContextAction('rename', contextMenu.node)}
+            className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
+          >
+            Переименовать
+          </button>
+          {!contextMenu.node.isDir && (
+            <button
+              onClick={() => handleContextAction('delete', contextMenu.node)}
+              className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 transition-colors"
+            >
+              Удалить
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Rename dialog */}
+      {renaming && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setRenaming(null)}>
+          <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4 shadow-xl w-80" onClick={(e) => e.stopPropagation()}>
+            <div className="text-sm text-neutral-300 mb-3">Переименовать</div>
+            <input
+              autoFocus
+              value={renaming.newName}
+              onChange={(e) => setRenaming({ ...renaming, newName: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleRenameSubmit();
+                if (e.key === 'Escape') setRenaming(null);
+              }}
+              className="w-full bg-neutral-800 border border-neutral-700 rounded px-3 py-1.5 text-sm text-neutral-200 focus:outline-none focus:border-blue-500/50"
+            />
+            <div className="flex justify-end gap-2 mt-3">
+              <button onClick={() => setRenaming(null)} className="px-3 py-1 text-xs text-neutral-400 hover:text-neutral-200 rounded transition-colors">Отмена</button>
+              <button onClick={handleRenameSubmit} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors">Сохранить</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FilesView({ subjectName, onOpenFile }: { subjectName: string; onOpenFile: (filePath: string) => void }) {
+  const slug = toSlug(subjectName);
+  const [tree, setTree] = useState<FileTreeNode[]>([]);
+
+  const loadTree = useCallback(async () => {
+    const result = await window.study.files.tree(slug);
+    setTree(result);
+  }, [slug]);
+
+  useEffect(() => {
+    loadTree();
+    window.study.files.watchStart(slug);
+    const unsub = window.study.files.onWatchUpdate((updatedSlug: string) => {
+      if (updatedSlug === slug) loadTree();
+    });
+    return () => {
+      unsub();
+      window.study.files.watchStop(slug);
+    };
+  }, [slug, loadTree]);
+
+  const handleFileClick = useCallback((node: FileTreeNode) => {
+    if (node.name.endsWith('.md')) {
+      onOpenFile(node.path);
+    } else {
+      window.electronAPI.openFile(node.path);
+    }
+  }, [onOpenFile]);
+
+  const handleDrop = useCallback(async (files: FileList, destFolder: string) => {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file?.path) {
+        await window.study.files.copy(file.path, destFolder);
+      }
+    }
+    loadTree();
+  }, [loadTree]);
+
+  return (
+    <div>
+      <p className="text-sm text-neutral-400 mb-3">
         Файлы предмета в <code className="text-neutral-300 bg-neutral-800 px-1 rounded text-xs">agents/study/context/subjects/{slug}/</code>
       </p>
-      <div className="grid grid-cols-2 gap-3">
-        {Object.entries(FOLDER_META).map(([folder, desc]) => (
-          <button
-            key={folder}
-            onClick={() => {
-              if (folder === 'notes' || folder === 'summaries') {
-                onSwitchToNotes();
-              } else {
-                window.electronAPI.openFile(`agents/study/context/subjects/${slug}/${folder}`);
-              }
-            }}
-            className="text-left bg-neutral-900/30 border border-neutral-800 rounded-lg px-4 py-3 hover:bg-neutral-800/50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <FolderOpen size={16} className="text-neutral-500" />
-              <span className="text-sm text-neutral-300 capitalize">{folder}</span>
-              {(folder === 'notes' || folder === 'summaries') && (
-                <span className="text-[9px] text-blue-400 ml-auto">Встроенный редактор</span>
-              )}
-            </div>
-            <div className="text-[11px] text-neutral-600 mt-1">{desc}</div>
-          </button>
-        ))}
-      </div>
+      <FileTreeView
+        tree={tree}
+        onFileClick={handleFileClick}
+        onRefresh={loadTree}
+        onDrop={handleDrop}
+        title="Файлы"
+      />
+      <p className="text-[10px] text-neutral-600 mt-2">
+        Перетащите файлы из Finder в папку для копирования. Правый клик — контекстное меню.
+      </p>
     </div>
+  );
+}
+
+// --- All files tree (for General tab) ---
+
+function AllFilesTree({ onFileOpen }: { onFileOpen: (filePath: string) => void }) {
+  const [tree, setTree] = useState<FileTreeNode[]>([]);
+
+  const loadTree = useCallback(async () => {
+    const result = await window.study.files.allTree();
+    setTree(result);
+  }, []);
+
+  useEffect(() => { loadTree(); }, [loadTree]);
+
+  const handleFileClick = useCallback((node: FileTreeNode) => {
+    if (node.name.endsWith('.md')) {
+      onFileOpen(node.path);
+    } else {
+      window.electronAPI.openFile(node.path);
+    }
+  }, [onFileOpen]);
+
+  const handleDrop = useCallback(async (files: FileList, destFolder: string) => {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file?.path) {
+        await window.study.files.copy(file.path, destFolder);
+      }
+    }
+    loadTree();
+  }, [loadTree]);
+
+  return (
+    <FileTreeView
+      tree={tree}
+      onFileClick={handleFileClick}
+      onRefresh={loadTree}
+      onDrop={handleDrop}
+      title="Все файлы"
+    />
   );
 }
 
@@ -1063,6 +1415,7 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
   const [originalContent, setOriginalContent] = useState('');
   const [summaryContent, setSummaryContent] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'original' | 'summary'>('original');
+  const [editorMode, setEditorMode] = useState<'edit' | 'preview'>('edit');
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
   const [creating, setCreating] = useState(false);
   const [noteType, setNoteType] = useState<'лекция' | 'семинар' | 'лаба' | null>(null);
@@ -1126,6 +1479,19 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
       setSaveStatus('unsaved');
     }
   }, [content, originalContent, selectedFile]);
+
+  // Listen for file open from FileTreeView
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const filePath = (e as CustomEvent).detail?.filePath;
+      if (filePath) {
+        const name = filePath.split('/').pop() ?? filePath;
+        openFile({ name, path: filePath });
+      }
+    };
+    window.addEventListener('study:open-file', handler);
+    return () => window.removeEventListener('study:open-file', handler);
+  }, [openFile]);
 
   const handleCreateNote = useCallback(async () => {
     let filename: string;
@@ -1328,6 +1694,28 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
               </span>
 
               <div className="ml-auto flex items-center gap-2">
+                {/* Edit / Preview toggle */}
+                {viewMode === 'original' && (
+                  <div className="flex gap-0.5 bg-neutral-900 rounded p-0.5 border border-neutral-800">
+                    <button
+                      onClick={() => setEditorMode('edit')}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        editorMode === 'edit' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
+                      }`}
+                    >
+                      <Pencil size={10} /> Редактирование
+                    </button>
+                    <button
+                      onClick={() => setEditorMode('preview')}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        editorMode === 'preview' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
+                      }`}
+                    >
+                      <Eye size={10} /> Просмотр
+                    </button>
+                  </div>
+                )}
+
                 {/* Original / Summary toggle */}
                 {summaryContent !== null && (
                   <div className="flex gap-0.5 bg-neutral-900 rounded p-0.5 border border-neutral-800">
@@ -1371,22 +1759,26 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
 
             {/* Editor area */}
             {viewMode === 'original' ? (
-              <textarea
-                ref={textareaRef}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                onBlur={saveFile}
-                className="flex-1 w-full bg-gray-900 text-neutral-300 text-sm font-mono leading-relaxed p-4 resize-none focus:outline-none scrollbar-thin"
-                spellCheck={false}
-              />
+              editorMode === 'edit' ? (
+                <textarea
+                  ref={textareaRef}
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  onBlur={saveFile}
+                  className="flex-1 w-full bg-gray-900 text-neutral-300 text-sm font-mono leading-relaxed p-4 resize-none focus:outline-none scrollbar-thin"
+                  spellCheck={false}
+                />
+              ) : (
+                <div className="flex-1 overflow-auto p-4 bg-gray-900">
+                  <MarkdownRenderer content={content} className="text-sm text-neutral-300 leading-relaxed" />
+                </div>
+              )
             ) : (
               <div className="flex-1 overflow-auto p-4 bg-gray-900">
                 <div className="flex items-center gap-1.5 mb-3 text-[10px] text-blue-400/70 uppercase tracking-wider">
                   <Sparkles size={12} /> AI-конспект
                 </div>
-                <pre className="text-sm text-neutral-300 leading-relaxed whitespace-pre-wrap font-mono">
-                  {summaryContent}
-                </pre>
+                <MarkdownRenderer content={summaryContent ?? ''} className="text-sm text-neutral-300 leading-relaxed" />
               </div>
             )}
           </>

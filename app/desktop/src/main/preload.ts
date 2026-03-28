@@ -536,6 +536,25 @@ const studyApi = {
       ipcRenderer.invoke('study:files:create', subjectSlug, folder, filename),
     delete: (filePath: string) =>
       ipcRenderer.invoke('study:files:delete', filePath),
+    tree: (subjectSlug: string) =>
+      ipcRenderer.invoke('study:files:tree', subjectSlug),
+    allTree: () =>
+      ipcRenderer.invoke('study:files:all-tree'),
+    rename: (oldPath: string, newPath: string) =>
+      ipcRenderer.invoke('study:files:rename', oldPath, newPath),
+    copy: (sourcePath: string, destFolder: string) =>
+      ipcRenderer.invoke('study:files:copy', sourcePath, destFolder),
+    watchStart: (subjectSlug: string) =>
+      ipcRenderer.invoke('study:files:watch-start', subjectSlug),
+    watchStop: (subjectSlug: string) =>
+      ipcRenderer.invoke('study:files:watch-stop', subjectSlug),
+    onWatchUpdate: (callback: (subjectSlug: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, slug: string) => {
+        callback(slug);
+      };
+      ipcRenderer.on('study:files:watch-update', handler);
+      return () => { ipcRenderer.removeListener('study:files:watch-update', handler); };
+    },
   },
 };
 

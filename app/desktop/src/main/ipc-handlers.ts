@@ -724,6 +724,99 @@ export function registerIpcHandlers(): void {
     } catch { /* ignore */ }
   });
 
+  // Recursive file tree for a subject
+  interface FileTreeNode {
+    name: string;
+    path: string;
+    isDir: boolean;
+    children?: FileTreeNode[];
+  }
+
+  function buildTree(dirPath: string): FileTreeNode[] {
+    try {
+      fs.mkdirSync(dirPath, { recursive: true });
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      return entries
+        .filter((e) => !e.name.startsWith('.'))
+        .sort((a, b) => {
+          if (a.isDirectory() && !b.isDirectory()) return -1;
+          if (!a.isDirectory() && b.isDirectory()) return 1;
+          return a.name.localeCompare(b.name);
+        })
+        .map((e) => {
+          const fullPath = path.resolve(dirPath, e.name);
+          if (e.isDirectory()) {
+            return { name: e.name, path: fullPath, isDir: true, children: buildTree(fullPath) };
+          }
+          return { name: e.name, path: fullPath, isDir: false };
+        });
+    } catch {
+      return [];
+    }
+  }
+
+  ipcMain.handle('study:files:tree', async (_event, subjectSlug: string) => {
+    const dirPath = path.resolve(studyBasePath, subjectSlug);
+    return buildTree(dirPath);
+  });
+
+  ipcMain.handle('study:files:all-tree', async () => {
+    try {
+      fs.mkdirSync(studyBasePath, { recursive: true });
+      const entries = fs.readdirSync(studyBasePath, { withFileTypes: true });
+      return entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((e) => ({
+          name: e.name,
+          path: path.resolve(studyBasePath, e.name),
+          isDir: true,
+          children: buildTree(path.resolve(studyBasePath, e.name)),
+        }));
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.handle('study:files:rename', async (_event, oldPath: string, newPath: string) => {
+    fs.renameSync(oldPath, newPath);
+  });
+
+  ipcMain.handle('study:files:copy', async (_event, sourcePath: string, destFolder: string) => {
+    const fileName = path.basename(sourcePath);
+    const destPath = path.resolve(destFolder, fileName);
+    fs.mkdirSync(destFolder, { recursive: true });
+    fs.copyFileSync(sourcePath, destPath);
+    return { name: fileName, path: destPath };
+  });
+
+  // File system watcher
+  const fsWatchers = new Map<string, fs.FSWatcher>();
+
+  ipcMain.handle('study:files:watch-start', async (_event, subjectSlug: string) => {
+    const key = subjectSlug;
+    if (fsWatchers.has(key)) return;
+    const dirPath = path.resolve(studyBasePath, subjectSlug);
+    fs.mkdirSync(dirPath, { recursive: true });
+    try {
+      const watcher = fs.watch(dirPath, { recursive: true }, () => {
+        const win = getWindow();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('study:files:watch-update', subjectSlug);
+        }
+      });
+      fsWatchers.set(key, watcher);
+    } catch { /* fs.watch not supported or dir missing */ }
+  });
+
+  ipcMain.handle('study:files:watch-stop', async (_event, subjectSlug: string) => {
+    const watcher = fsWatchers.get(subjectSlug);
+    if (watcher) {
+      watcher.close();
+      fsWatchers.delete(subjectSlug);
+    }
+  });
+
   ipcMain.handle('claude:stop-session', (_event, sessionId: string) => {
     const proc = cliSessions.get(sessionId);
     if (proc) {

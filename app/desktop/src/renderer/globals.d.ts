@@ -276,6 +276,13 @@ interface StudyFileEntry {
   path: string;
 }
 
+interface FileTreeNode {
+  name: string;
+  path: string;
+  isDir: boolean;
+  children?: FileTreeNode[];
+}
+
 interface StudyAPI {
   files: {
     list: (subjectSlug: string, folder: string) => Promise<StudyFileEntry[]>;
@@ -283,6 +290,13 @@ interface StudyAPI {
     write: (filePath: string, content: string) => Promise<void>;
     create: (subjectSlug: string, folder: string, filename: string) => Promise<StudyFileEntry>;
     delete: (filePath: string) => Promise<void>;
+    tree: (subjectSlug: string) => Promise<FileTreeNode[]>;
+    allTree: () => Promise<FileTreeNode[]>;
+    rename: (oldPath: string, newPath: string) => Promise<void>;
+    copy: (sourcePath: string, destFolder: string) => Promise<StudyFileEntry>;
+    watchStart: (subjectSlug: string) => Promise<void>;
+    watchStop: (subjectSlug: string) => Promise<void>;
+    onWatchUpdate: (callback: (subjectSlug: string) => void) => () => void;
   };
 }
 
