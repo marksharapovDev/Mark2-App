@@ -115,10 +115,11 @@ export function TimerPanel({ embedded = true }: TimerPanelProps) {
 
     return (
       <div className="flex flex-col gap-2 p-3 bg-neutral-900/80 h-full">
-        <div className={`h-0.5 rounded-full ${sphereColor}`} />
-
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-neutral-400 truncate flex-1">{timer.linkedEvent.title}</span>
+          <div className="flex items-center gap-1.5 truncate flex-1">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${sphereColor}`} />
+            <span className="text-[11px] text-neutral-400 truncate">{timer.linkedEvent.title}</span>
+          </div>
           {embedded && (
             <button onClick={handlePopout} className="text-neutral-600 hover:text-neutral-300 transition-colors" title="Вынести в окно">
               <ExternalLink size={12} />
