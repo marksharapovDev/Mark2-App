@@ -53,17 +53,17 @@ export class ClaudeBridge extends EventEmitter {
       const proc = spawn('claude', args, {
         cwd,
         env: process.env,
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
 
       let output = '';
       let stderr = '';
 
-      proc.stdout?.on('data', (data: Buffer) => {
+      proc.stdout.on('data', (data: Buffer) => {
         output += data.toString();
       });
 
-      proc.stderr?.on('data', (data: Buffer) => {
+      proc.stderr.on('data', (data: Buffer) => {
         stderr += data.toString();
       });
 
@@ -102,7 +102,7 @@ export class ClaudeBridge extends EventEmitter {
       const proc = spawn('claude', args, {
         cwd,
         env: process.env,
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
 
       let output = '';
@@ -118,12 +118,12 @@ export class ClaudeBridge extends EventEmitter {
         proc.on('close', () => signal.removeEventListener('abort', onAbort));
       }
 
-      proc.stdout?.on('data', (data: Buffer) => {
+      proc.stdout.on('data', (data: Buffer) => {
         output += data.toString();
         onChunk(output);
       });
 
-      proc.stderr?.on('data', (data: Buffer) => {
+      proc.stderr.on('data', (data: Buffer) => {
         stderr += data.toString();
       });
 
