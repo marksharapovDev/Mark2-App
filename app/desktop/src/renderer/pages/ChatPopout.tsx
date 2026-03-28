@@ -27,6 +27,7 @@ export function ChatPopout() {
   const [isThinking, setIsThinking] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [statusText, setStatusText] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -47,15 +48,18 @@ export function ChatPopout() {
   // Listen for streaming events
   useEffect(() => {
     const unsubStart = window.chat.onStreamStart((sid) => {
-      if (sid === sessionId) setStreamingText('');
+      if (sid === sessionId) { setStreamingText(''); setIsThinking(true); }
     });
     const unsubUpdate = window.chat.onStreamUpdate((sid, text) => {
       if (sid === sessionId) setStreamingText(text);
     });
     const unsubEnd = window.chat.onStreamEnd((sid) => {
-      if (sid === sessionId) setStreamingText(null);
+      if (sid === sessionId) { setStreamingText(null); setStatusText(null); }
     });
-    return () => { unsubStart(); unsubUpdate(); unsubEnd(); };
+    const unsubStatus = window.chat.onStatusUpdate((sid, status) => {
+      if (sid === sessionId) setStatusText(status || null);
+    });
+    return () => { unsubStart(); unsubUpdate(); unsubEnd(); unsubStatus(); };
   }, [sessionId]);
 
   // Load or create session
@@ -70,8 +74,14 @@ export function ChatPopout() {
         if (!latest) return;
         setSessionId(latest.id);
         setSessionTitle(latest.title);
-        const msgs = await window.chat.getSessionMessages(latest.id);
-        if (!cancelled) setMessages(msgs.map((h) => ({ id: h.id, role: h.role, content: h.content, engine: h.engine })));
+        const [msgs, thinking] = await Promise.all([
+          window.chat.getSessionMessages(latest.id),
+          window.chat.isThinking(latest.id),
+        ]);
+        if (!cancelled) {
+          setMessages(msgs.map((h) => ({ id: h.id, role: h.role, content: h.content, engine: h.engine })));
+          if (thinking) setIsThinking(true);
+        }
       } else {
         const session = await window.chat.createSession(agent);
         if (!cancelled) {
@@ -290,7 +300,7 @@ export function ChatPopout() {
             </div>
           </div>
         )}
-        {isThinking && !streamingText && <div className="text-neutral-500 text-sm py-1"><span className="animate-pulse">Thinking...</span></div>}
+        {isThinking && !streamingText && <div className="text-neutral-500 text-sm py-1"><span className="animate-pulse">{statusText || 'Thinking...'}</span></div>}
         <div ref={messagesEndRef} />
       </div>
 

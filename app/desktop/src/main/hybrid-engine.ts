@@ -373,11 +373,19 @@ function proposesTask(response: string): boolean {
 // Active abort controllers per session
 const abortControllers = new Map<string, AbortController>();
 
+// Track which sessions have in-flight requests
+const activeSessions = new Set<string>();
+
+export function isSessionActive(sessionId: string): boolean {
+  return activeSessions.has(sessionId);
+}
+
 export function abortSession(sessionId: string): void {
   const controller = abortControllers.get(sessionId);
   if (controller) {
     controller.abort();
     abortControllers.delete(sessionId);
+    activeSessions.delete(sessionId);
     console.log(`[HybridEngine] Aborted session ${sessionId}`);
   }
 }
@@ -392,6 +400,23 @@ export async function sendMessage(
   // Create abort controller for this request
   const controller = new AbortController();
   abortControllers.set(sessionId, controller);
+  activeSessions.add(sessionId);
+  try {
+  return await _sendMessageInner(agent, sessionId, message, onChunk, files, controller);
+  } finally {
+    activeSessions.delete(sessionId);
+    abortControllers.delete(sessionId);
+  }
+}
+
+async function _sendMessageInner(
+  agent: AgentName,
+  sessionId: string,
+  message: string,
+  onChunk: ((accumulated: string) => void) | undefined,
+  files: ProcessedFiles | undefined,
+  controller: AbortController,
+): Promise<HybridResponse> {
   const { signal } = controller;
   // Detect interaction mode before anything else
   const detectedMode = detectInteractionMode(message);
@@ -541,7 +566,6 @@ export async function sendMessage(
     console.log(`[HybridEngine] auto-summary for session ${sessionId}: ${summary.slice(0, 80)}...`);
   }
 
-  abortControllers.delete(sessionId);
   return result;
 }
 

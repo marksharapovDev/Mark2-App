@@ -50,6 +50,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
   const [isThinking, setIsThinking] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [statusText, setStatusText] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -76,6 +77,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     const unsubStart = window.chat.onStreamStart((sid) => {
       if (sid === activeSessionId) {
         setStreamingText('');
+        setIsThinking(true);
       }
     });
     const unsubUpdate = window.chat.onStreamUpdate((sid, text) => {
@@ -86,9 +88,15 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     const unsubEnd = window.chat.onStreamEnd((sid) => {
       if (sid === activeSessionId) {
         setStreamingText(null);
+        setStatusText(null);
       }
     });
-    return () => { unsubStart(); unsubUpdate(); unsubEnd(); };
+    const unsubStatus = window.chat.onStatusUpdate((sid, status) => {
+      if (sid === activeSessionId) {
+        setStatusText(status || null);
+      }
+    });
+    return () => { unsubStart(); unsubUpdate(); unsubEnd(); unsubStatus(); };
   }, [activeSessionId]);
 
   // Auto-scroll
@@ -124,11 +132,15 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
         if (!latest) return;
         setActiveSessionId(latest.id);
         setActiveSessionTitle(latest.title);
-        const msgs = await window.chat.getSessionMessages(latest.id);
+        const [msgs, thinking] = await Promise.all([
+          window.chat.getSessionMessages(latest.id),
+          window.chat.isThinking(latest.id),
+        ]);
         if (!cancelled) {
           const mapped = msgs.map(toMessage);
           msgCache.current.set(latest.id, mapped);
           setMessages(mapped);
+          if (thinking) setIsThinking(true);
         }
       } else {
         const session = await window.chat.createSession(agent);
@@ -640,7 +652,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
 
             {isThinking && !streamingText && (
               <div className="text-neutral-500 text-xs py-1">
-                <span className="animate-pulse">Thinking...</span>
+                <span className="animate-pulse">{statusText || 'Thinking...'}</span>
               </div>
             )}
 

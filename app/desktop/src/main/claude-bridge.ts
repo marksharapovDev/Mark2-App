@@ -48,6 +48,8 @@ export class ClaudeBridge extends EventEmitter {
   async run(options: RunOptions): Promise<string> {
     const cwd = options.cwd ?? agentDir(options.agent);
     const args = ['-p', options.prompt];
+    const startTime = Date.now();
+    console.log(`[ClaudeBridge] run() start agent=${options.agent}`);
 
     return new Promise((resolve, reject) => {
       const proc = spawn('claude', args, {
@@ -68,6 +70,7 @@ export class ClaudeBridge extends EventEmitter {
       });
 
       proc.on('close', (code) => {
+        console.log(`[ClaudeBridge] run() done agent=${options.agent} code=${code} duration=${((Date.now() - startTime) / 1000).toFixed(1)}s`);
         this.emit('complete', {
           agent: options.agent,
           output,
@@ -97,6 +100,8 @@ export class ClaudeBridge extends EventEmitter {
   async runStream(options: RunOptions, onChunk: (accumulated: string) => void, signal?: AbortSignal): Promise<string> {
     const cwd = options.cwd ?? agentDir(options.agent);
     const args = ['-p', options.prompt];
+    const startTime = Date.now();
+    console.log(`[ClaudeBridge] runStream() start agent=${options.agent}`);
 
     return new Promise((resolve, reject) => {
       const proc = spawn('claude', args, {
@@ -128,6 +133,7 @@ export class ClaudeBridge extends EventEmitter {
       });
 
       proc.on('close', (code) => {
+        console.log(`[ClaudeBridge] runStream() done agent=${options.agent} code=${code} duration=${((Date.now() - startTime) / 1000).toFixed(1)}s`);
         this.emit('complete', {
           agent: options.agent,
           output,
@@ -138,7 +144,6 @@ export class ClaudeBridge extends EventEmitter {
           if (stderr) {
             this.emit('error', { agent: options.agent, error: stderr } satisfies ErrorEvent);
           }
-          // If aborted, resolve with partial output instead of rejecting
           if (signal?.aborted) {
             resolve(output + '\n\n(прервано)');
           } else {

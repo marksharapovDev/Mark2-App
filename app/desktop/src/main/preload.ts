@@ -38,6 +38,7 @@ export interface ChatSessionItem {
 export interface ChatAPI {
   send: (agent: string, sessionId: string, message: string, filePaths?: string[]) => Promise<ChatResponse>;
   abort: (sessionId: string) => Promise<void>;
+  isThinking: (sessionId: string) => Promise<boolean>;
   setContext: (sessionId: string, ctx: Record<string, unknown>) => Promise<void>;
   setAgentContext: (agent: string, ctx: Record<string, unknown>) => Promise<void>;
   createSession: (agent: string, fromSessionId?: string) => Promise<ChatSessionItem>;
@@ -53,6 +54,7 @@ export interface ChatAPI {
   onStreamStart: (callback: (sessionId: string) => void) => () => void;
   onStreamUpdate: (callback: (sessionId: string, text: string) => void) => () => void;
   onStreamEnd: (callback: (sessionId: string) => void) => () => void;
+  onStatusUpdate: (callback: (sessionId: string, status: string) => void) => () => void;
   transcribeAudio: (audioData: ArrayBuffer) => Promise<{ text: string; error?: string }>;
 }
 
@@ -72,6 +74,9 @@ const chatApi: ChatAPI = {
 
   abort: (sessionId) =>
     ipcRenderer.invoke('chat:abort', sessionId),
+
+  isThinking: (sessionId) =>
+    ipcRenderer.invoke('chat:is-thinking', sessionId),
 
   setContext: (sessionId, ctx) =>
     ipcRenderer.invoke('chat:set-context', sessionId, ctx),
@@ -128,6 +133,12 @@ const chatApi: ChatAPI = {
     const handler = (_event: Electron.IpcRendererEvent, sessionId: string) => { callback(sessionId); };
     ipcRenderer.on('chat:stream-end', handler);
     return () => { ipcRenderer.removeListener('chat:stream-end', handler); };
+  },
+
+  onStatusUpdate: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, sessionId: string, status: string) => { callback(sessionId, status); };
+    ipcRenderer.on('chat:status-update', handler);
+    return () => { ipcRenderer.removeListener('chat:status-update', handler); };
   },
 
   transcribeAudio: (audioData) =>

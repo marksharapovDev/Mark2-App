@@ -36,6 +36,7 @@ interface ChatSessionItem {
 interface ChatAPI {
   send: (agent: string, sessionId: string, message: string, filePaths?: string[]) => Promise<ChatResponse>;
   abort: (sessionId: string) => Promise<void>;
+  isThinking: (sessionId: string) => Promise<boolean>;
   setContext: (sessionId: string, ctx: Record<string, unknown>) => Promise<void>;
   setAgentContext: (agent: string, ctx: Record<string, unknown>) => Promise<void>;
   createSession: (agent: string, fromSessionId?: string) => Promise<ChatSessionItem>;
@@ -51,6 +52,7 @@ interface ChatAPI {
   onStreamStart: (callback: (sessionId: string) => void) => () => void;
   onStreamUpdate: (callback: (sessionId: string, text: string) => void) => () => void;
   onStreamEnd: (callback: (sessionId: string) => void) => () => void;
+  onStatusUpdate: (callback: (sessionId: string, status: string) => void) => () => void;
   transcribeAudio: (audioData: ArrayBuffer) => Promise<{ text: string; error?: string }>;
 }
 

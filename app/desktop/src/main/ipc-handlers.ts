@@ -8,6 +8,7 @@ import { claude, AgentName } from './claude-bridge';
 import {
   sendMessage,
   abortSession,
+  isSessionActive,
   handleCreateSession,
   handleGetSessions,
   handleDeleteSession,
@@ -42,6 +43,17 @@ function sendToRenderer(channel: string, ...args: unknown[]): void {
   if (win && !win.isDestroyed()) {
     win.webContents.send(channel, ...args);
   }
+}
+
+function parseStreamStatus(text: string): string {
+  // Check last ~500 chars for status indicators
+  const tail = text.slice(-500);
+  if (/\[ACTION:/i.test(tail)) return 'Выполняет действие...';
+  if (/(?:Read|Reading) file/i.test(tail)) return 'Читает файл...';
+  if (/(?:Writ|Writing|Wrote|Saving) file/i.test(tail)) return 'Создаёт файл...';
+  if (/(?:Running|Executing|Execute)/i.test(tail)) return 'Выполняет команду...';
+  if (/(?:Search|Searching|Looking|Finding)/i.test(tail)) return 'Ищет...';
+  return 'Думает...';
 }
 
 export function registerIpcHandlers(): void {
@@ -95,23 +107,37 @@ export function registerIpcHandlers(): void {
     }
 
     sendToRenderer('chat:stream-start', sessionId);
+    sendToRenderer('chat:status-update', sessionId, 'Обрабатывает запрос...');
 
+    let lastStatus = '';
     const onChunk = (accumulated: string) => {
       sendToRenderer('chat:stream-update', sessionId, accumulated);
+      // Parse status from latest output
+      const status = parseStreamStatus(accumulated);
+      if (status !== lastStatus) {
+        lastStatus = status;
+        sendToRenderer('chat:status-update', sessionId, status);
+      }
     };
 
     try {
       const result = await sendMessage(agent, sessionId, message, onChunk, files);
       sendToRenderer('chat:stream-end', sessionId);
+      sendToRenderer('chat:status-update', sessionId, '');
       return result;
     } catch (err) {
       sendToRenderer('chat:stream-end', sessionId);
+      sendToRenderer('chat:status-update', sessionId, '');
       throw err;
     }
   });
 
   ipcMain.handle('chat:abort', (_event, sessionId: string) => {
     abortSession(sessionId);
+  });
+
+  ipcMain.handle('chat:is-thinking', (_event, sessionId: string) => {
+    return isSessionActive(sessionId);
   });
 
   ipcMain.handle('chat:set-context', (_event, sessionId: string, ctx: Record<string, unknown>) => {
