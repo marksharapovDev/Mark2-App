@@ -76,6 +76,8 @@
 - `create_reminder` — создать напоминание: `{title, date, time?, priority?: "low"|"medium"|"high"|"urgent", sphere?: "teaching"|"dev"|"study"|"finance"|"health"|"personal", description?, subtasks?: ["подзадача1", "подзадача2"], isRecurring?, recurringPattern?: "daily"|"weekday"|"weekly"|"monthly"}`
 - `complete_reminder` — завершить напоминание: `{reminderId}`
 - `defer_reminder` — перенести напоминание: `{reminderId, newDate}`
+- `start_timer` — запустить таймер: `{minutes?, title?, taskId?, eventId?}` (без minutes = секундомер)
+- `stop_timer` — остановить таймер: `{}`
 
 ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
 После выполнения действия сообщи пользователю что сделано.
@@ -100,7 +102,7 @@
 
 Ты можешь использовать любое действие из любого раздела приложения:
 
-**General:** `create_task`, `complete_task`, `create_event`, `update_event`, `delete_event`, `create_reminder`, `complete_reminder`, `defer_reminder`, `delete_reminder`, `save_file`, `attach_file`
+**General:** `create_task`, `complete_task`, `create_event`, `update_event`, `delete_event`, `create_reminder`, `complete_reminder`, `defer_reminder`, `delete_reminder`, `save_file`, `attach_file`, `start_timer`, `stop_timer`
 **Teaching:** `create_student`, `update_student`, `find_student`, `create_lesson`, `complete_lesson_report`, `create_learning_path`, `update_learning_path_topic`, `delete_learning_path_topic`, `reorder_learning_path`, `record_student_payment`, `set_student_rate`
 **Dev:** `create_project`, `create_dev_task`, `update_task_status`, `generate_task_prompt`, `log_time`, `defer_task`, `delete_dev_task`, `delete_project`
 **Study:** `create_subject`, `create_assignment`, `update_assignment`, `delete_assignment`, `create_exam`, `update_exam`, `delete_exam`, `save_study_note`, `generate_summary`

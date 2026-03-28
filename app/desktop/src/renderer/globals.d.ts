@@ -72,6 +72,14 @@ interface CalendarAPI {
   onPoppedIn: (callback: () => void) => () => void;
 }
 
+interface TimerAPI {
+  popout: () => Promise<boolean>;
+  popin: () => Promise<boolean>;
+  onPoppedIn: (callback: () => void) => () => void;
+  onAutoStart: (callback: (data: { eventId: string; title: string; startAt: string; endAt: string; sphere?: string }) => void) => () => void;
+  onTimerControl: (callback: (action: string, params: Record<string, unknown>) => void) => () => void;
+}
+
 interface DbAPI {
   tasks: {
     list: (sphere?: string) => Promise<import('@mark2/shared').Task[]>;
@@ -282,6 +290,7 @@ interface Window {
   chat: ChatAPI;
   claude: ClaudeAPI;
   calendar: CalendarAPI;
+  timer: TimerAPI;
   db: DbAPI;
   tasks: TasksAPI;
   study: StudyAPI;

@@ -2,7 +2,9 @@ import { useState, useCallback, useRef, type ReactNode } from 'react';
 import { Sidebar, type SidebarItem } from './Sidebar';
 import { ChatPanel } from './ChatPanel';
 import { CalendarPanel } from './CalendarPanel';
+import { TimerPanel } from '../timer/TimerPanel';
 import { useCalendar } from '../../context/calendar-context';
+import { useTimer } from '../../context/timer-context';
 import { useSidebar } from '../../context/sidebar-context';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
@@ -46,8 +48,11 @@ function getInitialCalendarHeight(): number {
   return DEFAULT_CAL_HEIGHT;
 }
 
+const TIMER_HEIGHT = 140;
+
 export function MainLayout({ agent, children, sidebar, showChat = true, noPadding = false, defaultChatWidthPct = 30 }: MainLayoutProps) {
   const { calendarOpen } = useCalendar();
+  const { timerOpen } = useTimer();
   const { chatCollapsed, toggleChat } = useSidebar();
   const [width, setWidth] = useState(() => getInitialWidth(defaultChatWidthPct));
   const [calendarHeight, setCalendarHeight] = useState(getInitialCalendarHeight);
@@ -134,7 +139,7 @@ export function MainLayout({ agent, children, sidebar, showChat = true, noPaddin
 
               {/* Content column: calendar (optional) + chat */}
               <div ref={contentColRef} className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-neutral-950/50">
-                {calendarOpen && (
+                {calendarOpen && !timerOpen && (
                   <>
                     <div className="shrink-0 overflow-hidden" style={{ height: calendarHeight }}>
                       <CalendarPanel />
@@ -143,6 +148,15 @@ export function MainLayout({ agent, children, sidebar, showChat = true, noPaddin
                       onMouseDown={handleVDragDown}
                       className="h-1 shrink-0 cursor-row-resize hover:bg-blue-500/30 bg-neutral-800/50 transition-colors"
                     />
+                  </>
+                )}
+
+                {timerOpen && (
+                  <>
+                    <div className="shrink-0 overflow-hidden" style={{ height: TIMER_HEIGHT }}>
+                      <TimerPanel />
+                    </div>
+                    <div className="h-px shrink-0 bg-neutral-800/50" />
                   </>
                 )}
 

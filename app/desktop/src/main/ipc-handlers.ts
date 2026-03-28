@@ -731,6 +731,23 @@ export function registerIpcHandlers(): void {
       cliSessions.delete(sessionId);
     }
   });
+
+  // === Timer control (from AI actions) ===
+  ipcMain.handle('timer:start', (_event, params: Record<string, unknown>) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('timer:control', 'start', params);
+      }
+    }
+  });
+
+  ipcMain.handle('timer:stop', () => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('timer:control', 'stop', {});
+      }
+    }
+  });
 }
 
 export function cleanupSessions(): void {

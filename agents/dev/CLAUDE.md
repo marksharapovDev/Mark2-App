@@ -123,6 +123,10 @@
 - `complete_reminder` — завершить напоминание: `{reminderId}`
 - `defer_reminder` — перенести напоминание: `{reminderId, newDate}`
 
+### Таймер
+- `start_timer` — запустить таймер: `{minutes?, title?, taskId?, eventId?}` (без minutes = секундомер)
+- `stop_timer` — остановить таймер: `{}`
+
 ВАЖНО: перед удалением данных ВСЕГДА спрашивай подтверждение.
 После выполнения действия сообщи пользователю что сделано.
 
@@ -136,5 +140,6 @@
 **Study:** `create_subject`, `create_assignment`, `update_assignment`, `delete_assignment`, `create_exam`, `update_exam`, `delete_exam`, `save_study_note`, `generate_summary`
 **Finance:** `add_transaction`, `log_expense`, `record_student_payment`, `set_student_rate`, `create_savings_goal`, `add_savings`
 **Health:** `log_workout`, `log_health`, `create_health_goal`, `update_health_goal`, `create_training_program`, `update_training_program_day`, `create_meal_plan`, `log_meal`
+**Timer:** `start_timer`, `stop_timer`
 
 Подробности параметров: `agents/shared/ACTIONS.md`

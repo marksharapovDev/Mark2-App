@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom';
 import { useCalendar } from '../../context/calendar-context';
+import { useTimer } from '../../context/timer-context';
 import { useSidebar } from '../../context/sidebar-context';
-import { PanelLeft, MessageSquare } from 'lucide-react';
+import { PanelLeft, MessageSquare, Timer } from 'lucide-react';
 
 const TABS = [
   { to: '/', label: 'Dashboard' },
@@ -12,9 +13,21 @@ const TABS = [
   { to: '/finance', label: 'Finance' },
 ] as const;
 
+function formatMiniTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 export function Header() {
   const { calendarOpen, toggleCalendar } = useCalendar();
+  const { timerOpen, toggleTimer, isRunning, seconds, closeTimer } = useTimer();
   const { leftCollapsed, toggleLeft, chatCollapsed, toggleChat } = useSidebar();
+
+  const handleToggleCalendar = () => {
+    if (!calendarOpen) closeTimer();
+    toggleCalendar();
+  };
 
   return (
     <header className="h-11 shrink-0 border-b border-neutral-800 flex items-center bg-neutral-950 px-2">
@@ -36,7 +49,7 @@ export function Header() {
       {/* Center zone */}
       <div className="flex-1 flex items-center justify-center gap-3">
         <button
-          onClick={toggleCalendar}
+          onClick={handleToggleCalendar}
           className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
             calendarOpen
               ? 'bg-blue-500/20 text-blue-400'
@@ -47,6 +60,26 @@ export function Header() {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
           </svg>
+        </button>
+
+        <button
+          onClick={toggleTimer}
+          className={`relative flex items-center gap-1 h-7 px-1.5 rounded-full transition-colors ${
+            timerOpen
+              ? 'bg-emerald-500/20 text-emerald-400'
+              : isRunning
+                ? 'text-emerald-400 hover:bg-neutral-800'
+                : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300'
+          }`}
+          title="Timer"
+        >
+          <Timer size={16} />
+          {isRunning && (
+            <>
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[10px] font-mono tabular-nums">{formatMiniTime(seconds)}</span>
+            </>
+          )}
         </button>
 
         <nav className="flex items-center gap-0.5 bg-neutral-900 rounded-lg px-1 py-0.5">

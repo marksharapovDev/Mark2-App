@@ -203,6 +203,44 @@ const calendarApi: CalendarAPI = {
   },
 };
 
+export interface TimerAPI {
+  popout: () => Promise<boolean>;
+  popin: () => Promise<boolean>;
+  onPoppedIn: (callback: () => void) => () => void;
+  onAutoStart: (callback: (data: { eventId: string; title: string; startAt: string; endAt: string; sphere?: string }) => void) => () => void;
+  onTimerControl: (callback: (action: string, params: Record<string, unknown>) => void) => () => void;
+}
+
+const timerApi: TimerAPI = {
+  popout: () =>
+    ipcRenderer.invoke('timer:popout'),
+
+  popin: () =>
+    ipcRenderer.invoke('timer:popin'),
+
+  onPoppedIn: (callback) => {
+    const handler = () => { callback(); };
+    ipcRenderer.on('timer:popped-in', handler);
+    return () => { ipcRenderer.removeListener('timer:popped-in', handler); };
+  },
+
+  onAutoStart: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { eventId: string; title: string; startAt: string; endAt: string; sphere?: string }) => {
+      callback(data);
+    };
+    ipcRenderer.on('timer:auto-start', handler);
+    return () => { ipcRenderer.removeListener('timer:auto-start', handler); };
+  },
+
+  onTimerControl: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, action: string, params: Record<string, unknown>) => {
+      callback(action, params);
+    };
+    ipcRenderer.on('timer:control', handler);
+    return () => { ipcRenderer.removeListener('timer:control', handler); };
+  },
+};
+
 const electronAPI = {
   openFile: (filePath: string) =>
     ipcRenderer.invoke('file:open', filePath),
@@ -517,6 +555,7 @@ const dataEvents = {
 contextBridge.exposeInMainWorld('chat', chatApi);
 contextBridge.exposeInMainWorld('claude', claudeApi);
 contextBridge.exposeInMainWorld('calendar', calendarApi);
+contextBridge.exposeInMainWorld('timer', timerApi);
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
 contextBridge.exposeInMainWorld('db', dbApi);
 contextBridge.exposeInMainWorld('study', studyApi);

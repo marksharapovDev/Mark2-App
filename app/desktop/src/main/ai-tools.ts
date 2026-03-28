@@ -1418,6 +1418,30 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     await db.deleteReminder(id);
     return { success: true, message: 'Напоминание удалено', entity: 'reminders' };
   },
+
+  // Timer actions
+  start_timer: async (params) => {
+    const { BrowserWindow } = await import('electron');
+    const minutes = Number(params.minutes ?? 0);
+    const title = String(params.title ?? '');
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('timer:control', 'start', { minutes, title, taskId: params.taskId, eventId: params.eventId });
+      }
+    }
+    const msg = minutes > 0 ? `Таймер запущен на ${minutes} мин` : 'Секундомер запущен';
+    return { success: true, message: title ? `${msg}: ${title}` : msg, entity: '' };
+  },
+
+  stop_timer: async () => {
+    const { BrowserWindow } = await import('electron');
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('timer:control', 'stop', {});
+      }
+    }
+    return { success: true, message: 'Таймер остановлен', entity: '' };
+  },
 };
 
 const ACTION_REGEX = /\[ACTION:(\w+)\]([\s\S]*?)\[\/ACTION\]/g;
