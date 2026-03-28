@@ -1087,8 +1087,10 @@ const AI_TOOLS: Record<string, ActionHandler> = {
       writeFileSync(fullPath, content, 'utf-8');
     }
 
-    console.log('[AI Tools] save_file: saved to', fullPath, 'exists:', existsSync(fullPath));
-    return { success: true, message: `Файл сохранён: ${fullPath}`, entity: 'files', data: { path: fullPath } };
+    console.log('[AI Tools] save_file: input path:', filePath, '→ fullPath:', fullPath, 'isAbsolute:', fullPath.startsWith('/'), 'exists:', existsSync(fullPath));
+    const resultMsg = `Файл сохранён: ${fullPath}`;
+    console.log('[AI Tools] save_file: result.message =', resultMsg);
+    return { success: true, message: resultMsg, entity: 'files', data: { path: fullPath } };
   },
 
   // Learning Path
