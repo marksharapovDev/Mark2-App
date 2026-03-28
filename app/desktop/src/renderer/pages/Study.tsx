@@ -1417,7 +1417,8 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
   const [originalContent, setOriginalContent] = useState('');
   const [summaryContent, setSummaryContent] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'original' | 'summary'>('original');
-  const [editorMode, setEditorMode] = useState<'edit' | 'preview'>('edit');
+  const [editorMode, setEditorMode] = useState<'edit' | 'preview'>('preview');
+  const previewRef = useRef<HTMLDivElement>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
   const [creating, setCreating] = useState(false);
   const [noteType, setNoteType] = useState<'лекция' | 'семинар' | 'лаба' | null>(null);
@@ -1694,17 +1695,9 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
               </span>
 
               <div className="ml-auto flex items-center gap-2">
-                {/* Edit / Preview toggle */}
+                {/* Preview / Edit toggle */}
                 {viewMode === 'original' && (
                   <div className="flex gap-0.5 bg-neutral-900 rounded p-0.5 border border-neutral-800">
-                    <button
-                      onClick={() => setEditorMode('edit')}
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                        editorMode === 'edit' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
-                      }`}
-                    >
-                      <Pencil size={10} /> Редактирование
-                    </button>
                     <button
                       onClick={() => setEditorMode('preview')}
                       className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
@@ -1712,6 +1705,14 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
                       }`}
                     >
                       <Eye size={10} /> Просмотр
+                    </button>
+                    <button
+                      onClick={() => setEditorMode('edit')}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        editorMode === 'edit' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
+                      }`}
+                    >
+                      <Pencil size={10} /> Редактирование
                     </button>
                   </div>
                 )}
@@ -1769,7 +1770,28 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
                   spellCheck={false}
                 />
               ) : (
-                <div className="flex-1 overflow-auto p-4 bg-gray-900">
+                <div
+                  ref={previewRef}
+                  className="flex-1 overflow-auto p-4 bg-gray-900 cursor-text"
+                  onClick={() => {
+                    const el = previewRef.current;
+                    if (!el) return;
+                    const scrollRatio = el.scrollHeight > el.clientHeight
+                      ? el.scrollTop / (el.scrollHeight - el.clientHeight)
+                      : 0;
+                    setEditorMode('edit');
+                    requestAnimationFrame(() => {
+                      const ta = textareaRef.current;
+                      if (!ta) return;
+                      const taScrollMax = ta.scrollHeight - ta.clientHeight;
+                      ta.scrollTop = scrollRatio * taScrollMax;
+                      const cursorPos = Math.round(scrollRatio * content.length);
+                      ta.selectionStart = cursorPos;
+                      ta.selectionEnd = cursorPos;
+                      ta.focus();
+                    });
+                  }}
+                >
                   <MarkdownRenderer content={content} className="text-sm text-neutral-300 leading-relaxed" />
                 </div>
               )
