@@ -151,6 +151,13 @@ export function parseBotFileLinks(content: string): { cleanContent: string; file
     if (p) filePaths.push(p);
   }
 
-  const cleanContent = content.replace(FILE_SAVED_RE, '').trim();
+  let cleanContent = content.replace(FILE_SAVED_RE, '');
+  // Strip inline absolute paths and agents/... paths (already shown as file cards)
+  cleanContent = cleanContent
+    .replace(/`\/Users\/[^`]+`/g, '')
+    .replace(/`agents\/[^`]+`/g, '')
+    .replace(/(?:\/Users\/\S+\/mark2\/)(agents\/\S+)/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   return { cleanContent, filePaths };
 }

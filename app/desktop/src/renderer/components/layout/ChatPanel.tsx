@@ -50,6 +50,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
   const [isThinking, setIsThinking] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [streamingDone, setStreamingDone] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -87,7 +88,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     });
     const unsubEnd = window.chat.onStreamEnd((sid) => {
       if (sid === activeSessionId) {
-        setStreamingText(null);
+        setStreamingDone(true);
         setStatusText(null);
       }
     });
@@ -235,6 +236,8 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
         { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${errorMsg}` },
       ]);
     } finally {
+      setStreamingText(null);
+      setStreamingDone(false);
       setIsThinking(false);
       inputRef.current?.focus();
       // Update cache with latest messages
@@ -493,6 +496,8 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${errorMsg}` }]);
     }).finally(() => {
+      setStreamingText(null);
+      setStreamingDone(false);
       setIsThinking(false);
       inputRef.current?.focus();
     });
@@ -645,7 +650,10 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
               <div className="flex justify-start">
                 <div className="max-w-[90%] rounded-lg px-3 py-2 text-xs break-words bg-neutral-800 text-neutral-300">
                   <MarkdownRenderer content={streamingText} />
-                  <span className="inline-block w-1.5 h-3 bg-neutral-400 animate-pulse ml-0.5 align-middle" />
+                  {!streamingDone && <span className="inline-block w-1.5 h-3 bg-neutral-400 animate-pulse ml-0.5 align-middle" />}
+                  {streamingDone && statusText && (
+                    <div className="text-neutral-500 text-[10px] mt-1 animate-pulse">{statusText}</div>
+                  )}
                 </div>
               </div>
             )}
