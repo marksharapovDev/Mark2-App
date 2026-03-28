@@ -126,6 +126,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   // Listen for auto-start from main process
   useEffect(() => {
     const unsub = window.timer?.onAutoStart?.((data: { eventId: string; title: string; startAt: string; endAt: string; sphere?: string }) => {
+      console.log('[Timer] auto-start received:', data.title, 'isRunning:', state.isRunning);
       if (state.isRunning) return;
       const end = new Date(data.endAt).getTime();
       const now = Date.now();
@@ -152,18 +153,23 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   // Listen for AI timer control
   useEffect(() => {
     const unsubStart = window.timer?.onTimerControl?.((action: string, params: Record<string, unknown>) => {
+      console.log('[Timer] control received:', action, params);
       if (action === 'start') {
         const minutes = (params.minutes as number) || 15;
         const title = (params.title as string) || '';
+        const taskId = (params.taskId as string) || '';
+        const subtasks = (params.subtasks as Array<{ title: string; done: boolean }>) || [];
         const secs = minutes * 60;
+        const hasTask = !!(taskId || title);
+
         setState({
-          mode: 'free',
+          mode: hasTask ? 'task' : 'free',
           isRunning: true,
           isPaused: false,
           seconds: secs,
           totalSeconds: secs,
           linkedEvent: null,
-          linkedTask: title ? { id: '', title, subtasks: [] } : null,
+          linkedTask: hasTask ? { id: taskId, title, subtasks } : null,
           expired: false,
         });
         setTimerOpen(true);
@@ -287,9 +293,18 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const completeTask = useCallback(() => {
+    // Complete the linked reminder if it has an id
+    const taskId = state.linkedTask?.id;
+    if (taskId) {
+      window.db.reminders.complete(taskId).then(() => {
+        window.dataEvents.emitDataChanged(['reminders']);
+      }).catch((err: unknown) => {
+        console.error('[Timer] Failed to complete reminder:', err);
+      });
+    }
     clearTick();
     setState(initialState);
-  }, [clearTick]);
+  }, [clearTick, state.linkedTask?.id]);
 
   return (
     <TimerContext.Provider

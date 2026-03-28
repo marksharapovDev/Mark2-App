@@ -1422,15 +1422,57 @@ const AI_TOOLS: Record<string, ActionHandler> = {
   // Timer actions
   start_timer: async (params) => {
     const { BrowserWindow } = await import('electron');
-    const minutes = Number(params.minutes ?? 0);
+    const minutes = Number(params.minutes ?? 15);
     const title = String(params.title ?? '');
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) {
-        win.webContents.send('timer:control', 'start', { minutes, title, taskId: params.taskId, eventId: params.eventId });
+    let taskId = String(params.taskId ?? '');
+    let subtasks: Array<{ title: string; done: boolean }> = [];
+
+    // If title provided but no taskId — search reminders by title, or create one
+    if (title && !taskId) {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const reminders = await db.getReminders({ dateFrom: today, dateTo: today, status: 'pending' });
+        const match = reminders.find((r) =>
+          r.title.toLowerCase().includes(title.toLowerCase()) ||
+          title.toLowerCase().includes(r.title.toLowerCase()),
+        );
+        if (match) {
+          taskId = match.id;
+          subtasks = (match.subtasks ?? []).map((s) => ({
+            title: typeof s === 'string' ? s : s.title,
+            done: typeof s === 'string' ? false : s.done,
+          }));
+          console.log('[AI Tools] start_timer: matched reminder', match.title, match.id);
+        } else {
+          // Create a reminder for tracking
+          const created = await db.createReminder({
+            title,
+            date: today,
+            priority: 'medium',
+            sphere: String(params.sphere ?? 'personal'),
+            status: 'pending',
+          });
+          taskId = created.id;
+          console.log('[AI Tools] start_timer: created reminder', title, created.id);
+        }
+      } catch (err) {
+        console.error('[AI Tools] start_timer: reminder lookup failed:', err);
       }
     }
-    const msg = minutes > 0 ? `Таймер запущен на ${minutes} мин` : 'Секундомер запущен';
-    return { success: true, message: title ? `${msg}: ${title}` : msg, entity: '' };
+
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('timer:control', 'start', {
+          minutes,
+          title,
+          taskId,
+          subtasks,
+          eventId: params.eventId,
+        });
+      }
+    }
+    const msg = `Таймер запущен на ${minutes} мин`;
+    return { success: true, message: title ? `${msg}: ${title}` : msg, entity: taskId ? 'reminders' : '' };
   },
 
   stop_timer: async () => {

@@ -230,23 +230,36 @@ ipcMain.handle('chat:popin', () => {
 
 // === Timer auto-start: check events every 60 seconds ===
 
+// Track which events we already auto-started so we don't fire twice
+const autoStartedEvents = new Set<string>();
+
 async function checkUpcomingEvents(): Promise<void> {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   try {
     const now = new Date();
-    const today = now.toISOString().slice(0, 10);
+    // Use full ISO day range to avoid string comparison issues with timestamps
+    const dayStart = now.toISOString().slice(0, 10);
+    const dayEnd = dayStart + 'T23:59:59';
     const { getCalendarEvents } = await import('./db-service');
-    const events = await getCalendarEvents(today, today);
+    const events = await getCalendarEvents(dayStart, dayEnd);
+    console.log('[Timer AutoStart] Checking at', now.toISOString(), '— events today:', events?.length ?? 0);
+
     if (!events || !Array.isArray(events)) return;
 
     for (const event of events) {
       if (!event.startAt || !event.endAt) continue;
-      const start = new Date(event.startAt);
-      const end = new Date(event.endAt);
+      if (autoStartedEvents.has(event.id)) continue;
+
+      const start = new Date(String(event.startAt));
+      const end = new Date(String(event.endAt));
       const diffMs = start.getTime() - now.getTime();
-      // Within ±2 minutes of start time
+
+      console.log('[Timer AutoStart] Event:', event.title, 'start:', start.toISOString(), 'diffMs:', diffMs);
+
+      // Within ±2 minutes of start time and event hasn't ended
       if (Math.abs(diffMs) <= 2 * 60 * 1000 && end.getTime() > now.getTime()) {
-        // Send auto-start to all windows
+        autoStartedEvents.add(event.id);
+        console.log('[Timer AutoStart] Firing auto-start for:', event.title);
         for (const win of BrowserWindow.getAllWindows()) {
           if (!win.isDestroyed()) {
             win.webContents.send('timer:auto-start', {
@@ -258,11 +271,11 @@ async function checkUpcomingEvents(): Promise<void> {
             });
           }
         }
-        break; // Only auto-start for the first matching event
+        break;
       }
     }
   } catch (err) {
-    console.error('[Timer] Event check error:', err);
+    console.error('[Timer AutoStart] Error:', err);
   }
 }
 
