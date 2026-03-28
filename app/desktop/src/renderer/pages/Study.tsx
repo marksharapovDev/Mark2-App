@@ -805,10 +805,12 @@ function SubjectView({
     { key: 'files', label: 'Файлы' },
   ];
 
+  const fullWidthTab = activeTab === 'notes' || activeTab === 'files';
+
   return (
-    <div className="max-w-3xl">
+    <div className={fullWidthTab ? '' : 'max-w-3xl'}>
       {/* Header */}
-      <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
+      <div className={`bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20 ${fullWidthTab ? 'max-w-3xl' : ''}`}>
         <div className="flex items-start gap-3">
           <div className="w-3 h-3 rounded-full mt-2 shrink-0" style={{ backgroundColor: color }} />
           <div className="flex-1">
@@ -1636,15 +1638,13 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
               </button>
             </div>
           ))}
-        </div>
 
-        {/* Summaries section */}
-        {summaries.length > 0 && (
-          <>
-            <div className="px-3 py-1.5 border-t border-neutral-800">
-              <span className="text-[10px] font-semibold text-neutral-600 uppercase tracking-wider">Конспекты</span>
-            </div>
-            <div className="overflow-y-auto scrollbar-thin max-h-32">
+          {/* Summaries section — right after notes */}
+          {summaries.length > 0 && (
+            <>
+              <div className="px-3 py-1.5 border-t border-neutral-800 mt-1">
+                <span className="text-[10px] font-semibold text-neutral-600 uppercase tracking-wider">Конспекты</span>
+              </div>
               {summaries.map((file) => (
                 <button
                   key={file.path}
@@ -1667,9 +1667,9 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
                   {file.name}
                 </button>
               ))}
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Right panel — editor */}

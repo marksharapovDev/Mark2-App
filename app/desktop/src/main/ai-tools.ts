@@ -681,7 +681,8 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     writeFileSync(fullPath, content, 'utf-8');
 
     console.log('[AI Tools] save_note: saved to', fullPath, 'exists:', existsSync(fullPath));
-    return { success: true, message: `Заметка сохранена: ${fullPath}`, entity: 'files', data: { path: fullPath } };
+    const shortPath = fullPath.replace(/.*\/agents\/study\/context\/subjects\//, 'subjects/');
+    return { success: true, message: `Заметка сохранена: ${shortPath}`, entity: 'files', data: { path: fullPath } };
   },
 
   generate_summary: async (params) => {
@@ -704,7 +705,8 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     writeFileSync(fullPath, summary, 'utf-8');
 
     console.log('[AI Tools] generate_summary: saved to', fullPath, 'exists:', existsSync(fullPath));
-    return { success: true, message: `Конспект сохранён: ${fullPath}`, entity: 'files', data: { path: fullPath } };
+    const shortPath = fullPath.replace(/.*\/agents\/study\/context\/subjects\//, 'subjects/');
+    return { success: true, message: `Конспект сохранён: ${shortPath}`, entity: 'files', data: { path: fullPath } };
   },
 
   // Transactions
