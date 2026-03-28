@@ -78,8 +78,14 @@ export function TimerPanel({ embedded = true }: TimerPanelProps) {
   const [editing, setEditing] = useState(false);
 
   const handlePopout = useCallback(async () => {
-    await window.timer.popout();
-    timer.closeTimer();
+    console.log('[TimerPanel] popout clicked, window.timer:', !!window.timer);
+    try {
+      const result = await window.timer.popout();
+      console.log('[TimerPanel] popout result:', result);
+      timer.closeTimer();
+    } catch (err) {
+      console.error('[TimerPanel] popout error:', err);
+    }
   }, [timer]);
 
   const handlePlayPause = () => {
@@ -246,12 +252,12 @@ export function TimerPanel({ embedded = true }: TimerPanelProps) {
         </div>
       )}
 
-      {/* Controls */}
-      <div className="flex items-center justify-center gap-2">
+      {/* Controls + quick add — single row */}
+      <div className="flex items-center gap-1.5">
         {timer.expired ? (
           <button
             onClick={handleReset}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors"
+            className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors"
             title="Сбросить"
           >
             <RotateCcw size={16} />
@@ -261,33 +267,33 @@ export function TimerPanel({ embedded = true }: TimerPanelProps) {
             <button
               onClick={handlePlayPause}
               disabled={timer.seconds === 0 && !timer.isRunning}
-              className="w-8 h-8 flex items-center justify-center rounded-full bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-30 transition-colors"
+              className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-30 transition-colors"
             >
               {timer.isRunning && !timer.isPaused ? <Pause size={16} /> : <Play size={16} />}
             </button>
             <button
               onClick={handleReset}
               disabled={!timer.isRunning && timer.seconds === timer.totalSeconds}
-              className="w-7 h-7 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-red-900/50 text-neutral-400 hover:text-red-400 disabled:opacity-30 transition-colors"
+              className="w-7 h-7 shrink-0 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-red-900/50 text-neutral-400 hover:text-red-400 disabled:opacity-30 transition-colors"
               title="Сбросить"
             >
               <Square size={12} />
             </button>
           </>
         )}
-      </div>
 
-      {/* Quick add time buttons */}
-      <div className="flex items-center justify-center gap-1">
-        {QUICK_ADD.map((m) => (
-          <button
-            key={m}
-            onClick={() => timer.addMinutes(m)}
-            className="px-1.5 py-0.5 text-[10px] rounded bg-neutral-800/60 hover:bg-neutral-700 text-neutral-500 hover:text-neutral-300 transition-colors"
-          >
-            +{m}м
-          </button>
-        ))}
+        {/* Quick add buttons — fill remaining space */}
+        <div className="flex-1 grid grid-cols-5 gap-1">
+          {QUICK_ADD.map((m) => (
+            <button
+              key={m}
+              onClick={() => timer.addMinutes(m)}
+              className="py-1 text-xs rounded bg-neutral-700/50 hover:bg-neutral-600 text-neutral-400 hover:text-neutral-200 transition-colors"
+            >
+              +{m}м
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

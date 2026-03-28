@@ -199,7 +199,9 @@ function createTimerWindow(): void {
 }
 
 ipcMain.handle('timer:popout', () => {
+  console.log('[Timer] popout IPC received, creating window...');
   createTimerWindow();
+  console.log('[Timer] popout window created');
   return true;
 });
 
