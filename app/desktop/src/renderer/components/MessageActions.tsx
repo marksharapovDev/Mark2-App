@@ -33,9 +33,10 @@ function ActionButton({ icon, activeIcon, title, onClick }: ActionButtonProps) {
 interface UserActionsProps {
   content: string;
   onEdit: () => void;
+  timestamp?: string;
 }
 
-export function UserMessageActions({ content, onEdit }: UserActionsProps) {
+export function UserMessageActions({ content, onEdit, timestamp }: UserActionsProps) {
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(content).catch(console.error);
   }, [content]);
@@ -53,6 +54,7 @@ export function UserMessageActions({ content, onEdit }: UserActionsProps) {
         title="Edit"
         onClick={onEdit}
       />
+      {timestamp && <span className="text-[11px] text-gray-500 ml-1">{timestamp}</span>}
     </div>
   );
 }
@@ -60,15 +62,17 @@ export function UserMessageActions({ content, onEdit }: UserActionsProps) {
 interface BotActionsProps {
   content: string;
   onRetry: () => void;
+  timestamp?: string;
 }
 
-export function BotMessageActions({ content, onRetry }: BotActionsProps) {
+export function BotMessageActions({ content, onRetry, timestamp }: BotActionsProps) {
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(content).catch(console.error);
   }, [content]);
 
   return (
     <div className="flex items-center gap-1 pt-1">
+      {timestamp && <span className="text-[11px] text-gray-500 mr-auto">{timestamp}</span>}
       <ActionButton
         icon={<Copy className="w-3.5 h-3.5" />}
         activeIcon={<Check className="w-3.5 h-3.5 text-green-400" />}

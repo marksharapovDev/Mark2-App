@@ -422,11 +422,8 @@ function PopoutBubble({ message, onEdit, onRetry }: { message: Message; onEdit: 
           <div className="rounded-lg px-3 py-2 text-sm break-words bg-blue-600/20 text-blue-100 whitespace-pre-wrap">
             {message.content}
           </div>
-          {message.timestamp && (
-            <div className="text-[11px] text-gray-500 text-right mt-0.5">{formatMessageTime(message.timestamp)}</div>
-          )}
           <div className="flex justify-end opacity-0 group-hover/msg:opacity-100 transition-opacity">
-            <UserMessageActions content={message.content} onEdit={onEdit} />
+            <UserMessageActions content={message.content} onEdit={onEdit} timestamp={message.timestamp ? formatMessageTime(message.timestamp) : undefined} />
           </div>
         </div>
       </div>
@@ -453,11 +450,8 @@ function PopoutBubble({ message, onEdit, onRetry }: { message: Message; onEdit: 
             {botFiles.map((f) => <FileAttachmentCard key={f} filePath={f} />)}
           </div>
         )}
-        {message.timestamp && (
-          <div className="text-[11px] text-gray-500 mt-0.5">{formatMessageTime(message.timestamp)}</div>
-        )}
         <div className="opacity-0 group-hover/msg:opacity-100 transition-opacity">
-          <BotMessageActions content={rawContent} onRetry={onRetry} />
+          <BotMessageActions content={rawContent} onRetry={onRetry} timestamp={message.timestamp ? formatMessageTime(message.timestamp) : undefined} />
         </div>
       </div>
     </div>
