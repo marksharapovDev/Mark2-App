@@ -3,7 +3,7 @@ import { MainLayout } from '../components/layout/MainLayout';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { useSidebar } from '../context/sidebar-context';
 import type { DevProjectV2, DevTask, DevTaskStatus, DevTaskPriority, DevTimeEntry } from '@mark2/shared';
-import { Plus, ArrowLeft, Play, Square, Clock, ChevronDown, ChevronRight, GripVertical, Send, Trash2, ExternalLink, FileText, Calendar, ClipboardList, ListFilter, FolderOpen, Folder, File, Code, Eye, MoreVertical } from 'lucide-react';
+import { Plus, ArrowLeft, Play, Square, Clock, ChevronDown, ChevronRight, GripVertical, Send, Trash2, ExternalLink, FileText, Calendar, ClipboardList, ListFilter, FolderOpen, Folder, File, Code, Eye, MoreVertical, RefreshCw } from 'lucide-react';
 
 // --- Constants ---
 
@@ -920,6 +920,7 @@ function ProjectFiles({ project, onUpdate }: {
   const [fileMode, setFileMode] = useState<'preview' | 'edit'>('preview');
   const [fileSaved, setFileSaved] = useState(true);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; isDir: boolean } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const fileTextareaRef = useRef<HTMLTextAreaElement>(null);
   const filePreviewRef = useRef<HTMLDivElement>(null);
 
@@ -928,6 +929,12 @@ function ProjectFiles({ project, onUpdate }: {
     const data = await window.db.dev.files.tree(project.localPath);
     setTree(data);
   }, [project.localPath]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadTree();
+    setRefreshing(false);
+  }, [loadTree]);
 
   useEffect(() => {
     loadTree();
@@ -1017,99 +1024,116 @@ function ProjectFiles({ project, onUpdate }: {
     );
   }
 
-  // Viewing a .md file
-  if (openFile) {
-    const relativePath = project.localPath
-      ? openFile.path.replace(project.localPath, '').replace(/^\//, '')
-      : openFile.name;
+  const relativePath = openFile && project.localPath
+    ? openFile.path.replace(project.localPath, '').replace(/^\//, '')
+    : openFile?.name ?? '';
 
-    return (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Breadcrumbs */}
-        <div className="flex items-center gap-1.5 px-6 py-3 border-b border-neutral-800 text-xs">
-          <button
-            onClick={() => { if (!fileSaved) handleFileSave(); setOpenFile(null); }}
-            className="text-neutral-500 hover:text-neutral-300 transition-colors flex items-center gap-1"
-          >
-            <ArrowLeft size={12} />
-            Файлы
-          </button>
-          <span className="text-neutral-700">/</span>
-          <span className="text-neutral-400">{relativePath}</span>
-          <div className="ml-auto flex items-center gap-2">
-            {!fileSaved && <span className="text-[10px] text-yellow-500">Несохранённо</span>}
-            <div className="flex gap-0.5 bg-neutral-900 rounded p-0.5">
-              <button
-                onClick={() => {
-                  if (!fileSaved) handleFileSave();
-                  const scrollTop = fileTextareaRef.current?.scrollTop ?? 0;
-                  setFileMode('preview');
-                  requestAnimationFrame(() => { if (filePreviewRef.current) filePreviewRef.current.scrollTop = scrollTop; });
-                }}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                  fileMode === 'preview' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
-                }`}
-              >
-                Просмотр
-              </button>
-              <button
-                onClick={() => {
-                  const scrollTop = filePreviewRef.current?.scrollTop ?? 0;
-                  setFileMode('edit');
-                  requestAnimationFrame(() => {
-                    if (fileTextareaRef.current) { fileTextareaRef.current.focus(); fileTextareaRef.current.scrollTop = scrollTop; }
-                  });
-                }}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                  fileMode === 'edit' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
-                }`}
-              >
-                Редактирование
-              </button>
-            </div>
+  const fileViewerPanel = openFile ? (
+    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      {/* Header */}
+      <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-neutral-800 text-xs shrink-0">
+        <FileText size={12} className="text-blue-500 shrink-0" />
+        <span className="text-neutral-400 truncate">{relativePath}</span>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          {!fileSaved && <span className="text-[10px] text-yellow-500">Несохранённо</span>}
+          <div className="flex gap-0.5 bg-neutral-900 rounded p-0.5">
+            <button
+              onClick={() => {
+                if (!fileSaved) handleFileSave();
+                const scrollTop = fileTextareaRef.current?.scrollTop ?? 0;
+                setFileMode('preview');
+                requestAnimationFrame(() => { if (filePreviewRef.current) filePreviewRef.current.scrollTop = scrollTop; });
+              }}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                fileMode === 'preview' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
+              }`}
+            >
+              Просмотр
+            </button>
+            <button
+              onClick={() => {
+                const scrollTop = filePreviewRef.current?.scrollTop ?? 0;
+                setFileMode('edit');
+                requestAnimationFrame(() => {
+                  if (fileTextareaRef.current) { fileTextareaRef.current.focus(); fileTextareaRef.current.scrollTop = scrollTop; }
+                });
+              }}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                fileMode === 'edit' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
+              }`}
+            >
+              Редактирование
+            </button>
           </div>
         </div>
+      </div>
 
-        {fileMode === 'preview' ? (
-          <div
-            ref={filePreviewRef}
-            onClick={() => {
-              const scrollTop = filePreviewRef.current?.scrollTop ?? 0;
-              setFileMode('edit');
-              requestAnimationFrame(() => {
-                if (fileTextareaRef.current) { fileTextareaRef.current.focus(); fileTextareaRef.current.scrollTop = scrollTop; }
-              });
-            }}
-            className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4 cursor-text"
-          >
-            {fileContent ? <MarkdownRenderer content={fileContent} /> : <div className="text-neutral-600 text-sm">Пустой файл</div>}
-          </div>
-        ) : (
-          <textarea
-            ref={fileTextareaRef}
-            value={fileContent}
-            onChange={(e) => { setFileContent(e.target.value); setFileSaved(false); }}
-            onBlur={handleFileSave}
-            className="flex-1 w-full bg-transparent px-6 py-4 text-sm text-neutral-300 font-mono focus:outline-none resize-none scrollbar-thin"
-          />
+      {fileMode === 'preview' ? (
+        <div
+          ref={filePreviewRef}
+          onClick={() => {
+            const scrollTop = filePreviewRef.current?.scrollTop ?? 0;
+            setFileMode('edit');
+            requestAnimationFrame(() => {
+              if (fileTextareaRef.current) { fileTextareaRef.current.focus(); fileTextareaRef.current.scrollTop = scrollTop; }
+            });
+          }}
+          className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4 cursor-text"
+        >
+          {fileContent ? <MarkdownRenderer content={fileContent} /> : <div className="text-neutral-600 text-sm">Пустой файл</div>}
+        </div>
+      ) : (
+        <textarea
+          ref={fileTextareaRef}
+          value={fileContent}
+          onChange={(e) => { setFileContent(e.target.value); setFileSaved(false); }}
+          onBlur={handleFileSave}
+          className="flex-1 w-full bg-transparent px-6 py-4 text-sm text-neutral-300 font-mono focus:outline-none resize-none scrollbar-thin"
+        />
+      )}
+    </div>
+  ) : (
+    <div className="flex-1 flex items-center justify-center text-neutral-600 text-sm">
+      Выберите файл
+    </div>
+  );
+
+  const treePanel = (
+    <div className="flex flex-col overflow-hidden">
+      {/* Tree header */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800 shrink-0">
+        <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">Файлы</span>
+        <button
+          onClick={handleRefresh}
+          className="p-1 rounded hover:bg-neutral-800 text-neutral-600 hover:text-neutral-300 transition-colors"
+          title="Обновить"
+        >
+          <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto scrollbar-thin p-2">
+        <DevFileTree
+          nodes={tree}
+          expandedPaths={expandedPaths}
+          onFileClick={handleFileClick}
+          onContextMenu={handleContextMenu}
+          depth={0}
+        />
+        {tree.length === 0 && (
+          <div className="text-neutral-600 text-sm text-center py-8">Папка пуста</div>
         )}
       </div>
-    );
-  }
+    </div>
+  );
 
-  // File tree
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
-      <DevFileTree
-        nodes={tree}
-        expandedPaths={expandedPaths}
-        onFileClick={handleFileClick}
-        onContextMenu={handleContextMenu}
-        depth={0}
-      />
-      {tree.length === 0 && (
-        <div className="text-neutral-600 text-sm text-center py-8">Папка пуста</div>
-      )}
+    <div className="flex-1 flex overflow-hidden">
+      {/* Left: file tree */}
+      <div className="w-72 shrink-0 border-r border-neutral-800 flex flex-col overflow-hidden">
+        {treePanel}
+      </div>
+      {/* Right: file viewer */}
+      {fileViewerPanel}
 
       {/* Context menu */}
       {contextMenu && (
