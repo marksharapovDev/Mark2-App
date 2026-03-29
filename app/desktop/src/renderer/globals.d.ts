@@ -113,6 +113,16 @@ interface DbAPI {
       create: (data: Record<string, unknown>) => Promise<import('@mark2/shared').DevTimeEntry>;
       update: (id: string, data: Record<string, unknown>) => Promise<import('@mark2/shared').DevTimeEntry>;
     };
+    files: {
+      tree: (localPath: string) => Promise<FileTreeNode[]>;
+      read: (filePath: string) => Promise<string>;
+      write: (filePath: string, content: string) => Promise<void>;
+      openInEditor: (filePath: string) => Promise<void>;
+      showInFinder: (filePath: string) => Promise<void>;
+      watchStart: (localPath: string) => Promise<void>;
+      watchStop: (localPath: string) => Promise<void>;
+      onWatchUpdate: (callback: (localPath: string) => void) => () => void;
+    };
   };
   students: {
     list: () => Promise<import('@mark2/shared').Student[]>;
@@ -267,6 +277,7 @@ interface DataEventsAPI {
 interface ElectronAPI {
   openFile: (filePath: string) => Promise<string>;
   openFiles: () => Promise<string[]>;
+  openDirectory: () => Promise<string | null>;
   getFileInfo: (filePath: string) => Promise<{ size: number; isFile: boolean } | null>;
   readFileBase64: (filePath: string) => Promise<string | null>;
 }

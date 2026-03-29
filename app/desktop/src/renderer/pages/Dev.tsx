@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
+import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { useSidebar } from '../context/sidebar-context';
-import type { DevProjectV2, DevTask, DevTaskStatus, DevTaskPriority, DevTimeEntry, AttachedFile } from '@mark2/shared';
-import { Plus, ArrowLeft, Play, Square, Clock, ChevronDown, ChevronRight, GripVertical, Send, Trash2, ExternalLink, FileText, Calendar, ClipboardList, ListFilter } from 'lucide-react';
+import type { DevProjectV2, DevTask, DevTaskStatus, DevTaskPriority, DevTimeEntry } from '@mark2/shared';
+import { Plus, ArrowLeft, Play, Square, Clock, ChevronDown, ChevronRight, GripVertical, Send, Trash2, ExternalLink, FileText, Calendar, ClipboardList, ListFilter, FolderOpen, Folder, File, Code, Eye, MoreVertical } from 'lucide-react';
 
 // --- Constants ---
 
@@ -100,7 +101,6 @@ export function Dev() {
   const [addingProject, setAddingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [projectTab, setProjectTab] = useState<ProjectTab>('kanban');
-  const [files, setFiles] = useState<AttachedFile[]>([]);
   const [timeEntries, setTimeEntries] = useState<DevTimeEntry[]>([]);
 
   // Sidebar resize
@@ -139,13 +139,6 @@ export function Dev() {
     setAllProjectsTasks(all);
   }, []);
 
-  const loadFiles = useCallback(async (projectId: string) => {
-    try {
-      const data = await window.db.files.list('project', projectId);
-      setFiles(data);
-    } catch { setFiles([]); }
-  }, []);
-
   const loadTimeEntries = useCallback(async (projectId: string) => {
     try {
       const data = await window.db.dev.time.list(undefined, projectId);
@@ -158,20 +151,18 @@ export function Dev() {
       if (ps.length > 0 && ps[0]) {
         setActiveProjectId(ps[0].id);
         loadTasks(ps[0].id);
-        loadFiles(ps[0].id);
         loadTimeEntries(ps[0].id);
       }
       loadAllTasks(ps);
     }).finally(() => setLoading(false));
-  }, [loadProjects, loadTasks, loadAllTasks, loadFiles, loadTimeEntries]);
+  }, [loadProjects, loadTasks, loadAllTasks, loadTimeEntries]);
 
   useEffect(() => {
     if (activeProjectId) {
       loadTasks(activeProjectId);
-      loadFiles(activeProjectId);
       loadTimeEntries(activeProjectId);
     }
-  }, [activeProjectId, loadTasks, loadFiles, loadTimeEntries]);
+  }, [activeProjectId, loadTasks, loadTimeEntries]);
 
   // React to data-changed events
   useEffect(() => {
@@ -181,9 +172,8 @@ export function Dev() {
         loadTasks(activeProjectId);
         loadTimeEntries(activeProjectId);
       }
-      if (entities.includes('files') && activeProjectId) loadFiles(activeProjectId);
     });
-  }, [loadProjects, loadTasks, loadFiles, loadTimeEntries, activeProjectId]);
+  }, [loadProjects, loadTasks, loadTimeEntries, activeProjectId]);
 
   // --- Sidebar data ---
 
@@ -535,9 +525,6 @@ export function Dev() {
                     }`}
                   >
                     {tab.label}
-                    {tab.key === 'files' && files.length > 0 && (
-                      <span className="ml-1 text-neutral-600">({files.length})</span>
-                    )}
                   </button>
                 ))}
               </div>
@@ -601,7 +588,7 @@ export function Dev() {
               )}
 
               {projectTab === 'files' && (
-                <ProjectFiles files={files} />
+                <ProjectFiles project={project} onUpdate={(data) => handleUpdateProject(project.id, data)} />
               )}
             </div>
           )}
@@ -742,6 +729,33 @@ function ProjectHeader({ project, onUpdate }: {
             )}
           </span>
         )}
+
+        {/* Local path */}
+        <span className="flex items-center gap-1">
+          <FolderOpen size={10} />
+          Папка:
+          {project.localPath ? (
+            <span
+              className="text-neutral-400 hover:text-blue-400 cursor-pointer flex items-center gap-0.5"
+              onClick={(e) => { e.stopPropagation(); window.db.dev.files.showInFinder(project.localPath!); }}
+              title={project.localPath}
+            >
+              {project.localPath.split('/').slice(-2).join('/')}
+            </span>
+          ) : (
+            <span className="text-neutral-700">Не указана</span>
+          )}
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              const selected = await window.electronAPI.openDirectory();
+              if (selected) onUpdate({ localPath: selected });
+            }}
+            className="text-[10px] text-neutral-600 hover:text-neutral-300 transition-colors ml-1"
+          >
+            [Выбрать]
+          </button>
+        </span>
       </div>
 
       {/* Tech stack */}
@@ -785,6 +799,9 @@ function ProjectDocs({ project, onUpdate }: {
 }) {
   const [content, setContent] = useState(project.description ?? '');
   const [saved, setSaved] = useState(true);
+  const [mode, setMode] = useState<'preview' | 'edit'>('preview');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setContent(project.description ?? '');
@@ -796,70 +813,395 @@ function ProjectDocs({ project, onUpdate }: {
     setSaved(true);
   }, [content, onUpdate]);
 
+  const switchToEdit = useCallback(() => {
+    const scrollTop = previewRef.current?.scrollTop ?? 0;
+    setMode('edit');
+    requestAnimationFrame(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.scrollTop = scrollTop;
+      }
+    });
+  }, []);
+
+  const switchToPreview = useCallback(() => {
+    if (!saved) handleSave();
+    const scrollTop = textareaRef.current?.scrollTop ?? 0;
+    setMode('preview');
+    requestAnimationFrame(() => {
+      if (previewRef.current) {
+        previewRef.current.scrollTop = scrollTop;
+      }
+    });
+  }, [saved, handleSave]);
+
+  const sendSummaryToChat = useCallback(() => {
+    const msg = `Создай структурированный конспект документации проекта ${project.name}`;
+    const inputEl = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Message..."]');
+    if (inputEl) {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(inputEl, msg);
+      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      inputEl.focus();
+    }
+  }, [project.name]);
+
   return (
-    <div className="flex-1 p-6 flex flex-col">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-neutral-300">Документация проекта</h2>
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-neutral-800">
         <div className="flex items-center gap-2">
-          {!saved && (
-            <span className="text-[10px] text-yellow-500">Несохранённые изменения</span>
-          )}
+          <div className="flex gap-0.5 bg-neutral-900 rounded p-0.5">
+            <button
+              onClick={switchToPreview}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                mode === 'preview' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
+              }`}
+            >
+              Просмотр
+            </button>
+            <button
+              onClick={switchToEdit}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                mode === 'edit' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
+              }`}
+            >
+              Редактирование
+            </button>
+          </div>
+          {!saved && <span className="text-[10px] text-yellow-500">Несохранённые изменения</span>}
+        </div>
+        <div className="flex items-center gap-2">
           <button
-            onClick={handleSave}
-            disabled={saved}
-            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-              saved
-                ? 'bg-neutral-800 text-neutral-600 cursor-default'
-                : 'bg-blue-600 text-white hover:bg-blue-500'
-            }`}
+            onClick={sendSummaryToChat}
+            className="flex items-center gap-1 px-2.5 py-1 rounded text-[11px] text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 transition-colors"
           >
-            Сохранить
+            <Send size={10} />
+            Конспект
           </button>
         </div>
       </div>
-      <p className="text-[10px] text-neutral-600 mb-2">Markdown — ТЗ, заметки, API документация</p>
-      <textarea
-        value={content}
-        onChange={(e) => { setContent(e.target.value); setSaved(false); }}
-        onBlur={handleSave}
-        placeholder="# ТЗ проекта&#10;&#10;## Заметки&#10;&#10;## API документация"
-        className="flex-1 w-full bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-neutral-300 font-mono focus:outline-none focus:border-neutral-600 resize-none scrollbar-thin"
-      />
+
+      {mode === 'preview' ? (
+        <div
+          ref={previewRef}
+          onClick={switchToEdit}
+          className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4 cursor-text"
+        >
+          {content ? (
+            <MarkdownRenderer content={content} />
+          ) : (
+            <div className="text-neutral-600 text-sm">Нажмите чтобы добавить документацию...</div>
+          )}
+        </div>
+      ) : (
+        <textarea
+          ref={textareaRef}
+          value={content}
+          onChange={(e) => { setContent(e.target.value); setSaved(false); }}
+          onBlur={() => { handleSave(); }}
+          placeholder="# ТЗ проекта&#10;&#10;## Заметки&#10;&#10;## API документация"
+          className="flex-1 w-full bg-transparent px-6 py-4 text-sm text-neutral-300 font-mono focus:outline-none resize-none scrollbar-thin"
+        />
+      )}
     </div>
   );
 }
 
 // --- Project Files ---
 
-function ProjectFiles({ files }: { files: AttachedFile[] }) {
+function ProjectFiles({ project, onUpdate }: {
+  project: DevProjectV2;
+  onUpdate: (data: Record<string, unknown>) => void;
+}) {
+  const [tree, setTree] = useState<FileTreeNode[]>([]);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [openFile, setOpenFile] = useState<{ path: string; name: string } | null>(null);
+  const [fileContent, setFileContent] = useState('');
+  const [fileMode, setFileMode] = useState<'preview' | 'edit'>('preview');
+  const [fileSaved, setFileSaved] = useState(true);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; isDir: boolean } | null>(null);
+  const fileTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const filePreviewRef = useRef<HTMLDivElement>(null);
+
+  const loadTree = useCallback(async () => {
+    if (!project.localPath) return;
+    const data = await window.db.dev.files.tree(project.localPath);
+    setTree(data);
+  }, [project.localPath]);
+
+  useEffect(() => {
+    loadTree();
+  }, [loadTree]);
+
+  // File watcher
+  useEffect(() => {
+    if (!project.localPath) return;
+    window.db.dev.files.watchStart(project.localPath);
+    const unsub = window.db.dev.files.onWatchUpdate((lp) => {
+      if (lp === project.localPath) loadTree();
+    });
+    return () => {
+      unsub();
+      if (project.localPath) window.db.dev.files.watchStop(project.localPath);
+    };
+  }, [project.localPath, loadTree]);
+
+  // Auto-expand first level
+  useEffect(() => {
+    const firstLevel = new Set(tree.filter((n) => n.isDir).map((n) => n.path));
+    setExpandedPaths(firstLevel);
+  }, [tree]);
+
+  const toggleExpand = useCallback((path: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const handleFileClick = useCallback(async (node: FileTreeNode) => {
+    if (node.isDir) {
+      toggleExpand(node.path);
+      return;
+    }
+    const ext = node.name.split('.').pop()?.toLowerCase();
+    if (ext === 'md') {
+      const content = await window.db.dev.files.read(node.path);
+      setOpenFile({ path: node.path, name: node.name });
+      setFileContent(content);
+      setFileMode('preview');
+      setFileSaved(true);
+    } else {
+      window.electronAPI.openFile(node.path);
+    }
+  }, [toggleExpand]);
+
+  const handleFileSave = useCallback(async () => {
+    if (!openFile) return;
+    await window.db.dev.files.write(openFile.path, fileContent);
+    setFileSaved(true);
+  }, [openFile, fileContent]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, nodePath: string, isDir: boolean) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, path: nodePath, isDir });
+  }, []);
+
+  // Close context menu on click elsewhere
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => setContextMenu(null);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [contextMenu]);
+
+  // No localPath set
+  if (!project.localPath) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 text-neutral-500">
+        <FolderOpen size={32} className="text-neutral-700" />
+        <p className="text-sm">Укажите папку проекта</p>
+        <button
+          onClick={async () => {
+            const selected = await window.electronAPI.openDirectory();
+            if (selected) onUpdate({ localPath: selected });
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors"
+        >
+          <FolderOpen size={12} />
+          Выбрать папку
+        </button>
+      </div>
+    );
+  }
+
+  // Viewing a .md file
+  if (openFile) {
+    const relativePath = project.localPath
+      ? openFile.path.replace(project.localPath, '').replace(/^\//, '')
+      : openFile.name;
+
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Breadcrumbs */}
+        <div className="flex items-center gap-1.5 px-6 py-3 border-b border-neutral-800 text-xs">
+          <button
+            onClick={() => { if (!fileSaved) handleFileSave(); setOpenFile(null); }}
+            className="text-neutral-500 hover:text-neutral-300 transition-colors flex items-center gap-1"
+          >
+            <ArrowLeft size={12} />
+            Файлы
+          </button>
+          <span className="text-neutral-700">/</span>
+          <span className="text-neutral-400">{relativePath}</span>
+          <div className="ml-auto flex items-center gap-2">
+            {!fileSaved && <span className="text-[10px] text-yellow-500">Несохранённо</span>}
+            <div className="flex gap-0.5 bg-neutral-900 rounded p-0.5">
+              <button
+                onClick={() => {
+                  if (!fileSaved) handleFileSave();
+                  const scrollTop = fileTextareaRef.current?.scrollTop ?? 0;
+                  setFileMode('preview');
+                  requestAnimationFrame(() => { if (filePreviewRef.current) filePreviewRef.current.scrollTop = scrollTop; });
+                }}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                  fileMode === 'preview' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+              >
+                Просмотр
+              </button>
+              <button
+                onClick={() => {
+                  const scrollTop = filePreviewRef.current?.scrollTop ?? 0;
+                  setFileMode('edit');
+                  requestAnimationFrame(() => {
+                    if (fileTextareaRef.current) { fileTextareaRef.current.focus(); fileTextareaRef.current.scrollTop = scrollTop; }
+                  });
+                }}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                  fileMode === 'edit' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+              >
+                Редактирование
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {fileMode === 'preview' ? (
+          <div
+            ref={filePreviewRef}
+            onClick={() => {
+              const scrollTop = filePreviewRef.current?.scrollTop ?? 0;
+              setFileMode('edit');
+              requestAnimationFrame(() => {
+                if (fileTextareaRef.current) { fileTextareaRef.current.focus(); fileTextareaRef.current.scrollTop = scrollTop; }
+              });
+            }}
+            className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4 cursor-text"
+          >
+            {fileContent ? <MarkdownRenderer content={fileContent} /> : <div className="text-neutral-600 text-sm">Пустой файл</div>}
+          </div>
+        ) : (
+          <textarea
+            ref={fileTextareaRef}
+            value={fileContent}
+            onChange={(e) => { setFileContent(e.target.value); setFileSaved(false); }}
+            onBlur={handleFileSave}
+            className="flex-1 w-full bg-transparent px-6 py-4 text-sm text-neutral-300 font-mono focus:outline-none resize-none scrollbar-thin"
+          />
+        )}
+      </div>
+    );
+  }
+
+  // File tree
   return (
-    <div className="flex-1 p-6">
-      <h2 className="text-sm font-semibold text-neutral-300 mb-4">Файлы проекта</h2>
-      {files.length === 0 && (
-        <div className="text-neutral-600 text-sm">
-          Нет файлов. Используйте AI-агента: <code className="text-neutral-500 bg-neutral-900 px-1.5 py-0.5 rounded text-xs">attach_file</code> с entityType='project'
+    <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
+      <DevFileTree
+        nodes={tree}
+        expandedPaths={expandedPaths}
+        onFileClick={handleFileClick}
+        onContextMenu={handleContextMenu}
+        depth={0}
+      />
+      {tree.length === 0 && (
+        <div className="text-neutral-600 text-sm text-center py-8">Папка пуста</div>
+      )}
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            onClick={() => { window.electronAPI.openFile(contextMenu.path); setContextMenu(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
+          >
+            Открыть
+          </button>
+          <button
+            onClick={() => { window.db.dev.files.openInEditor(contextMenu.path); setContextMenu(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
+          >
+            Открыть в VS Code
+          </button>
+          <button
+            onClick={() => { window.db.dev.files.showInFinder(contextMenu.path); setContextMenu(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
+          >
+            Показать в Finder
+          </button>
         </div>
       )}
-      <div className="space-y-1.5">
-        {files.map((f) => (
-          <button
-            key={f.id}
-            onClick={() => window.electronAPI.openFile(f.filepath)}
-            className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-neutral-800/50 transition-colors group"
-          >
-            <FileText size={14} className="text-neutral-600 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm text-neutral-300 truncate group-hover:text-neutral-100">{f.filename}</div>
-              <div className="flex items-center gap-2 text-[10px] text-neutral-600">
-                {f.category && <span>{f.category}</span>}
-                <span>{f.createdAt?.slice(0, 10)}</span>
-              </div>
-            </div>
-            <ExternalLink size={12} className="text-neutral-700 group-hover:text-neutral-400 shrink-0" />
-          </button>
-        ))}
-      </div>
     </div>
+  );
+}
+
+// --- Dev File Tree ---
+
+function DevFileTree({ nodes, expandedPaths, onFileClick, onContextMenu, depth }: {
+  nodes: FileTreeNode[];
+  expandedPaths: Set<string>;
+  onFileClick: (node: FileTreeNode) => void;
+  onContextMenu: (e: React.MouseEvent, path: string, isDir: boolean) => void;
+  depth: number;
+}) {
+  return (
+    <>
+      {nodes.map((node) => {
+        const isExpanded = expandedPaths.has(node.path);
+        const ext = node.name.split('.').pop()?.toLowerCase();
+        const isMd = ext === 'md';
+        const isCode = ['ts', 'tsx', 'js', 'jsx', 'py', 'html', 'css', 'json', 'yml', 'yaml', 'sh', 'sql'].includes(ext ?? '');
+
+        return (
+          <div key={node.path}>
+            <button
+              onClick={() => onFileClick(node)}
+              onContextMenu={(e) => onContextMenu(e, node.path, node.isDir)}
+              className="w-full text-left flex items-center gap-1.5 py-1 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
+              style={{ paddingLeft: `${depth * 16 + 4}px` }}
+            >
+              {node.isDir ? (
+                isExpanded ? <ChevronDown size={12} className="text-neutral-600 shrink-0" /> : <ChevronRight size={12} className="text-neutral-600 shrink-0" />
+              ) : (
+                <span className="w-3 shrink-0" />
+              )}
+              {node.isDir ? (
+                isExpanded ? <FolderOpen size={14} className="text-yellow-600 shrink-0" /> : <Folder size={14} className="text-yellow-700 shrink-0" />
+              ) : isMd ? (
+                <FileText size={14} className="text-blue-500 shrink-0" />
+              ) : isCode ? (
+                <Code size={14} className="text-emerald-600 shrink-0" />
+              ) : (
+                <File size={14} className="text-neutral-600 shrink-0" />
+              )}
+              <span className={`text-xs truncate ${node.isDir ? 'text-neutral-300 font-medium' : 'text-neutral-400'}`}>
+                {node.name}
+              </span>
+              <MoreVertical
+                size={12}
+                className="text-neutral-700 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-auto"
+                onClick={(e) => { e.stopPropagation(); onContextMenu(e, node.path, node.isDir); }}
+              />
+            </button>
+            {node.isDir && isExpanded && node.children && (
+              <DevFileTree
+                nodes={node.children}
+                expandedPaths={expandedPaths}
+                onFileClick={onFileClick}
+                onContextMenu={onContextMenu}
+                depth={depth + 1}
+              />
+            )}
+          </div>
+        );
+      })}
+    </>
   );
 }
 

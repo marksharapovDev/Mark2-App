@@ -246,6 +246,8 @@ const electronAPI = {
     ipcRenderer.invoke('file:open', filePath),
   openFiles: () =>
     ipcRenderer.invoke('dialog:open-files') as Promise<string[]>,
+  openDirectory: () =>
+    ipcRenderer.invoke('dialog:open-directory') as Promise<string | null>,
   getFileInfo: (filePath: string) =>
     ipcRenderer.invoke('file:get-info', filePath) as Promise<{ size: number; isFile: boolean } | null>,
   readFileBase64: (filePath: string) =>
@@ -305,6 +307,27 @@ const dbApi = {
         ipcRenderer.invoke('db:dev:time:create', data),
       update: (id: string, data: Record<string, unknown>) =>
         ipcRenderer.invoke('db:dev:time:update', id, data),
+    },
+    files: {
+      tree: (localPath: string) =>
+        ipcRenderer.invoke('dev:files:tree', localPath),
+      read: (filePath: string) =>
+        ipcRenderer.invoke('dev:files:read', filePath),
+      write: (filePath: string, content: string) =>
+        ipcRenderer.invoke('dev:files:write', filePath, content),
+      openInEditor: (filePath: string) =>
+        ipcRenderer.invoke('dev:files:open-in-editor', filePath),
+      showInFinder: (filePath: string) =>
+        ipcRenderer.invoke('dev:files:show-in-finder', filePath),
+      watchStart: (localPath: string) =>
+        ipcRenderer.invoke('dev:files:watch-start', localPath),
+      watchStop: (localPath: string) =>
+        ipcRenderer.invoke('dev:files:watch-stop', localPath),
+      onWatchUpdate: (callback: (localPath: string) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, lp: string) => callback(lp);
+        ipcRenderer.on('dev:files:watch-update', handler);
+        return () => { ipcRenderer.removeListener('dev:files:watch-update', handler); };
+      },
     },
   },
   students: {

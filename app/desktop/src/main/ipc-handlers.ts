@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow, shell, dialog } from 'electron';
-import { ChildProcess } from 'child_process';
+import { ChildProcess, exec } from 'child_process';
 import crypto from 'crypto';
 import path from 'path';
 import os from 'os';
@@ -676,6 +676,103 @@ export function registerIpcHandlers(): void {
       properties: ['openFile', 'multiSelections'],
     });
     return result.canceled ? [] : result.filePaths;
+  });
+
+  ipcMain.handle('dialog:open-directory', async () => {
+    const win = getWindow();
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openDirectory'],
+    });
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+  });
+
+  // === Dev file operations ===
+
+  const DEV_IGNORED_DIRS = new Set([
+    'node_modules', '.git', '.next', 'dist', 'build', '.cache',
+    '.turbo', '.vercel', '__pycache__', '.svelte-kit', '.nuxt',
+    'coverage', '.output', '.parcel-cache',
+  ]);
+
+  const DEV_IGNORED_FILES = new Set(['.env', '.env.local', '.env.production', '.DS_Store']);
+
+  function buildDevTree(dirPath: string): FileTreeNode[] {
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      return entries
+        .filter((e) => {
+          if (e.name.startsWith('.') && e.isDirectory()) return false;
+          if (e.isDirectory() && DEV_IGNORED_DIRS.has(e.name)) return false;
+          if (e.isFile() && DEV_IGNORED_FILES.has(e.name)) return false;
+          return true;
+        })
+        .sort((a, b) => {
+          if (a.isDirectory() && !b.isDirectory()) return -1;
+          if (!a.isDirectory() && b.isDirectory()) return 1;
+          return a.name.localeCompare(b.name);
+        })
+        .map((e) => {
+          const fullPath = path.resolve(dirPath, e.name);
+          if (e.isDirectory()) {
+            return { name: e.name, path: fullPath, isDir: true, children: buildDevTree(fullPath) };
+          }
+          return { name: e.name, path: fullPath, isDir: false };
+        });
+    } catch {
+      return [];
+    }
+  }
+
+  ipcMain.handle('dev:files:tree', async (_event, localPath: string) => {
+    if (!localPath || !fs.existsSync(localPath)) return [];
+    return buildDevTree(localPath);
+  });
+
+  ipcMain.handle('dev:files:read', async (_event, filePath: string) => {
+    try {
+      return fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      return '';
+    }
+  });
+
+  ipcMain.handle('dev:files:write', async (_event, filePath: string, content: string) => {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content, 'utf-8');
+  });
+
+  ipcMain.handle('dev:files:open-in-editor', async (_event, filePath: string) => {
+    exec(`code ${JSON.stringify(filePath)}`);
+  });
+
+  ipcMain.handle('dev:files:show-in-finder', async (_event, filePath: string) => {
+    shell.showItemInFolder(filePath);
+  });
+
+  // Dev file watcher
+  const devFsWatchers = new Map<string, fs.FSWatcher>();
+
+  ipcMain.handle('dev:files:watch-start', async (_event, localPath: string) => {
+    if (devFsWatchers.has(localPath)) return;
+    if (!fs.existsSync(localPath)) return;
+    try {
+      const watcher = fs.watch(localPath, { recursive: true }, () => {
+        const win = getWindow();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('dev:files:watch-update', localPath);
+        }
+      });
+      devFsWatchers.set(localPath, watcher);
+    } catch { /* fs.watch not supported or dir missing */ }
+  });
+
+  ipcMain.handle('dev:files:watch-stop', async (_event, localPath: string) => {
+    const watcher = devFsWatchers.get(localPath);
+    if (watcher) {
+      watcher.close();
+      devFsWatchers.delete(localPath);
+    }
   });
 
   // === Study file operations ===

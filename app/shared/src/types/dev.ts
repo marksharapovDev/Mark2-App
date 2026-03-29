@@ -12,6 +12,7 @@ export interface DevProjectV2 {
   stack: Record<string, unknown>;
   repoUrl: string | null;
   deployUrl: string | null;
+  localPath: string | null;
   deadline: string | null;
   createdAt: string;
   updatedAt: string;
