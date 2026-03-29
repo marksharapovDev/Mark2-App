@@ -101,6 +101,7 @@ export function Dev() {
   const [addingProject, setAddingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [projectTab, setProjectTab] = useState<ProjectTab>('kanban');
+  const [kanbanFormStatus, setKanbanFormStatus] = useState<DevTaskStatus | null>(null);
   const [timeEntries, setTimeEntries] = useState<DevTimeEntry[]>([]);
 
   // Sidebar resize
@@ -223,6 +224,12 @@ export function Dev() {
     await window.db.dev.tasks.update(taskId, { status });
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status } : t));
   }, []);
+
+  const handleKanbanCreateTask = useCallback(async (data: Record<string, unknown>) => {
+    if (!project) return;
+    const created = await window.db.dev.tasks.create({ ...data, projectId: project.id });
+    setTasks((prev) => [...prev, created]);
+  }, [project]);
 
   // --- Drag & Drop ---
 
@@ -534,12 +541,21 @@ export function Dev() {
                 <div className="flex-1 overflow-x-auto p-4">
                   <div className="flex items-center justify-between mb-3 px-1">
                     <span className="text-xs text-neutral-600">{totalCount} задач</span>
-                    <button
-                      onClick={() => setMainView({ kind: 'tasks-list' })}
-                      className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
-                    >
-                      Все задачи &rarr;
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setKanbanFormStatus('todo')}
+                        className="flex items-center gap-1 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
+                      >
+                        <Plus size={12} />
+                        Добавить задачу
+                      </button>
+                      <button
+                        onClick={() => setMainView({ kind: 'tasks-list' })}
+                        className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
+                      >
+                        Все задачи &rarr;
+                      </button>
+                    </div>
                   </div>
                   <div className="flex gap-4 h-full min-w-0">
                     {STATUS_COLUMNS.map((col) => (
@@ -552,9 +568,20 @@ export function Dev() {
                         onDragOver={onDragOver}
                         onDrop={onDrop}
                         onTaskClick={(id) => setMainView({ kind: 'task-detail', taskId: id })}
+                        onCreateTask={handleKanbanCreateTask}
                       />
                     ))}
                   </div>
+
+                  {/* Global add task form */}
+                  {kanbanFormStatus && (
+                    <TaskCreateForm
+                      defaultStatus={kanbanFormStatus}
+                      orderIndex={columnTasks(kanbanFormStatus).length}
+                      onCreate={async (data) => { await handleKanbanCreateTask(data); setKanbanFormStatus(null); }}
+                      onCancel={() => setKanbanFormStatus(null)}
+                    />
+                  )}
 
                   {/* Deferred section */}
                   {deferredTasks.length > 0 && (
@@ -1231,7 +1258,7 @@ function DevFileTree({ nodes, expandedPaths, onFileClick, onContextMenu, depth }
 
 // --- Kanban Column ---
 
-function KanbanColumn({ status, label, tasks, onDragStart, onDragOver, onDrop, onTaskClick }: {
+function KanbanColumn({ status, label, tasks, onDragStart, onDragOver, onDrop, onTaskClick, onCreateTask }: {
   status: DevTaskStatus;
   label: string;
   tasks: DevTask[];
@@ -1239,7 +1266,25 @@ function KanbanColumn({ status, label, tasks, onDragStart, onDragOver, onDrop, o
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent, status: DevTaskStatus) => void;
   onTaskClick: (id: string) => void;
+  onCreateTask: (data: Record<string, unknown>) => Promise<void>;
 }) {
+  const [quickAdd, setQuickAdd] = useState(false);
+  const [quickTitle, setQuickTitle] = useState('');
+  const [showFullForm, setShowFullForm] = useState(false);
+  const quickInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (quickAdd) quickInputRef.current?.focus();
+  }, [quickAdd]);
+
+  const handleQuickCreate = useCallback(async () => {
+    const title = quickTitle.trim();
+    if (!title) { setQuickAdd(false); return; }
+    await onCreateTask({ title, status, priority: 'medium', orderIndex: tasks.length });
+    setQuickTitle('');
+    setQuickAdd(false);
+  }, [quickTitle, status, tasks.length, onCreateTask]);
+
   return (
     <div
       className="flex-1 min-w-[240px] max-w-[360px] flex flex-col"
@@ -1247,12 +1292,62 @@ function KanbanColumn({ status, label, tasks, onDragStart, onDragOver, onDrop, o
       onDrop={(e) => onDrop(e, status)}
     >
       <div className="flex items-center justify-between mb-3 px-1">
-        <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-          {label}
-        </span>
-        <span className="text-xs text-neutral-600">{tasks.length}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+            {label}
+          </span>
+          <span className="text-xs text-neutral-600">{tasks.length}</span>
+        </div>
+        <button
+          onClick={() => setQuickAdd(true)}
+          className="p-0.5 rounded hover:bg-neutral-800 text-neutral-600 hover:text-neutral-300 transition-colors"
+          title="Добавить задачу"
+        >
+          <Plus size={14} />
+        </button>
       </div>
+
       <div className="flex-1 space-y-2 overflow-y-auto scrollbar-thin min-h-[100px] rounded-lg bg-neutral-900/30 p-2">
+        {/* Inline quick add */}
+        {quickAdd && (
+          <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-2 space-y-1.5">
+            <input
+              ref={quickInputRef}
+              value={quickTitle}
+              onChange={(e) => setQuickTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleQuickCreate();
+                if (e.key === 'Escape') { setQuickAdd(false); setQuickTitle(''); }
+              }}
+              placeholder="Название задачи..."
+              className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-xs text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+            />
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => { setQuickAdd(false); setQuickTitle(''); setShowFullForm(true); }}
+                className="text-[10px] text-neutral-500 hover:text-neutral-300 transition-colors"
+              >
+                Подробнее...
+              </button>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => { setQuickAdd(false); setQuickTitle(''); }}
+                  className="px-2 py-0.5 rounded text-[10px] text-neutral-500 hover:text-neutral-300 transition-colors"
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={handleQuickCreate}
+                  disabled={!quickTitle.trim()}
+                  className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 disabled:cursor-default transition-colors"
+                >
+                  Создать
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {tasks.map((task) => (
           <TaskCard
             key={task.id}
@@ -1261,9 +1356,199 @@ function KanbanColumn({ status, label, tasks, onDragStart, onDragOver, onDrop, o
             onDragStart={onDragStart}
           />
         ))}
-        {tasks.length === 0 && (
+        {!quickAdd && tasks.length === 0 && (
           <div className="text-neutral-700 text-xs text-center py-8">Нет задач</div>
         )}
+      </div>
+
+      {/* Full form popup */}
+      {showFullForm && (
+        <TaskCreateForm
+          defaultStatus={status}
+          orderIndex={tasks.length}
+          onCreate={async (data) => { await onCreateTask(data); setShowFullForm(false); }}
+          onCancel={() => setShowFullForm(false)}
+          initialTitle={quickTitle}
+        />
+      )}
+    </div>
+  );
+}
+
+// --- Task Create Form (popup) ---
+
+function TaskCreateForm({ defaultStatus, orderIndex, onCreate, onCancel, initialTitle }: {
+  defaultStatus: DevTaskStatus;
+  orderIndex: number;
+  onCreate: (data: Record<string, unknown>) => Promise<void>;
+  onCancel: () => void;
+  initialTitle?: string;
+}) {
+  const [title, setTitle] = useState(initialTitle ?? '');
+  const [description, setDescription] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [status, setStatus] = useState<DevTaskStatus>(defaultStatus);
+  const [priority, setPriority] = useState<DevTaskPriority>('medium');
+  const [deadline, setDeadline] = useState('');
+  const [timeEstimate, setTimeEstimate] = useState('');
+  const [creating, setCreating] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+
+  // Close on click outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (formRef.current && !formRef.current.contains(e.target as Node)) onCancel();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onCancel]);
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onCancel]);
+
+  const handleSubmit = useCallback(async () => {
+    if (!title.trim() || creating) return;
+    setCreating(true);
+    await onCreate({
+      title: title.trim(),
+      description: description.trim() || null,
+      prompt: prompt.trim() || null,
+      status,
+      priority,
+      deadline: deadline || null,
+      timeEstimateMinutes: timeEstimate ? Number(timeEstimate) : null,
+      orderIndex,
+    });
+  }, [title, description, prompt, status, priority, deadline, timeEstimate, orderIndex, creating, onCreate]);
+
+  const statusOptions: { value: DevTaskStatus; label: string }[] = [
+    { value: 'todo', label: 'Todo' },
+    { value: 'in_progress', label: 'В работе' },
+    { value: 'done', label: 'Готово' },
+    { value: 'deferred', label: 'Отложено' },
+  ];
+
+  const priorityOptions: { value: DevTaskPriority; label: string }[] = [
+    { value: 'low', label: 'Низкий' },
+    { value: 'medium', label: 'Средний' },
+    { value: 'high', label: 'Высокий' },
+    { value: 'urgent', label: 'Срочный' },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div ref={formRef} className="bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl w-[440px] max-h-[80vh] overflow-y-auto">
+        <div className="px-5 py-4 border-b border-neutral-800">
+          <h3 className="text-sm font-semibold text-neutral-200">Новая задача</h3>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          {/* Title */}
+          <div>
+            <label className="text-[11px] text-neutral-500 mb-1 block">Название *</label>
+            <input
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
+              placeholder="Что нужно сделать?"
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="text-[11px] text-neutral-500 mb-1 block">Описание</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Подробности задачи..."
+              rows={2}
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none"
+            />
+          </div>
+
+          {/* Prompt */}
+          <div>
+            <label className="text-[11px] text-neutral-500 mb-1 block">Prompt для Claude Code</label>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Подробная инструкция для AI..."
+              rows={3}
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none font-mono"
+            />
+          </div>
+
+          {/* Status + Priority */}
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="text-[11px] text-neutral-500 mb-1 block">Статус</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as DevTaskStatus)}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-neutral-200 focus:outline-none focus:border-neutral-500"
+              >
+                {statusOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="text-[11px] text-neutral-500 mb-1 block">Приоритет</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as DevTaskPriority)}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-neutral-200 focus:outline-none focus:border-neutral-500"
+              >
+                {priorityOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Deadline + Time estimate */}
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="text-[11px] text-neutral-500 mb-1 block">Дедлайн</label>
+              <input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-neutral-200 focus:outline-none focus:border-neutral-500"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-[11px] text-neutral-500 mb-1 block">Оценка (мин)</label>
+              <input
+                type="number"
+                value={timeEstimate}
+                onChange={(e) => setTimeEstimate(e.target.value)}
+                placeholder="60"
+                min={0}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="px-5 py-3 border-t border-neutral-800 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 rounded-lg text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
+          >
+            Отмена
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!title.trim() || creating}
+            className="px-4 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 disabled:cursor-default transition-colors"
+          >
+            {creating ? 'Создание...' : 'Создать'}
+          </button>
+        </div>
       </div>
     </div>
   );
