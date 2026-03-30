@@ -8,6 +8,7 @@ import {
   Code, Banknote, Gift, Heart, GraduationCap, Plus, Loader2, Target, Users,
   ChevronUp, ChevronDown, BarChart3, Calendar, Pencil, Trash2, X,
 } from 'lucide-react';
+import { useUndo } from '../context/undo-context';
 
 // --- Types ---
 
@@ -197,6 +198,7 @@ export function Finance() {
     return Math.min(400, Math.max(200, Math.round(window.innerWidth * 0.2)));
   });
   const { leftCollapsed, setLeftKey } = useSidebar();
+  const { pushUndo } = useUndo();
   useEffect(() => { setLeftKey('finance'); }, [setLeftKey]);
   const isDraggingSidebar = useRef(false);
 
@@ -325,13 +327,15 @@ export function Finance() {
 
   const handleDeleteTransaction = useCallback(async (id: string) => {
     try {
+      const saved = allTransactions.find((t) => t.id === id) ?? transactions.find((t) => t.id === id);
       await window.db.transactions.delete(id);
       window.dataEvents.emitDataChanged(['transactions', 'finance']);
       setPopupTx(null);
       setConfirmDeleteId(null);
       reloadData();
+      if (saved) pushUndo({ label: saved.description ?? 'транзакция', restoreFn: async () => { await window.db.transactions.create(saved); window.dataEvents.emitDataChanged(['transactions', 'finance']); reloadData(); } });
     } catch { /* ignore */ }
-  }, [reloadData]);
+  }, [reloadData, allTransactions, transactions, pushUndo]);
 
   const handleTxClick = useCallback((tx: Transaction, e: React.MouseEvent) => {
     e.preventDefault();

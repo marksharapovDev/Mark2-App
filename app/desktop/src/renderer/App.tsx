@@ -3,6 +3,7 @@ import { Header } from './components/layout/Header';
 import { CalendarProvider } from './context/calendar-context';
 import { TimerProvider } from './context/timer-context';
 import { SidebarProvider } from './context/sidebar-context';
+import { UndoProvider } from './context/undo-context';
 import { Dashboard } from './pages/Dashboard';
 import { Dev } from './pages/Dev';
 import { Teaching } from './pages/Teaching';
@@ -34,27 +35,29 @@ function AppRoutes() {
 
   // Main window: full layout
   return (
-    <CalendarProvider>
-      <TimerProvider>
-        <SidebarProvider>
-          <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100">
-            <Header />
-            <div className="flex flex-1 overflow-hidden">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/dev" element={<Dev />} />
-                <Route path="/teaching" element={<Teaching />} />
-                <Route path="/study" element={<Study />} />
-                <Route path="/health" element={<Health />} />
-                <Route path="/finance" element={<Finance />} />
-                <Route path="/calendar" element={<Calendar />} />
-                <Route path="/settings" element={<Settings />} />
-              </Routes>
+    <UndoProvider>
+      <CalendarProvider>
+        <TimerProvider>
+          <SidebarProvider>
+            <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100">
+              <Header />
+              <div className="flex flex-1 overflow-hidden">
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/dev" element={<Dev />} />
+                  <Route path="/teaching" element={<Teaching />} />
+                  <Route path="/study" element={<Study />} />
+                  <Route path="/health" element={<Health />} />
+                  <Route path="/finance" element={<Finance />} />
+                  <Route path="/calendar" element={<Calendar />} />
+                  <Route path="/settings" element={<Settings />} />
+                </Routes>
+              </div>
             </div>
-          </div>
-        </SidebarProvider>
-      </TimerProvider>
-    </CalendarProvider>
+          </SidebarProvider>
+        </TimerProvider>
+      </CalendarProvider>
+    </UndoProvider>
   );
 }
 

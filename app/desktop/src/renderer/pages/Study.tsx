@@ -9,6 +9,8 @@ import {
   ChevronRight, ChevronDown, File, Folder, Eye, Pencil,
 } from 'lucide-react';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
+import { ConfirmDelete } from '../components/confirm-delete';
+import { useUndo } from '../context/undo-context';
 
 // --- Types ---
 
@@ -168,6 +170,7 @@ export function Study() {
     return Math.min(400, Math.max(200, Math.round(window.innerWidth * 0.2)));
   });
   const { leftCollapsed, setLeftKey } = useSidebar();
+  const { pushUndo } = useUndo();
   useEffect(() => { setLeftKey('study'); }, [setLeftKey]);
 
   // DB state
@@ -704,9 +707,11 @@ export function Study() {
                 await reloadData();
               }}
               onDelete={async (id) => {
+                const saved = assignments.find((a) => a.id === id);
                 await window.db.assignments.delete(id);
                 await reloadData();
                 setMainView(subject ? { kind: 'subject', tab: 'assignments' } : { kind: 'empty' });
+                if (saved) pushUndo({ label: saved.title, restoreFn: async () => { await window.db.assignments.create(saved); await reloadData(); } });
               }}
             />
           )}
@@ -721,9 +726,11 @@ export function Study() {
                 await reloadData();
               }}
               onDelete={async (id) => {
+                const saved = exams.find((e) => e.id === id);
                 await window.db.exams.delete(id);
                 await reloadData();
                 setMainView(subject ? { kind: 'subject', tab: 'exams' } : { kind: 'empty' });
+                if (saved) pushUndo({ label: saved.title, restoreFn: async () => { await window.db.exams.create(saved); await reloadData(); } });
               }}
             />
           )}
@@ -1529,7 +1536,10 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
     openFile(file);
   }, [newFileName, noteType, notes, slug, loadFiles, openFile]);
 
+  const { pushUndo } = useUndo();
+
   const handleDeleteNote = useCallback(async (file: NoteFile) => {
+    const savedContent = await window.study.files.read(file.path).catch(() => '');
     await window.study.files.delete(file.path);
     if (selectedFile?.path === file.path) {
       setSelectedFile(null);
@@ -1537,7 +1547,14 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
       setOriginalContent('');
     }
     await loadFiles();
-  }, [selectedFile, loadFiles]);
+    pushUndo({
+      label: file.name,
+      restoreFn: async () => {
+        await window.study.files.write(file.path, savedContent);
+        await loadFiles();
+      },
+    });
+  }, [selectedFile, loadFiles, pushUndo]);
 
   const sendToChat = useCallback(() => {
     if (!selectedFile) return;
@@ -1630,13 +1647,9 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
                 <NotebookText size={12} className="inline mr-1.5 text-neutral-500" />
                 {file.name}
               </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); handleDeleteNote(file); }}
-                className="opacity-0 group-hover:opacity-100 shrink-0 text-neutral-600 hover:text-red-400 transition-all"
-                title="Удалить"
-              >
-                <Trash2 size={11} />
-              </button>
+              <span className="opacity-0 group-hover:opacity-100 shrink-0">
+                <ConfirmDelete label={file.name} onConfirm={() => handleDeleteNote(file)} variant="icon" iconSize={11} className="text-neutral-600 hover:text-red-400 transition-all" />
+              </span>
             </div>
           ))}
 
@@ -1910,12 +1923,7 @@ function AssignmentDetailView({
       )}
 
       <div className="flex gap-3">
-        <button
-          onClick={() => onDelete(assignment.id)}
-          className="flex items-center gap-1 px-3 py-1.5 rounded text-xs text-red-400 hover:bg-red-900/30 transition-colors"
-        >
-          <Trash2 size={12} /> Удалить
-        </button>
+        <ConfirmDelete label={assignment.title} onConfirm={() => onDelete(assignment.id)} variant="inline-red" />
       </div>
     </div>
   );
@@ -1992,12 +2000,7 @@ function ExamDetailView({
       )}
 
       <div className="flex gap-3">
-        <button
-          onClick={() => onDelete(exam.id)}
-          className="flex items-center gap-1 px-3 py-1.5 rounded text-xs text-red-400 hover:bg-red-900/30 transition-colors"
-        >
-          <Trash2 size={12} /> Удалить
-        </button>
+        <ConfirmDelete label={exam.title} onConfirm={() => onDelete(exam.id)} variant="inline-red" />
       </div>
     </div>
   );

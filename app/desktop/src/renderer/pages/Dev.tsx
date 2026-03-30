@@ -4,6 +4,8 @@ import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { useSidebar } from '../context/sidebar-context';
 import type { DevProjectV2, DevTask, DevTaskStatus, DevTaskPriority, DevTimeEntry } from '@mark2/shared';
 import { Plus, ArrowLeft, Play, Square, Clock, ChevronDown, ChevronRight, GripVertical, Send, Trash2, ExternalLink, FileText, Calendar, ClipboardList, ListFilter, FolderOpen, Folder, File, Code, Eye, MoreVertical, RefreshCw } from 'lucide-react';
+import { ConfirmDelete } from '../components/confirm-delete';
+import { useUndo } from '../context/undo-context';
 
 // --- Constants ---
 
@@ -103,6 +105,7 @@ export function Dev() {
   const [projectTab, setProjectTab] = useState<ProjectTab>('kanban');
   const [kanbanFormStatus, setKanbanFormStatus] = useState<DevTaskStatus | null>(null);
   const [timeEntries, setTimeEntries] = useState<DevTimeEntry[]>([]);
+  const { pushUndo } = useUndo();
 
   // Sidebar resize
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -633,9 +636,11 @@ export function Dev() {
                 setTasks((prev) => prev.map((t) => t.id === updated.id ? updated : t));
               }}
               onDelete={async () => {
+                const saved = { ...selectedTask };
                 await window.db.dev.tasks.delete(selectedTask.id);
                 setTasks((prev) => prev.filter((t) => t.id !== selectedTask.id));
                 setMainView({ kind: 'project' });
+                pushUndo({ label: saved.title, restoreFn: async () => { await window.db.dev.tasks.create(saved); setTasks((prev) => [...prev, saved]); } });
               }}
             />
           )}
@@ -2103,13 +2108,7 @@ function TaskDetailView({ task, project, onBack, onUpdate, onDelete }: {
 
       {/* Delete */}
       <div className="pt-4 border-t border-neutral-800">
-        <button
-          onClick={onDelete}
-          className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-400 transition-colors"
-        >
-          <Trash2 size={12} />
-          Удалить задачу
-        </button>
+        <ConfirmDelete label={task.title} onConfirm={onDelete} variant="inline-red" className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-400 transition-colors" />
       </div>
     </div>
   );

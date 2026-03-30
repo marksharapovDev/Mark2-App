@@ -3,6 +3,7 @@ import { MainLayout } from '../components/layout/MainLayout';
 import { useSidebar } from '../context/sidebar-context';
 import type { TaskStatus, LearningPathTopic, LearningPathStatus, StudentRate, Transaction } from '@mark2/shared';
 import { CheckCircle2, RefreshCw, Clock, XCircle, FileText, FileType, FileCode, PenLine, ClipboardList, BarChart3, Loader2, Banknote } from 'lucide-react';
+import { useUndo } from '../context/undo-context';
 
 // --- Types ---
 
@@ -2659,19 +2660,22 @@ function LearningPathTopicView({
       )}
 
       {/* Delete topic */}
-      <DeleteTopicButton topicId={topic.id} onBack={onBack} />
+      <DeleteTopicButton topic={topic} onBack={onBack} />
     </div>
   );
 }
 
-function DeleteTopicButton({ topicId, onBack }: { topicId: string; onBack: () => void }) {
+function DeleteTopicButton({ topic, onBack }: { topic: LearningPathTopic; onBack: () => void }) {
   const [confirming, setConfirming] = useState(false);
+  const { pushUndo } = useUndo();
 
   const handleDelete = async () => {
     try {
-      await window.db.learningPath.delete(topicId);
+      const saved = { ...topic };
+      await window.db.learningPath.delete(topic.id);
       window.dataEvents.emitDataChanged(['learning-path']);
       onBack();
+      pushUndo({ label: saved.title, restoreFn: async () => { await window.db.learningPath.create(saved); window.dataEvents.emitDataChanged(['learning-path']); } });
     } catch (err) {
       console.error('[LearningPathTopicView] Failed to delete topic:', err);
     }

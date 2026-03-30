@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { AlertTriangle, Bell, Check, Copy, Loader2, Pencil, Repeat, Trash2, Undo2 } from 'lucide-react';
 import { useCalendar } from '../context/calendar-context';
+import { useUndo } from '../context/undo-context';
 
 // --- Reminder type (from DB) ---
 
@@ -424,6 +425,7 @@ function positionEvents(events: CalendarEvent[], hourHeight: number): Positioned
 
 export function Calendar() {
   const { selectedDate, setSelectedDate } = useCalendar();
+  const { pushUndo } = useUndo();
   const [view, setView] = useState<ViewMode>('week');
   const [viewYear, setViewYear] = useState(() => new Date(selectedDate).getFullYear());
   const [viewMonth, setViewMonth] = useState(() => new Date(selectedDate).getMonth());
@@ -742,19 +744,24 @@ export function Calendar() {
       setRecurringDeleteChoice(target);
       return;
     }
+    const saved = events.find((e) => e.id === id);
     commitEvents((prev) => prev.filter((e) => e.id !== id));
     setSelectedEvent(null);
     window.db.events.delete(id).catch(() => {});
-  }, [commitEvents, expandedEvents]);
+    if (saved) pushUndo({ label: saved.title, restoreFn: async () => { await window.db.events.create(localEventToDb(saved)); commitEvents((prev) => [...prev, saved]); } });
+  }, [commitEvents, expandedEvents, events, pushUndo]);
 
   // Delete ALL instances of a recurring event
   const deleteRecurringAll = useCallback((event: CalendarEvent) => {
     const parentId = event.isVirtual ? event.id.split('__')[0]! : event.id;
+    const saved = events.find((e) => e.id === parentId);
+    const savedChildren = events.filter((e) => e.recurringParentId === parentId);
     commitEvents((prev) => prev.filter((e) => e.id !== parentId && e.recurringParentId !== parentId));
     window.db.events.delete(parentId).catch(() => {});
     setRecurringDeleteChoice(null);
     setSelectedEvent(null);
-  }, [commitEvents]);
+    if (saved) pushUndo({ label: saved.title, restoreFn: async () => { await window.db.events.create(localEventToDb(saved)); for (const c of savedChildren) await window.db.events.create(localEventToDb(c)); commitEvents((prev) => [...prev, saved, ...savedChildren]); } });
+  }, [commitEvents, events, pushUndo]);
 
   const moveEvent = useCallback((id: string, updates: { date: string; startHour: number; startMin: number; endHour: number; endMin: number }) => {
     // Find the event being moved
@@ -895,9 +902,11 @@ export function Calendar() {
   }, []);
 
   const handleDeleteReminder = useCallback((id: string) => {
+    const saved = reminders.find((r) => r.id === id);
     setSelectedReminder(null);
     window.db.reminders.delete(id).then(() => reloadEvents()).catch(() => {});
-  }, [reloadEvents]);
+    if (saved) pushUndo({ label: saved.title, restoreFn: async () => { await window.db.reminders.create(saved); reloadEvents(); } });
+  }, [reloadEvents, reminders, pushUndo]);
 
   const handleDeselectAll = useCallback(() => {
     setSelectedEvent(null);
@@ -1311,6 +1320,23 @@ function InlineActions({
   isDone?: boolean;
   onToggleDone?: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
+
+  if (confirming) {
+    return (
+      <div
+        data-event-actions
+        className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 shadow-lg z-10"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="text-[11px] text-neutral-400 whitespace-nowrap">Удалить?</span>
+        <button onClick={() => { onDelete(); setConfirming(false); }} className="px-1.5 py-0.5 text-[11px] font-medium bg-red-600 hover:bg-red-500 text-white rounded transition-colors">Да</button>
+        <button onClick={() => setConfirming(false)} className="px-1.5 py-0.5 text-[11px] text-neutral-400 hover:text-neutral-200 transition-colors">Нет</button>
+      </div>
+    );
+  }
+
   return (
     <div
       data-event-actions
@@ -1329,7 +1355,7 @@ function InlineActions({
           {isDone ? <Undo2 size={14} /> : <Check size={14} />}
         </button>
       )}
-      <button onClick={onDelete} className="p-0.5 text-neutral-500 hover:text-red-400 hover:bg-neutral-700 rounded transition-colors" title="Удалить">
+      <button onClick={() => setConfirming(true)} className="p-0.5 text-neutral-500 hover:text-red-400 hover:bg-neutral-700 rounded transition-colors" title="Удалить">
         <Trash2 size={14} />
       </button>
     </div>

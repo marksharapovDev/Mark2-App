@@ -12,6 +12,8 @@ import {
   Loader2, UtensilsCrossed, ClipboardList, Target, Pencil, Check,
   BarChart3, TrendingUp, TrendingDown, CheckSquare, Square,
 } from 'lucide-react';
+import { ConfirmDelete } from '../components/confirm-delete';
+import { useUndo } from '../context/undo-context';
 
 // --- Types ---
 
@@ -813,12 +815,16 @@ function TrainingProgramView({ onChanged }: { onChanged: () => void }) {
     } catch (err) { console.error('Failed to add day:', err); }
   }, [activeProgram, days.length, loadPrograms]);
 
+  const { pushUndo } = useUndo();
+
   const handleDeleteDay = useCallback(async (dayId: string) => {
     try {
+      const saved = days.find((d) => d.id === dayId);
       await window.db.health.programDays.delete(dayId);
       loadPrograms();
+      if (saved) pushUndo({ label: saved.dayName, restoreFn: async () => { await window.db.health.programDays.create(saved); loadPrograms(); } });
     } catch (err) { console.error('Failed to delete day:', err); }
-  }, [loadPrograms]);
+  }, [loadPrograms, days, pushUndo]);
 
   const startEditDay = useCallback((day: TrainingProgramDay) => {
     setEditingDay(day.id);
@@ -896,7 +902,7 @@ function TrainingProgramView({ onChanged }: { onChanged: () => void }) {
               ) : (
                 <button onClick={() => startEditDay(day)} className="text-xs text-neutral-500 hover:text-neutral-300 flex items-center gap-1"><Pencil size={12} /> Редактировать</button>
               )}
-              <button onClick={() => handleDeleteDay(day.id)} className="text-xs text-neutral-600 hover:text-red-400"><Trash2 size={12} /></button>
+              <ConfirmDelete label={day.dayName} onConfirm={() => handleDeleteDay(day.id)} variant="icon" iconSize={12} className="text-xs text-neutral-600 hover:text-red-400" />
             </div>
 
             {editingDay === day.id ? (
@@ -983,10 +989,16 @@ function NutritionView({ todayMeals, activePlan, onChanged }: {
     finally { setSaving(false); }
   }, [addingMeal, mealTitle, mealCalories, mealProtein, mealCarbs, mealFat, onChanged]);
 
+  const { pushUndo } = useUndo();
+
   const handleDeleteMeal = useCallback(async (id: string) => {
-    try { await window.db.health.meals.delete(id); onChanged(); }
-    catch (err) { console.error('Failed to delete meal:', err); }
-  }, [onChanged]);
+    try {
+      const saved = todayMeals.find((m) => m.id === id);
+      await window.db.health.meals.delete(id);
+      onChanged();
+      if (saved) pushUndo({ label: saved.title ?? 'приём пищи', restoreFn: async () => { await window.db.health.meals.create(saved); onChanged(); } });
+    } catch (err) { console.error('Failed to delete meal:', err); }
+  }, [onChanged, todayMeals, pushUndo]);
 
   const mealTypes: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
@@ -1078,8 +1090,9 @@ function NutritionView({ todayMeals, activePlan, onChanged }: {
                     {meal.proteinG != null && <span className="text-neutral-500">Б{meal.proteinG}</span>}
                     {meal.carbsG != null && <span className="text-neutral-500">У{meal.carbsG}</span>}
                     {meal.fatG != null && <span className="text-neutral-500">Ж{meal.fatG}</span>}
-                    <button onClick={() => handleDeleteMeal(meal.id)}
-                      className="text-neutral-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={12} /></button>
+                    <span className="opacity-0 group-hover:opacity-100 transition-all">
+                      <ConfirmDelete label={meal.title ?? 'приём пищи'} onConfirm={() => handleDeleteMeal(meal.id)} variant="icon" iconSize={12} className="text-neutral-700 hover:text-red-400" />
+                    </span>
                   </div>
                 ))}
               </div>
@@ -1501,11 +1514,17 @@ function WorkoutDetailView({ workoutId, onBack, onDeleted, onUpdated }: {
     } catch (err) { console.error('Failed to update workout:', err); }
   }, [workout, editTitle, editNotes, editDuration, editMood, loadWorkout, onUpdated]);
 
+  const { pushUndo } = useUndo();
+
   const handleDelete = useCallback(async () => {
     if (!workout) return;
-    try { await window.db.health.workouts.delete(workout.id); onDeleted(); }
-    catch (err) { console.error('Failed to delete workout:', err); }
-  }, [workout, onDeleted]);
+    try {
+      const saved = { ...workout };
+      await window.db.health.workouts.delete(workout.id);
+      onDeleted();
+      pushUndo({ label: saved.title ?? 'тренировка', restoreFn: async () => { await window.db.health.workouts.create(saved); onDeleted(); } });
+    } catch (err) { console.error('Failed to delete workout:', err); }
+  }, [workout, onDeleted, pushUndo]);
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 size={24} className="animate-spin text-neutral-500" /></div>;
   if (!workout) return <div className="text-neutral-500 text-sm">Тренировка не найдена. <button onClick={onBack} className="ml-2 text-blue-400 hover:underline">Назад</button></div>;
@@ -1582,7 +1601,7 @@ function WorkoutDetailView({ workoutId, onBack, onDeleted, onUpdated }: {
         ) : (
           <>
             <button onClick={() => setEditing(true)} className="px-4 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm text-neutral-300 transition-colors">Редактировать</button>
-            <button onClick={handleDelete} className="px-4 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-sm text-red-400 transition-colors flex items-center gap-1"><Trash2 size={14} /> Удалить</button>
+            <ConfirmDelete label={workout?.title ?? 'тренировку'} onConfirm={handleDelete} variant="button" />
           </>
         )}
       </div>
