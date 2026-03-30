@@ -250,7 +250,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
         });
       }
     }
-  }, [input, isThinking, activeSessionId, agent]);
+  }, [input, isThinking, activeSessionId, agent, attachedFiles]);
 
   // New chat — show empty chat instantly, create in DB in background
   const handleNewChat = useCallback(async () => {

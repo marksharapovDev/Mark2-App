@@ -141,7 +141,7 @@ export function ChatPopout() {
       setIsThinking(false);
       inputRef.current?.focus();
     }
-  }, [input, isThinking, sessionId, agent]);
+  }, [input, isThinking, sessionId, agent, attachedFiles]);
 
   const handlePopin = useCallback(async () => {
     await window.chat.popin();

@@ -563,12 +563,14 @@ async function _sendMessageInner(
   // Claude Code is smart enough to ask questions in consult mode and execute in execute mode
   if (mode !== 'auto') {
     console.log(`[HybridEngine] Explicit mode "${mode}", routing to Claude Code`);
+    if (imageAnalysis) onStatus?.('Выполняет задачу...');
     return executeViaClaudeCode(agent, sessionId, enrichPrompt(cleanMessage), crossContext, mode, questionRound, onChunk, codeFiles, signal);
   }
 
   // Data action → straight to Claude Code (no Level 2 classification)
   if (isDataAction(cleanMessage)) {
     console.log('[HybridEngine] Data action detected, routing to Claude Code');
+    if (imageAnalysis) onStatus?.('Выполняет задачу...');
     return executeViaClaudeCode(agent, sessionId, enrichPrompt(cleanMessage), crossContext, mode, questionRound, onChunk, codeFiles, signal);
   }
 
@@ -579,12 +581,13 @@ async function _sendMessageInner(
       // If images attached but we deferred analysis (routeHint was 'maybe'), do it now
       if (imagesAttached && !imageAnalysis) {
         console.log('[HybridEngine] Sending status: Анализирует изображение...');
-    onStatus?.('Анализирует изображение...');
+        onStatus?.('Анализирует изображение...');
         imageAnalysis = await analyzeImagesViaApi(agent, sessionId, files!, signal);
       }
       const taskCodeFiles = imageAnalysis && files
         ? { textContent: files.textContent, images: [] as ProcessedFiles['images'], unsupported: files.unsupported }
         : files;
+      if (imageAnalysis) onStatus?.('Выполняет задачу...');
       return executeViaClaudeCode(agent, sessionId, enrichPrompt(cleanMessage), crossContext, mode, questionRound, onChunk, taskCodeFiles, signal);
     }
   }
@@ -604,12 +607,13 @@ async function _sendMessageInner(
     // If images attached and API escalates to Claude Code, do two-stage
     if (imagesAttached && !imageAnalysis) {
       console.log('[HybridEngine] Sending status: Анализирует изображение...');
-    onStatus?.('Анализирует изображение...');
+      onStatus?.('Анализирует изображение...');
       imageAnalysis = await analyzeImagesViaApi(agent, sessionId, files!, signal);
     }
     const escalateFiles = imageAnalysis && files
       ? { textContent: files.textContent, images: [] as ProcessedFiles['images'], unsupported: files.unsupported }
       : files;
+    if (imageAnalysis) onStatus?.('Выполняет задачу...');
     return executeViaClaudeCode(agent, sessionId, enrichPrompt(taskDescription || cleanMessage), crossContext, mode, questionRound, onChunk, escalateFiles, signal);
   }
 
