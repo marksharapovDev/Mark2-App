@@ -4,6 +4,7 @@ import { Mic, Paperclip, ArrowUp, Square } from 'lucide-react';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { FileAttachmentCard, parseBotFileLinks } from '../components/FileAttachmentCard';
 import { UserMessageActions, BotMessageActions, InterruptedBanner, stripInterrupted } from '../components/MessageActions';
+import { ThinkingIndicator } from '../components/ThinkingIndicator';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
 
@@ -307,7 +308,7 @@ export function ChatPopout() {
             </div>
           </div>
         )}
-        {isThinking && !streamingText && <div className="text-neutral-500 text-sm py-1"><span className="animate-pulse">{statusText || 'Thinking...'}</span></div>}
+        {isThinking && !streamingText && <ThinkingIndicator statusText={statusText} />}
         <div ref={messagesEndRef} />
       </div>
 

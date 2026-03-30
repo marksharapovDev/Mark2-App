@@ -3,6 +3,7 @@ import { Mic, Paperclip, ArrowUp, Square } from 'lucide-react';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { FileAttachmentCard, parseBotFileLinks } from '../FileAttachmentCard';
 import { UserMessageActions, BotMessageActions, InterruptedBanner, stripInterrupted } from '../MessageActions';
+import { ThinkingIndicator } from '../ThinkingIndicator';
 
 type AgentName = 'dev' | 'teaching' | 'study' | 'health' | 'finance' | 'general';
 
@@ -660,9 +661,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
             )}
 
             {isThinking && !streamingText && (
-              <div className="text-neutral-500 text-xs py-1">
-                <span className="animate-pulse">{statusText || 'Thinking...'}</span>
-              </div>
+              <ThinkingIndicator statusText={statusText} />
             )}
 
             <div ref={messagesEndRef} />
