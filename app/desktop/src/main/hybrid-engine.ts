@@ -388,6 +388,7 @@ async function analyzeImagesViaApi(
     undefined, undefined, undefined,
     processedFiles, signal,
   );
+  console.log('[HybridEngine] Vision analysis result:', analysis ? analysis.substring(0, 300) : 'EMPTY');
   return analysis;
 }
 
@@ -545,7 +546,9 @@ async function _sendMessageInner(
   // Note: textContent is NOT included here — it's passed via codeFiles to executeViaClaudeCode
   const enrichPrompt = (prompt: string): string => {
     if (!imageAnalysis) return prompt;
-    return `${prompt}\n\n[Описание прикреплённого изображения от vision-модели]:\n${imageAnalysis}`;
+    const enriched = `${prompt}\n\n[Описание прикреплённого изображения от vision-модели]:\n${imageAnalysis}`;
+    console.log('[HybridEngine] Enriched prompt (first 300 chars):', enriched.substring(0, 300));
+    return enriched;
   };
 
   // Helper: files without images (text only) for Claude Code after vision stage
