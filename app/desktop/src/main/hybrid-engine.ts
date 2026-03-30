@@ -371,6 +371,45 @@ function proposesTask(response: string): boolean {
 }
 
 // Active abort controllers per session
+// --- Two-stage image processing ---
+
+const VISION_PROMPT =
+  'Опиши подробно что на этом изображении. Если это задача, код, скриншот, диаграмма — опиши максимально детально содержимое, текст, структуру.';
+
+async function analyzeImagesViaApi(
+  agent: AgentName,
+  sessionId: string,
+  processedFiles: ProcessedFiles,
+  signal?: AbortSignal,
+): Promise<string> {
+  console.log('[HybridEngine] Images detected — two-stage: vision analysis → Claude Code');
+  const analysis = await sendToApi(
+    agent, sessionId, VISION_PROMPT,
+    undefined, undefined, undefined,
+    processedFiles, signal,
+  );
+  return analysis;
+}
+
+function hasImages(files?: ProcessedFiles): boolean {
+  return !!files && files.images.length > 0;
+}
+
+/** Check if the message will route to Claude Code (without actually routing) */
+function willRouteToClaudeCode(
+  cleanMessage: string,
+  mode: InteractionMode,
+): 'yes' | 'maybe' | 'no' {
+  // Explicit execute/consult → always Claude Code
+  if (mode !== 'auto') return 'yes';
+  // Data action → always Claude Code
+  if (isDataAction(cleanMessage)) return 'yes';
+  // Heavy task keywords → needs classification (might go to Claude Code)
+  if (maybeHeavyTask(cleanMessage)) return 'maybe';
+  // Otherwise → API
+  return 'no';
+}
+
 const abortControllers = new Map<string, AbortController>();
 
 // Track which sessions have in-flight requests
@@ -489,25 +528,63 @@ async function _sendMessageInner(
   }
   pendingTask.delete(sessionId);
 
+  // --- Two-stage image processing ---
+  // If images are attached and message routes to Claude Code,
+  // first analyze images via API (vision), then pass description to Claude Code.
+  const imagesAttached = hasImages(files);
+  let imageAnalysis: string | undefined;
+  const routeHint = willRouteToClaudeCode(cleanMessage, mode);
+
+  if (imagesAttached && routeHint === 'yes') {
+    // Definite Claude Code route → analyze images now
+    onChunk?.('Анализирует изображение...');
+    imageAnalysis = await analyzeImagesViaApi(agent, sessionId, files!, signal);
+  }
+
+  // Helper: build enriched prompt with image description for Claude Code
+  // Note: textContent is NOT included here — it's passed via codeFiles to executeViaClaudeCode
+  const enrichPrompt = (prompt: string): string => {
+    if (!imageAnalysis) return prompt;
+    return `${prompt}\n\n[Описание прикреплённого изображения от vision-модели]:\n${imageAnalysis}`;
+  };
+
+  // Helper: files without images (text only) for Claude Code after vision stage
+  const codeFiles = imageAnalysis && files
+    ? { textContent: files.textContent, images: [] as ProcessedFiles['images'], unsupported: files.unsupported }
+    : files;
+
   // Explicit mode (execute/consult) → always Claude Code
   // Claude Code is smart enough to ask questions in consult mode and execute in execute mode
   if (mode !== 'auto') {
     console.log(`[HybridEngine] Explicit mode "${mode}", routing to Claude Code`);
-    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk, files, signal);
+    return executeViaClaudeCode(agent, sessionId, enrichPrompt(cleanMessage), crossContext, mode, questionRound, onChunk, codeFiles, signal);
   }
 
   // Data action → straight to Claude Code (no Level 2 classification)
   if (isDataAction(cleanMessage)) {
     console.log('[HybridEngine] Data action detected, routing to Claude Code');
-    return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk, files, signal);
+    return executeViaClaudeCode(agent, sessionId, enrichPrompt(cleanMessage), crossContext, mode, questionRound, onChunk, codeFiles, signal);
   }
 
   // Level 1 + 2: heavy tasks that need classification
   if (maybeHeavyTask(cleanMessage)) {
     const classification = await classifyMessage(cleanMessage);
     if (classification === 'TASK') {
-      return executeViaClaudeCode(agent, sessionId, cleanMessage, crossContext, mode, questionRound, onChunk, files, signal);
+      // If images attached but we deferred analysis (routeHint was 'maybe'), do it now
+      if (imagesAttached && !imageAnalysis) {
+        onChunk?.('Анализирует изображение...');
+        imageAnalysis = await analyzeImagesViaApi(agent, sessionId, files!, signal);
+      }
+      const taskCodeFiles = imageAnalysis && files
+        ? { textContent: files.textContent, images: [] as ProcessedFiles['images'], unsupported: files.unsupported }
+        : files;
+      return executeViaClaudeCode(agent, sessionId, enrichPrompt(cleanMessage), crossContext, mode, questionRound, onChunk, taskCodeFiles, signal);
     }
+  }
+
+  // Chat route → send directly to API with images (single-stage, vision works natively)
+  if (imagesAttached) {
+    console.log('[HybridEngine] Images detected — single-stage: direct to API');
   }
 
   const apiResponse = await sendToApi(agent, sessionId, cleanMessage, crossContext, getModePrompt(mode, questionRound), onChunk, files, signal);
@@ -517,7 +594,15 @@ async function _sendMessageInner(
 
   if (apiResponse.includes(EXECUTE_MARKER)) {
     const taskDescription = apiResponse.replace(EXECUTE_MARKER, '').trim();
-    return executeViaClaudeCode(agent, sessionId, taskDescription || cleanMessage, crossContext, mode, questionRound, onChunk, files, signal);
+    // If images attached and API escalates to Claude Code, do two-stage
+    if (imagesAttached && !imageAnalysis) {
+      onChunk?.('Анализирует изображение...');
+      imageAnalysis = await analyzeImagesViaApi(agent, sessionId, files!, signal);
+    }
+    const escalateFiles = imageAnalysis && files
+      ? { textContent: files.textContent, images: [] as ProcessedFiles['images'], unsupported: files.unsupported }
+      : files;
+    return executeViaClaudeCode(agent, sessionId, enrichPrompt(taskDescription || cleanMessage), crossContext, mode, questionRound, onChunk, escalateFiles, signal);
   }
 
   // Process AI actions in the response
