@@ -60,6 +60,9 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
 
+  const attachedFilesRef = useRef<string[]>([]);
+  useEffect(() => { attachedFilesRef.current = attachedFiles; }, [attachedFiles]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isDragging = useRef(false);
@@ -195,8 +198,9 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
       mediaRecorderRef.current.stop();
     }
 
-    // Capture files and clear state
-    const filesToSend = attachedFiles.length > 0 ? [...attachedFiles] : undefined;
+    // Capture files from ref (immune to stale closure)
+    const currentFiles = [...attachedFilesRef.current];
+    const filesToSend = currentFiles.length > 0 ? currentFiles : undefined;
 
     setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: trimmed, filePaths: filesToSend, timestamp: new Date().toISOString() }]);
     setInput('');
@@ -250,7 +254,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
         });
       }
     }
-  }, [input, isThinking, activeSessionId, agent, attachedFiles]);
+  }, [input, isThinking, activeSessionId, agent]);
 
   // New chat — show empty chat instantly, create in DB in background
   const handleNewChat = useCallback(async () => {
