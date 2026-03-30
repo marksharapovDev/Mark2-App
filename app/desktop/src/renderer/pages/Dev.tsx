@@ -102,8 +102,6 @@ export function Dev() {
   const [newProjectName, setNewProjectName] = useState('');
   const [projectTab, setProjectTab] = useState<ProjectTab>('kanban');
   const [kanbanFormStatus, setKanbanFormStatus] = useState<DevTaskStatus | null>(null);
-  const [kanbanCols, setKanbanCols] = useState(3);
-  const kanbanRef = useRef<HTMLDivElement>(null);
   const [timeEntries, setTimeEntries] = useState<DevTimeEntry[]>([]);
 
   // Sidebar resize
@@ -225,20 +223,6 @@ export function Dev() {
   const handleUpdateTaskStatus = useCallback(async (taskId: string, status: DevTaskStatus) => {
     await window.db.dev.tasks.update(taskId, { status });
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status } : t));
-  }, []);
-
-  // Kanban responsive columns
-  useEffect(() => {
-    const el = kanbanRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[0].contentRect.width;
-      if (width >= 900) setKanbanCols(3);
-      else if (width >= 500) setKanbanCols(2);
-      else setKanbanCols(1);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
   }, []);
 
   const handleKanbanCreateTask = useCallback(async (data: Record<string, unknown>) => {
@@ -554,7 +538,7 @@ export function Dev() {
 
               {/* Tab content */}
               {projectTab === 'kanban' && (
-                <div ref={kanbanRef} className="flex-1 min-h-0 overflow-y-auto p-4">
+                <div className="flex-1 min-h-0 overflow-y-auto p-4">
                   <div className="flex items-center justify-between mb-3 px-1">
                     <span className="text-xs text-neutral-600">{totalCount} задач</span>
                     <div className="flex items-center gap-2">
@@ -574,8 +558,8 @@ export function Dev() {
                     </div>
                   </div>
                   <div
-                    className="grid gap-4"
-                    style={{ gridTemplateColumns: `repeat(${kanbanCols}, minmax(0, 1fr))` }}
+                    className="grid gap-3"
+                    style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}
                   >
                     {STATUS_COLUMNS.map((col) => (
                       <KanbanColumn
