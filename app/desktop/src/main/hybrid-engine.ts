@@ -436,13 +436,14 @@ export async function sendMessage(
   message: string,
   onChunk?: (accumulated: string) => void,
   files?: ProcessedFiles,
+  onStatus?: (status: string) => void,
 ): Promise<HybridResponse> {
   // Create abort controller for this request
   const controller = new AbortController();
   abortControllers.set(sessionId, controller);
   activeSessions.add(sessionId);
   try {
-  return await _sendMessageInner(agent, sessionId, message, onChunk, files, controller);
+  return await _sendMessageInner(agent, sessionId, message, onChunk, files, controller, onStatus);
   } finally {
     activeSessions.delete(sessionId);
     abortControllers.delete(sessionId);
@@ -456,6 +457,7 @@ async function _sendMessageInner(
   onChunk: ((accumulated: string) => void) | undefined,
   files: ProcessedFiles | undefined,
   controller: AbortController,
+  onStatus?: (status: string) => void,
 ): Promise<HybridResponse> {
   const { signal } = controller;
   // Detect interaction mode before anything else
@@ -538,7 +540,8 @@ async function _sendMessageInner(
 
   if (imagesAttached && routeHint === 'yes') {
     // Definite Claude Code route → analyze images now
-    onChunk?.('Анализирует изображение...');
+    console.log('[HybridEngine] Sending status: Анализирует изображение...');
+    onStatus?.('Анализирует изображение...');
     imageAnalysis = await analyzeImagesViaApi(agent, sessionId, files!, signal);
   }
 
@@ -575,7 +578,8 @@ async function _sendMessageInner(
     if (classification === 'TASK') {
       // If images attached but we deferred analysis (routeHint was 'maybe'), do it now
       if (imagesAttached && !imageAnalysis) {
-        onChunk?.('Анализирует изображение...');
+        console.log('[HybridEngine] Sending status: Анализирует изображение...');
+    onStatus?.('Анализирует изображение...');
         imageAnalysis = await analyzeImagesViaApi(agent, sessionId, files!, signal);
       }
       const taskCodeFiles = imageAnalysis && files
@@ -599,7 +603,8 @@ async function _sendMessageInner(
     const taskDescription = apiResponse.replace(EXECUTE_MARKER, '').trim();
     // If images attached and API escalates to Claude Code, do two-stage
     if (imagesAttached && !imageAnalysis) {
-      onChunk?.('Анализирует изображение...');
+      console.log('[HybridEngine] Sending status: Анализирует изображение...');
+    onStatus?.('Анализирует изображение...');
       imageAnalysis = await analyzeImagesViaApi(agent, sessionId, files!, signal);
     }
     const escalateFiles = imageAnalysis && files

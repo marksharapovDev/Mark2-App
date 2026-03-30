@@ -120,8 +120,12 @@ export function registerIpcHandlers(): void {
       }
     };
 
+    const onStatus = (status: string) => {
+      sendToRenderer('chat:status-update', sessionId, status);
+    };
+
     try {
-      const result = await sendMessage(agent, sessionId, message, onChunk, files);
+      const result = await sendMessage(agent, sessionId, message, onChunk, files, onStatus);
       sendToRenderer('chat:stream-end', sessionId);
       sendToRenderer('chat:status-update', sessionId, '');
       return result;
