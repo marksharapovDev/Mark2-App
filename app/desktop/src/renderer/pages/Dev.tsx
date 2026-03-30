@@ -234,7 +234,7 @@ export function Dev() {
     const observer = new ResizeObserver((entries) => {
       const width = entries[0].contentRect.width;
       if (width >= 900) setKanbanCols(3);
-      else if (width >= 600) setKanbanCols(2);
+      else if (width >= 500) setKanbanCols(2);
       else setKanbanCols(1);
     });
     observer.observe(el);
@@ -554,7 +554,7 @@ export function Dev() {
 
               {/* Tab content */}
               {projectTab === 'kanban' && (
-                <div ref={kanbanRef} className="flex-1 overflow-y-auto p-4">
+                <div ref={kanbanRef} className="flex-1 min-h-0 overflow-y-auto p-4">
                   <div className="flex items-center justify-between mb-3 px-1">
                     <span className="text-xs text-neutral-600">{totalCount} задач</span>
                     <div className="flex items-center gap-2">
@@ -1326,7 +1326,7 @@ function KanbanColumn({ status, label, tasks, onDragStart, onDragOver, onDrop, o
         </button>
       </div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto scrollbar-thin min-h-[100px] rounded-lg bg-neutral-900/30 p-2">
+      <div className="space-y-2 min-h-[100px] rounded-lg bg-neutral-900/30 p-2">
         {/* Inline quick add */}
         {quickAdd && (
           <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-2 space-y-1.5">
@@ -1593,7 +1593,7 @@ function TaskCard({ task, onClick, onDragStart }: {
       <div className="flex items-start gap-2">
         <GripVertical size={14} className="text-neutral-700 mt-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
         <div className="flex-1 min-w-0">
-          <div className="text-sm text-neutral-200 mb-1.5">{task.title}</div>
+          <div className="text-sm text-neutral-200 mb-1.5 break-words">{task.title}</div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${priority.cls}`}>
               {priority.label}
