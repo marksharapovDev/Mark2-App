@@ -918,6 +918,129 @@ export function registerIpcHandlers(): void {
     }
   });
 
+  // === Teaching file operations ===
+
+  const teachingBasePath = path.resolve(os.homedir(), 'mark2', 'agents', 'teaching', 'context');
+  const teachingStudentsPath = path.resolve(teachingBasePath, 'students');
+  const teachingSharedPath = path.resolve(teachingBasePath, 'shared');
+
+  function ensureStudentFoldersIpc(studentSlug: string): string {
+    const base = path.resolve(teachingStudentsPath, studentSlug);
+    for (const dir of ['homework', 'lessons', 'notes']) {
+      fs.mkdirSync(path.resolve(base, dir), { recursive: true });
+    }
+    return base;
+  }
+
+  function ensureSharedFolders(): void {
+    for (const dir of ['cheatsheets', 'templates']) {
+      fs.mkdirSync(path.resolve(teachingSharedPath, dir), { recursive: true });
+    }
+  }
+
+  ipcMain.handle('teaching:files:tree', async (_event, studentSlug: string) => {
+    const dirPath = path.resolve(teachingStudentsPath, studentSlug);
+    ensureStudentFoldersIpc(studentSlug);
+    return buildTree(dirPath);
+  });
+
+  ipcMain.handle('teaching:files:all-tree', async () => {
+    try {
+      fs.mkdirSync(teachingStudentsPath, { recursive: true });
+      ensureSharedFolders();
+      const studentEntries = fs.readdirSync(teachingStudentsPath, { withFileTypes: true });
+      const studentNodes = studentEntries
+        .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((e) => ({
+          name: e.name,
+          path: path.resolve(teachingStudentsPath, e.name),
+          isDir: true,
+          children: buildTree(path.resolve(teachingStudentsPath, e.name)),
+        }));
+      const sharedNode = {
+        name: 'shared',
+        path: teachingSharedPath,
+        isDir: true,
+        children: buildTree(teachingSharedPath),
+      };
+      return [...studentNodes, sharedNode];
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.handle('teaching:files:read', async (_event, filePath: string) => {
+    try {
+      return fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      return '';
+    }
+  });
+
+  ipcMain.handle('teaching:files:write', async (_event, filePath: string, content: string) => {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content, 'utf-8');
+  });
+
+  ipcMain.handle('teaching:files:create', async (_event, studentSlug: string, folder: string, filename: string) => {
+    const dirPath = path.resolve(teachingStudentsPath, studentSlug, folder);
+    fs.mkdirSync(dirPath, { recursive: true });
+    const filePath = path.resolve(dirPath, filename);
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, '', 'utf-8');
+    }
+    return { name: filename, path: filePath };
+  });
+
+  ipcMain.handle('teaching:files:delete', async (_event, filePath: string) => {
+    try {
+      fs.unlinkSync(filePath);
+    } catch { /* ignore */ }
+  });
+
+  ipcMain.handle('teaching:files:rename', async (_event, oldPath: string, newPath: string) => {
+    fs.renameSync(oldPath, newPath);
+  });
+
+  ipcMain.handle('teaching:files:copy', async (_event, sourcePath: string, destFolder: string) => {
+    const fileName = path.basename(sourcePath);
+    const destPath = path.resolve(destFolder, fileName);
+    fs.mkdirSync(destFolder, { recursive: true });
+    fs.copyFileSync(sourcePath, destPath);
+    return { name: fileName, path: destPath };
+  });
+
+  ipcMain.handle('teaching:files:ensure-student', async (_event, studentSlug: string) => {
+    ensureStudentFoldersIpc(studentSlug);
+  });
+
+  // Teaching file watcher
+  const teachingFsWatchers = new Map<string, fs.FSWatcher>();
+
+  ipcMain.handle('teaching:files:watch-start', async (_event, studentSlug: string) => {
+    if (teachingFsWatchers.has(studentSlug)) return;
+    const dirPath = path.resolve(teachingStudentsPath, studentSlug);
+    fs.mkdirSync(dirPath, { recursive: true });
+    try {
+      const watcher = fs.watch(dirPath, { recursive: true }, () => {
+        const win = getWindow();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('teaching:files:watch-update', studentSlug);
+        }
+      });
+      teachingFsWatchers.set(studentSlug, watcher);
+    } catch { /* fs.watch not supported or dir missing */ }
+  });
+
+  ipcMain.handle('teaching:files:watch-stop', async (_event, studentSlug: string) => {
+    const watcher = teachingFsWatchers.get(studentSlug);
+    if (watcher) {
+      watcher.close();
+      teachingFsWatchers.delete(studentSlug);
+    }
+  });
+
   ipcMain.handle('claude:stop-session', (_event, sessionId: string) => {
     const proc = cliSessions.get(sessionId);
     if (proc) {

@@ -41,6 +41,25 @@
 - `context/materials/` — учебные материалы по предметам
 - `memory/` — заметки о подходах, что работает для каких учеников
 
+### Файловая система учеников
+
+Для каждого ученика автоматически создаётся папка:
+`context/students/{slug}/` с подпапками:
+- `homework/` — домашние задания
+- `lessons/` — подготовленные уроки, материалы
+- `notes/` — заметки по ученику
+
+slug = транслитерация имени: "Лиза Морозова" → "liza_morozova"
+
+Общие файлы:
+- `context/shared/cheatsheets/` — шпаргалки
+- `context/shared/templates/` — шаблоны
+
+**Правила сохранения:**
+- При создании домашки → сохраняй в `context/students/{slug}/homework/`
+- При подготовке урока → в `context/students/{slug}/lessons/`
+- При заметках → в `context/students/{slug}/notes/`
+
 ## Инструменты (Actions)
 
 Ты можешь выполнять действия с данными. Для этого вставь в ответ команду:
@@ -129,10 +148,12 @@
 После выполнения действия сообщи пользователю что сделано.
 
 Когда создаёшь ДЗ, план урока или материал:
-1. Сохрани файл с расширением .docx (ВКЛЮЧИ ИМЯ УЧЕНИКА в название!):
-   `[ACTION:save_file]{"path":"agents/teaching/context/materials/dz_liza_morozova_drobi.docx","content":"# Домашнее задание: Дроби\n\n**Ученик:** Лиза Морозова\n**Дата:** 2026-03-25\n\n## Задания\n\n1. Первое задание...\n2. Второе задание..."}[/ACTION]`
+1. Сохрани файл в папку ученика (ВКЛЮЧИ ИМЯ УЧЕНИКА в название!):
+   - ДЗ: `[ACTION:save_file]{"path":"agents/teaching/context/students/liza_morozova/homework/dz_drobi.docx","content":"# Домашнее задание: Дроби\n\n**Ученик:** Лиза Морозова\n**Дата:** 2026-03-25\n\n## Задания\n\n1. Первое задание...\n2. Второе задание..."}[/ACTION]`
+   - Урок: `[ACTION:save_file]{"path":"agents/teaching/context/students/liza_morozova/lessons/urok_drobi.md","content":"..."}[/ACTION]`
+   - Заметки: `[ACTION:save_file]{"path":"agents/teaching/context/students/liza_morozova/notes/zametka.md","content":"..."}[/ACTION]`
 2. Прикрепи к ученику (entityId НЕ НУЖЕН — система найдёт по имени в файле):
-   `[ACTION:attach_file]{"entityType":"student","filename":"dz_liza_morozova_drobi.docx","filepath":"agents/teaching/context/materials/dz_liza_morozova_drobi.docx","fileType":"docx","category":"homework"}[/ACTION]`
+   `[ACTION:attach_file]{"entityType":"student","filename":"dz_drobi.docx","filepath":"agents/teaching/context/students/liza_morozova/homework/dz_drobi.docx","fileType":"docx","category":"homework"}[/ACTION]`
 
 ВАЖНО:
 - Всегда используй расширение .docx — система автоматически конвертирует markdown в Word

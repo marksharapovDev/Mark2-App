@@ -294,6 +294,23 @@ interface FileTreeNode {
   children?: FileTreeNode[];
 }
 
+interface TeachingAPI {
+  files: {
+    tree: (studentSlug: string) => Promise<FileTreeNode[]>;
+    allTree: () => Promise<FileTreeNode[]>;
+    read: (filePath: string) => Promise<string>;
+    write: (filePath: string, content: string) => Promise<void>;
+    create: (studentSlug: string, folder: string, filename: string) => Promise<StudyFileEntry>;
+    delete: (filePath: string) => Promise<void>;
+    rename: (oldPath: string, newPath: string) => Promise<void>;
+    copy: (sourcePath: string, destFolder: string) => Promise<StudyFileEntry>;
+    ensureStudent: (studentSlug: string) => Promise<void>;
+    watchStart: (studentSlug: string) => Promise<void>;
+    watchStop: (studentSlug: string) => Promise<void>;
+    onWatchUpdate: (callback: (studentSlug: string) => void) => () => void;
+  };
+}
+
 interface StudyAPI {
   files: {
     list: (subjectSlug: string, folder: string) => Promise<StudyFileEntry[]>;
@@ -319,6 +336,7 @@ interface Window {
   db: DbAPI;
   tasks: TasksAPI;
   study: StudyAPI;
+  teaching: TeachingAPI;
   dataEvents: DataEventsAPI;
   electronAPI: ElectronAPI;
 }

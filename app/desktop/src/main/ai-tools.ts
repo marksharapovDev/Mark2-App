@@ -93,6 +93,21 @@ function ensureSubjectFolders(subjectSlug: string): string {
   return base;
 }
 
+function ensureStudentFolders(studentName: string): string {
+  const slug = toSubjectSlug(studentName); // reuse cyr→lat transliteration
+  const home = os.homedir();
+  const base = resolve(home, 'mark2', 'agents', 'teaching', 'context', 'students', slug);
+  for (const dir of ['homework', 'lessons', 'notes']) {
+    mkdirSync(resolve(base, dir), { recursive: true });
+  }
+  // Also ensure shared folders
+  const shared = resolve(home, 'mark2', 'agents', 'teaching', 'context', 'shared');
+  for (const dir of ['cheatsheets', 'templates']) {
+    mkdirSync(resolve(shared, dir), { recursive: true });
+  }
+  return base;
+}
+
 /**
  * Try to extract a student name from a filename like "dz_liza_morozova_drobi.md"
  * and look them up in the DB.
@@ -545,6 +560,9 @@ const AI_TOOLS: Record<string, ActionHandler> = {
   // Students
   create_student: async (params) => {
     const result = await db.createStudent(params);
+    // Create folder structure for the student
+    const name = String(params.name ?? '');
+    if (name) ensureStudentFolders(name);
     return { success: true, message: `Ученик добавлен: ${params.name}`, entity: 'students', data: result as unknown as Record<string, unknown> };
   },
   update_student: async (params) => {

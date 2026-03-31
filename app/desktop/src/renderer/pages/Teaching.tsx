@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import { useSidebar } from '../context/sidebar-context';
 import type { TaskStatus, LearningPathTopic, LearningPathStatus, StudentRate, Transaction } from '@mark2/shared';
-import { CheckCircle2, RefreshCw, Clock, XCircle, FileText, FileType, FileCode, PenLine, ClipboardList, BarChart3, Loader2, Banknote } from 'lucide-react';
+import { CheckCircle2, RefreshCw, Clock, XCircle, FileText, FileType, FileCode, PenLine, ClipboardList, BarChart3, Loader2, Banknote, Folder, File, ChevronDown, ChevronRight } from 'lucide-react';
 import { useUndo } from '../context/undo-context';
 
 // --- Types ---
@@ -434,6 +434,18 @@ function formatDate(dateStr: string): string {
   return `${parseInt(day, 10)} ${months[parseInt(month, 10)] ?? ''}`;
 }
 
+function toStudentSlug(name: string): string {
+  const CYR: Record<string, string> = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+  };
+  return name.toLowerCase().split('').map((ch) => CYR[ch] ?? ch).join('')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
 // --- Views ---
 
 type MainView =
@@ -446,7 +458,8 @@ type MainView =
   | { kind: 'learning-path' }
   | { kind: 'learning-path-topic'; topicId: string }
   | { kind: 'lessons-history' }
-  | { kind: 'homework-files'; filter: 'pending' | 'completed' | 'all' };
+  | { kind: 'homework-files'; filter: 'pending' | 'completed' | 'all' }
+  | { kind: 'all-files' };
 
 // --- Component ---
 
@@ -817,43 +830,8 @@ export function Teaching() {
                       </>
                     )}
 
-                    {/* Homeworks — DB files */}
-                    <div className="px-3 pt-3 pb-2">
-                      <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                        Домашки
-                        {sidebarHomeworkFiles.filter((f) => f.status === 'pending').length > 0 && (
-                          <span className="text-[10px] font-bold bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full leading-none">
-                            {sidebarHomeworkFiles.filter((f) => f.status === 'pending').length}
-                          </span>
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        {sidebarHomeworkFiles.map((file) => (
-                          <button
-                            key={file.id}
-                            onClick={() => window.electronAPI.openFile(file.filepath)}
-                            className="w-full text-left flex items-center gap-1.5 text-xs text-neutral-400 py-0.5 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
-                          >
-                            <span className="text-[11px] shrink-0">{FILE_ICON.docx}</span>
-                            <span className="truncate group-hover:text-neutral-200 transition-colors">{file.filename}</span>
-                          </button>
-                        ))}
-                        {homeworks.slice(0, 4).map((hw) => (
-                          <button
-                            key={hw.id}
-                            onClick={() => setMainView({ kind: 'homework-detail', homeworkId: hw.id })}
-                            className="w-full text-left flex items-center gap-1.5 text-xs text-neutral-400 py-0.5 px-1 rounded hover:bg-neutral-800/50 transition-colors group"
-                          >
-                            <span className="text-[11px] shrink-0">{HW_STATUS_ICON[hw.status]}</span>
-                            <span className="truncate group-hover:text-neutral-200 transition-colors">{hw.title}</span>
-                            <span className="text-neutral-600 text-[10px] shrink-0 ml-auto">{hw.dueDate.slice(5)}</span>
-                          </button>
-                        ))}
-                        {sidebarHomeworkFiles.length === 0 && homeworks.length === 0 && (
-                          <div className="text-[11px] text-neutral-600">Пока пусто</div>
-                        )}
-                      </div>
-                    </div>
+                    {/* Files — student file tree */}
+                    <SidebarFileTree studentName={student.name} />
 
                     <div className="mx-3 border-t border-neutral-800" />
 
@@ -1065,6 +1043,19 @@ export function Teaching() {
                   ))}
                 </div>
               </div>
+
+              <div className="mx-3 border-t border-neutral-800" />
+
+              {/* All files */}
+              <div className="px-3 pt-3 pb-2">
+                <button
+                  onClick={() => setMainView({ kind: 'all-files' })}
+                  className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 hover:text-neutral-300 transition-colors"
+                >
+                  Все файлы &rarr;
+                </button>
+                <GeneralSidebarFileTree students={students} />
+              </div>
             </div>
           )}
         </aside>
@@ -1184,6 +1175,15 @@ export function Teaching() {
               onReload={() => { if (student) loadLearningPath(student.id); }}
             />
           )}
+          {!loading && mainView.kind === 'all-files' && (
+            <div>
+              <button onClick={() => setMainView({ kind: 'overview' })} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
+                &larr; Назад
+              </button>
+              <h1 className="text-2xl font-bold mb-6">Все файлы</h1>
+              <AllTeachingFilesTree />
+            </div>
+          )}
           {!loading && mainView.kind === 'add-student' && (
             <AddStudentView
               form={newStudent}
@@ -1206,6 +1206,8 @@ export function Teaching() {
                   setStudents((prev) => [mapped, ...prev]);
                   setActiveStudentId(mapped.id);
                   window.chat.setAgentContext('teaching', { studentId: mapped.id });
+                  // Create file system folders for the student
+                  window.teaching.files.ensureStudent(toStudentSlug(newStudent.name));
                 } catch {
                   // DB unavailable, skip
                 }
@@ -1263,6 +1265,7 @@ function StudentOverview({
   const upcomingLessons = lessons.filter((l) => l.status === 'planned').slice(0, 3);
   const lastDoneHomework = homeworks.filter((h) => h.status === 'done').at(-1);
 
+  const [overviewTab, setOverviewTab] = useState<'overview' | 'files'>('overview');
   const [dbFiles, setDbFiles] = useState<Array<{id: string; filename: string; filepath: string; fileType: string; category: string; createdAt: string}>>([]);
 
   // Finance state
@@ -1367,7 +1370,7 @@ function StudentOverview({
   }
 
   return (
-    <div className="max-w-2xl">
+    <div className={overviewTab === 'files' ? '' : 'max-w-2xl'}>
       {/* Student card */}
       <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 shadow-lg shadow-black/20">
         <div className="flex items-start justify-between mb-3">
@@ -1396,6 +1399,29 @@ function StudentOverview({
         )}
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 border-b border-neutral-800 pb-px">
+        {(['overview', 'files'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setOverviewTab(tab)}
+            className={`px-3 py-1.5 rounded-t text-xs font-medium transition-colors ${
+              overviewTab === tab
+                ? 'bg-neutral-800 text-neutral-200 border-b-2 border-blue-500'
+                : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+            }`}
+          >
+            {tab === 'overview' ? 'Путь обучения' : 'Файлы'}
+          </button>
+        ))}
+      </div>
+
+      {overviewTab === 'files' && (
+        <StudentFilesView studentName={student.name} />
+      )}
+
+      {overviewTab === 'overview' && (
+      <>
       {/* Finance: Rate & Balance */}
       <div className="mb-6 bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
@@ -1733,6 +1759,8 @@ function StudentOverview({
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }
@@ -2876,6 +2904,689 @@ function HomeworkFilesView({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// === File Tree Components ===
+
+function SidebarFileTree({ studentName }: { studentName: string }) {
+  const slug = toStudentSlug(studentName);
+  const [tree, setTree] = useState<FileTreeNode[]>([]);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+
+  const loadTree = useCallback(async () => {
+    const result = await window.teaching.files.tree(slug);
+    setTree(result);
+  }, [slug]);
+
+  useEffect(() => {
+    loadTree();
+    window.teaching.files.watchStart(slug);
+    const unsub = window.teaching.files.onWatchUpdate((updatedSlug: string) => {
+      if (updatedSlug === slug) loadTree();
+    });
+    return () => {
+      unsub();
+      window.teaching.files.watchStop(slug);
+    };
+  }, [slug, loadTree]);
+
+  // Auto-expand top-level on first load
+  useEffect(() => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      for (const node of tree) {
+        if (node.isDir) next.add(node.path);
+      }
+      return next;
+    });
+  }, [tree]);
+
+  const toggleExpand = useCallback((path: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const handleFileClick = useCallback((node: FileTreeNode) => {
+    if (node.name.endsWith('.md')) {
+      // Will be handled by main view
+    } else {
+      window.electronAPI.openFile(node.path);
+    }
+  }, []);
+
+  return (
+    <div className="px-3 pt-3 pb-2">
+      <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+        Файлы
+        <button
+          onClick={loadTree}
+          className="ml-auto p-0.5 rounded text-neutral-600 hover:text-neutral-400 transition-colors"
+          title="Обновить"
+        >
+          <RefreshCw size={10} />
+        </button>
+      </div>
+      <div className="space-y-0.5">
+        {tree.map((node) => (
+          <SidebarTreeNode
+            key={node.path}
+            node={node}
+            depth={0}
+            expandedPaths={expandedPaths}
+            toggleExpand={toggleExpand}
+            onFileClick={handleFileClick}
+          />
+        ))}
+        {tree.length === 0 && (
+          <div className="text-[11px] text-neutral-600">Пока пусто</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SidebarTreeNode({
+  node, depth, expandedPaths, toggleExpand, onFileClick,
+}: {
+  node: FileTreeNode;
+  depth: number;
+  expandedPaths: Set<string>;
+  toggleExpand: (path: string) => void;
+  onFileClick: (node: FileTreeNode) => void;
+}) {
+  const isExpanded = expandedPaths.has(node.path);
+  return (
+    <div>
+      <button
+        onClick={() => node.isDir ? toggleExpand(node.path) : onFileClick(node)}
+        className={`w-full text-left flex items-center gap-1 py-0.5 px-1 text-xs rounded transition-colors hover:bg-neutral-800/50
+          ${node.isDir ? 'text-neutral-400' : 'text-neutral-500 hover:text-neutral-300'}`}
+        style={{ paddingLeft: `${depth * 12 + 4}px` }}
+      >
+        {node.isDir ? (
+          <>
+            {isExpanded ? <ChevronDown size={10} className="shrink-0 text-neutral-600" /> : <ChevronRight size={10} className="shrink-0 text-neutral-600" />}
+            <Folder size={12} className="shrink-0 text-yellow-500/70" />
+          </>
+        ) : (
+          <>
+            <span className="w-2.5 shrink-0" />
+            <File size={12} className="shrink-0 text-neutral-600" />
+          </>
+        )}
+        <span className="truncate">{node.name}</span>
+      </button>
+      {node.isDir && isExpanded && node.children && (
+        <div>
+          {node.children.map((child) => (
+            <SidebarTreeNode
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              expandedPaths={expandedPaths}
+              toggleExpand={toggleExpand}
+              onFileClick={onFileClick}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Full file explorer for StudentOverview Files tab ---
+
+function TeachingFileTreeNode({
+  node, depth, onFileClick, onDrop, expandedPaths, toggleExpand,
+  contextMenu, setContextMenu,
+}: {
+  node: FileTreeNode;
+  depth: number;
+  onFileClick: (node: FileTreeNode) => void;
+  onDrop: (files: FileList, destFolder: string) => void;
+  expandedPaths: Set<string>;
+  toggleExpand: (path: string) => void;
+  contextMenu: { x: number; y: number; node: FileTreeNode } | null;
+  setContextMenu: (menu: { x: number; y: number; node: FileTreeNode } | null) => void;
+}) {
+  const isExpanded = expandedPaths.has(node.path);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!node.isDir) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = () => setDragOver(false);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    if (node.isDir && e.dataTransfer.files.length > 0) {
+      onDrop(e.dataTransfer.files, node.path);
+    }
+  };
+
+  return (
+    <div>
+      <button
+        onClick={() => node.isDir ? toggleExpand(node.path) : onFileClick(node)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY, node });
+        }}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`w-full text-left flex items-center gap-1.5 py-1 px-2 text-xs transition-colors rounded
+          ${dragOver ? 'bg-blue-900/40 ring-1 ring-blue-500/50' : 'hover:bg-neutral-800/50'}
+          ${node.isDir ? 'text-neutral-300' : 'text-neutral-400 hover:text-neutral-200'}`}
+        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+      >
+        {node.isDir ? (
+          <>
+            {isExpanded ? <ChevronDown size={12} className="shrink-0 text-neutral-500" /> : <ChevronRight size={12} className="shrink-0 text-neutral-500" />}
+            <Folder size={14} className="shrink-0 text-yellow-500/70" />
+          </>
+        ) : (
+          <>
+            <span className="w-3 shrink-0" />
+            <File size={14} className="shrink-0 text-neutral-500" />
+          </>
+        )}
+        <span className="truncate">{node.name}</span>
+      </button>
+      {node.isDir && isExpanded && node.children && (
+        <div>
+          {node.children.map((child) => (
+            <TeachingFileTreeNode
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              onFileClick={onFileClick}
+              onDrop={onDrop}
+              expandedPaths={expandedPaths}
+              toggleExpand={toggleExpand}
+              contextMenu={contextMenu}
+              setContextMenu={setContextMenu}
+            />
+          ))}
+          {node.children.length === 0 && (
+            <div className="text-[10px] text-neutral-600 py-1" style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}>
+              Пусто
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TeachingFileTreeView({
+  tree, onFileClick, onRefresh, onDrop, title,
+}: {
+  tree: FileTreeNode[];
+  onFileClick: (node: FileTreeNode) => void;
+  onRefresh: () => void;
+  onDrop: (files: FileList, destFolder: string) => void;
+  title?: string;
+}) {
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    for (const node of tree) {
+      if (node.isDir) initial.add(node.path);
+    }
+    return initial;
+  });
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: FileTreeNode } | null>(null);
+  const [renaming, setRenaming] = useState<{ node: FileTreeNode; newName: string } | null>(null);
+
+  useEffect(() => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      for (const node of tree) {
+        if (node.isDir && !prev.has(node.path)) next.add(node.path);
+      }
+      return next;
+    });
+  }, [tree]);
+
+  const toggleExpand = useCallback((path: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const handleContextAction = useCallback(async (action: 'open' | 'rename' | 'delete', node: FileTreeNode) => {
+    setContextMenu(null);
+    if (action === 'open') {
+      if (node.isDir) {
+        window.electronAPI.openFile(node.path);
+      } else {
+        onFileClick(node);
+      }
+    } else if (action === 'rename') {
+      setRenaming({ node, newName: node.name });
+    } else if (action === 'delete') {
+      await window.teaching.files.delete(node.path);
+      onRefresh();
+    }
+  }, [onFileClick, onRefresh]);
+
+  const handleRenameSubmit = useCallback(async () => {
+    if (!renaming || !renaming.newName.trim()) { setRenaming(null); return; }
+    const dir = renaming.node.path.substring(0, renaming.node.path.lastIndexOf('/'));
+    const newPath = `${dir}/${renaming.newName.trim()}`;
+    if (newPath !== renaming.node.path) {
+      await window.teaching.files.rename(renaming.node.path, newPath);
+      onRefresh();
+    }
+    setRenaming(null);
+  }, [renaming, onRefresh]);
+
+  const handleRootDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+  const handleRootDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.files.length > 0 && tree.length > 0 && tree[0]) {
+      const rootPath = tree[0].path.substring(0, tree[0].path.lastIndexOf('/'));
+      onDrop(e.dataTransfer.files, rootPath);
+    }
+  };
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => setContextMenu(null);
+    window.addEventListener('click', handler);
+    return () => window.removeEventListener('click', handler);
+  }, [contextMenu]);
+
+  return (
+    <div>
+      {title && (
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">{title}</span>
+          <button
+            onClick={onRefresh}
+            className="p-1 rounded text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 transition-colors"
+            title="Обновить"
+          >
+            <RefreshCw size={12} />
+          </button>
+        </div>
+      )}
+      <div
+        className="border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden"
+        onDragOver={handleRootDragOver}
+        onDrop={handleRootDrop}
+      >
+        <div className="max-h-[60vh] overflow-y-auto scrollbar-thin py-1">
+          {tree.length === 0 && (
+            <div className="text-xs text-neutral-600 text-center py-4">Нет файлов</div>
+          )}
+          {tree.map((node) => (
+            <TeachingFileTreeNode
+              key={node.path}
+              node={node}
+              depth={0}
+              onFileClick={onFileClick}
+              onDrop={onDrop}
+              expandedPaths={expandedPaths}
+              toggleExpand={toggleExpand}
+              contextMenu={contextMenu}
+              setContextMenu={setContextMenu}
+            />
+          ))}
+        </div>
+      </div>
+
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[140px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            onClick={() => handleContextAction('open', contextMenu.node)}
+            className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
+          >
+            Открыть
+          </button>
+          <button
+            onClick={() => handleContextAction('rename', contextMenu.node)}
+            className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
+          >
+            Переименовать
+          </button>
+          {!contextMenu.node.isDir && (
+            <button
+              onClick={() => handleContextAction('delete', contextMenu.node)}
+              className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 transition-colors"
+            >
+              Удалить
+            </button>
+          )}
+        </div>
+      )}
+
+      {renaming && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setRenaming(null)}>
+          <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4 shadow-xl w-80" onClick={(e) => e.stopPropagation()}>
+            <div className="text-sm text-neutral-300 mb-3">Переименовать</div>
+            <input
+              autoFocus
+              value={renaming.newName}
+              onChange={(e) => setRenaming({ ...renaming, newName: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleRenameSubmit();
+                if (e.key === 'Escape') setRenaming(null);
+              }}
+              className="w-full bg-neutral-800 border border-neutral-700 rounded px-3 py-1.5 text-sm text-neutral-200 focus:outline-none focus:border-blue-500/50"
+            />
+            <div className="flex justify-end gap-2 mt-3">
+              <button onClick={() => setRenaming(null)} className="px-3 py-1 text-xs text-neutral-400 hover:text-neutral-200 rounded transition-colors">Отмена</button>
+              <button onClick={handleRenameSubmit} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors">Сохранить</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Student Files View (split: tree left + editor right) ---
+
+function StudentFilesView({ studentName }: { studentName: string }) {
+  const slug = toStudentSlug(studentName);
+  const [tree, setTree] = useState<FileTreeNode[]>([]);
+  const [openFile, setOpenFile] = useState<{ path: string; name: string; content: string } | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [saved, setSaved] = useState(true);
+
+  const loadTree = useCallback(async () => {
+    const result = await window.teaching.files.tree(slug);
+    setTree(result);
+  }, [slug]);
+
+  useEffect(() => {
+    loadTree();
+    window.teaching.files.watchStart(slug);
+    const unsub = window.teaching.files.onWatchUpdate((updatedSlug: string) => {
+      if (updatedSlug === slug) loadTree();
+    });
+    return () => {
+      unsub();
+      window.teaching.files.watchStop(slug);
+    };
+  }, [slug, loadTree]);
+
+  const handleFileClick = useCallback(async (node: FileTreeNode) => {
+    if (node.name.endsWith('.md')) {
+      const content = await window.teaching.files.read(node.path);
+      setOpenFile({ path: node.path, name: node.name, content });
+      setEditContent(content);
+      setEditMode(false);
+      setSaved(true);
+    } else {
+      window.electronAPI.openFile(node.path);
+    }
+  }, []);
+
+  const handleDrop = useCallback(async (files: FileList, destFolder: string) => {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const filePath = (file as unknown as { path?: string })?.path;
+      if (filePath) {
+        await window.teaching.files.copy(filePath, destFolder);
+      }
+    }
+    loadTree();
+  }, [loadTree]);
+
+  const handleSave = useCallback(async () => {
+    if (!openFile) return;
+    await window.teaching.files.write(openFile.path, editContent);
+    setOpenFile({ ...openFile, content: editContent });
+    setSaved(true);
+  }, [openFile, editContent]);
+
+  return (
+    <div className="flex gap-4 h-[calc(100vh-220px)]">
+      {/* Tree panel */}
+      <div className="w-72 shrink-0 overflow-y-auto scrollbar-thin">
+        <p className="text-[10px] text-neutral-600 mb-2">
+          <code className="bg-neutral-800 px-1 rounded">students/{slug}/</code>
+        </p>
+        <TeachingFileTreeView
+          tree={tree}
+          onFileClick={handleFileClick}
+          onRefresh={loadTree}
+          onDrop={handleDrop}
+          title="Файлы"
+        />
+        <p className="text-[10px] text-neutral-600 mt-2">
+          Перетащите файлы из Finder. Правый клик — контекстное меню.
+        </p>
+      </div>
+
+      {/* Editor panel */}
+      <div className="flex-1 min-w-0 border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden flex flex-col">
+        {openFile ? (
+          <>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
+              <div className="flex items-center gap-2">
+                <FileText size={14} className="text-blue-400" />
+                <span className="text-sm text-neutral-300">{openFile.name}</span>
+                {!saved && <span className="text-[10px] text-yellow-500">●</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setEditMode(!editMode); if (editMode && !saved) handleSave(); }}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                    editMode ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800'
+                  }`}
+                >
+                  {editMode ? 'Просмотр' : 'Редактировать'}
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {editMode ? (
+                <textarea
+                  value={editContent}
+                  onChange={(e) => { setEditContent(e.target.value); setSaved(false); }}
+                  onBlur={handleSave}
+                  className="w-full h-full bg-transparent text-sm text-neutral-300 font-mono resize-none focus:outline-none"
+                  spellCheck={false}
+                />
+              ) : (
+                <div className="prose prose-invert prose-sm max-w-none text-neutral-300 whitespace-pre-wrap text-sm">
+                  {openFile.content || <span className="text-neutral-600 italic">Файл пуст</span>}
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-neutral-600 text-sm">
+            Выберите .md файл для просмотра
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- All Teaching Files Tree (for General tab) ---
+
+function AllTeachingFilesTree() {
+  const [tree, setTree] = useState<FileTreeNode[]>([]);
+  const [openFile, setOpenFile] = useState<{ path: string; name: string; content: string } | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [saved, setSaved] = useState(true);
+
+  const loadTree = useCallback(async () => {
+    const result = await window.teaching.files.allTree();
+    setTree(result);
+  }, []);
+
+  useEffect(() => { loadTree(); }, [loadTree]);
+
+  const handleFileClick = useCallback(async (node: FileTreeNode) => {
+    if (node.name.endsWith('.md')) {
+      const content = await window.teaching.files.read(node.path);
+      setOpenFile({ path: node.path, name: node.name, content });
+      setEditContent(content);
+      setEditMode(false);
+      setSaved(true);
+    } else {
+      window.electronAPI.openFile(node.path);
+    }
+  }, []);
+
+  const handleDrop = useCallback(async (files: FileList, destFolder: string) => {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const filePath = (file as unknown as { path?: string })?.path;
+      if (filePath) {
+        await window.teaching.files.copy(filePath, destFolder);
+      }
+    }
+    loadTree();
+  }, [loadTree]);
+
+  const handleSave = useCallback(async () => {
+    if (!openFile) return;
+    await window.teaching.files.write(openFile.path, editContent);
+    setOpenFile({ ...openFile, content: editContent });
+    setSaved(true);
+  }, [openFile, editContent]);
+
+  return (
+    <div className="flex gap-4 h-[calc(100vh-220px)]">
+      <div className="w-72 shrink-0 overflow-y-auto scrollbar-thin">
+        <TeachingFileTreeView
+          tree={tree}
+          onFileClick={handleFileClick}
+          onRefresh={loadTree}
+          onDrop={handleDrop}
+          title="Все файлы"
+        />
+      </div>
+      <div className="flex-1 min-w-0 border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden flex flex-col">
+        {openFile ? (
+          <>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
+              <div className="flex items-center gap-2">
+                <FileText size={14} className="text-blue-400" />
+                <span className="text-sm text-neutral-300">{openFile.name}</span>
+                {!saved && <span className="text-[10px] text-yellow-500">●</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setEditMode(!editMode); if (editMode && !saved) handleSave(); }}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                    editMode ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800'
+                  }`}
+                >
+                  {editMode ? 'Просмотр' : 'Редактировать'}
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {editMode ? (
+                <textarea
+                  value={editContent}
+                  onChange={(e) => { setEditContent(e.target.value); setSaved(false); }}
+                  onBlur={handleSave}
+                  className="w-full h-full bg-transparent text-sm text-neutral-300 font-mono resize-none focus:outline-none"
+                  spellCheck={false}
+                />
+              ) : (
+                <div className="prose prose-invert prose-sm max-w-none text-neutral-300 whitespace-pre-wrap text-sm">
+                  {openFile.content || <span className="text-neutral-600 italic">Файл пуст</span>}
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-neutral-600 text-sm">
+            Выберите .md файл для просмотра
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- Compact file tree for General sidebar tab ---
+
+function GeneralSidebarFileTree({ students }: { students: MockStudent[] }) {
+  const [tree, setTree] = useState<FileTreeNode[]>([]);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+
+  const loadTree = useCallback(async () => {
+    const result = await window.teaching.files.allTree();
+    setTree(result);
+  }, []);
+
+  useEffect(() => { loadTree(); }, [loadTree]);
+
+  useEffect(() => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      for (const node of tree) {
+        if (node.isDir) next.add(node.path);
+      }
+      return next;
+    });
+  }, [tree]);
+
+  const toggleExpand = useCallback((path: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  // Map slugs to student display names
+  const slugToName = new Map<string, string>();
+  for (const s of students) {
+    slugToName.set(toStudentSlug(s.name), s.name);
+  }
+
+  const handleFileClick = useCallback((node: FileTreeNode) => {
+    window.electronAPI.openFile(node.path);
+  }, []);
+
+  return (
+    <div className="space-y-0.5 max-h-60 overflow-y-auto scrollbar-thin">
+      {tree.map((node) => (
+        <SidebarTreeNode
+          key={node.path}
+          node={{ ...node, name: slugToName.get(node.name) ?? node.name }}
+          depth={0}
+          expandedPaths={expandedPaths}
+          toggleExpand={toggleExpand}
+          onFileClick={handleFileClick}
+        />
+      ))}
+      {tree.length === 0 && (
+        <div className="text-[11px] text-neutral-600">Нет файлов</div>
+      )}
     </div>
   );
 }

@@ -581,6 +581,40 @@ const studyApi = {
   },
 };
 
+const teachingApi = {
+  files: {
+    tree: (studentSlug: string) =>
+      ipcRenderer.invoke('teaching:files:tree', studentSlug),
+    allTree: () =>
+      ipcRenderer.invoke('teaching:files:all-tree'),
+    read: (filePath: string) =>
+      ipcRenderer.invoke('teaching:files:read', filePath),
+    write: (filePath: string, content: string) =>
+      ipcRenderer.invoke('teaching:files:write', filePath, content),
+    create: (studentSlug: string, folder: string, filename: string) =>
+      ipcRenderer.invoke('teaching:files:create', studentSlug, folder, filename),
+    delete: (filePath: string) =>
+      ipcRenderer.invoke('teaching:files:delete', filePath),
+    rename: (oldPath: string, newPath: string) =>
+      ipcRenderer.invoke('teaching:files:rename', oldPath, newPath),
+    copy: (sourcePath: string, destFolder: string) =>
+      ipcRenderer.invoke('teaching:files:copy', sourcePath, destFolder),
+    ensureStudent: (studentSlug: string) =>
+      ipcRenderer.invoke('teaching:files:ensure-student', studentSlug),
+    watchStart: (studentSlug: string) =>
+      ipcRenderer.invoke('teaching:files:watch-start', studentSlug),
+    watchStop: (studentSlug: string) =>
+      ipcRenderer.invoke('teaching:files:watch-stop', studentSlug),
+    onWatchUpdate: (callback: (studentSlug: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, slug: string) => {
+        callback(slug);
+      };
+      ipcRenderer.on('teaching:files:watch-update', handler);
+      return () => { ipcRenderer.removeListener('teaching:files:watch-update', handler); };
+    },
+  },
+};
+
 const dataEvents = {
   onDataChanged: (callback: (entities: string[]) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, entities: string[]) => {
@@ -601,5 +635,6 @@ contextBridge.exposeInMainWorld('timer', timerApi);
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
 contextBridge.exposeInMainWorld('db', dbApi);
 contextBridge.exposeInMainWorld('study', studyApi);
+contextBridge.exposeInMainWorld('teaching', teachingApi);
 contextBridge.exposeInMainWorld('tasks', tasksApi);
 contextBridge.exposeInMainWorld('dataEvents', dataEvents);
