@@ -95,6 +95,8 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
       if (sid === activeSessionId) {
         setStreamingDone(true);
         setStatusText(null);
+        setIsThinking(false);
+        console.log('[ChatPanel] stream-end received, setting isThinking=false');
       }
     });
     const unsubStatus = window.chat.onStatusUpdate((sid, status) => {
@@ -245,6 +247,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
       setStreamingText(null);
       setStreamingDone(false);
       setIsThinking(false);
+      console.log('[ChatPanel] handleSubmit finished, setting isThinking=false');
       inputRef.current?.focus();
       // Update cache with latest messages
       if (activeSessionId) {

@@ -60,7 +60,7 @@ export function ChatPopout() {
       if (sid === sessionId) setStreamingText(text);
     });
     const unsubEnd = window.chat.onStreamEnd((sid) => {
-      if (sid === sessionId) { setStreamingDone(true); setStatusText(null); }
+      if (sid === sessionId) { setStreamingDone(true); setStatusText(null); setIsThinking(false); console.log('[ChatPopout] stream-end received, setting isThinking=false'); }
     });
     const unsubStatus = window.chat.onStatusUpdate((sid, status) => {
       if (sid === sessionId) setStatusText(status || null);
@@ -143,6 +143,7 @@ export function ChatPopout() {
       setStreamingText(null);
       setStreamingDone(false);
       setIsThinking(false);
+      console.log('[ChatPopout] handleSubmit finished, setting isThinking=false');
       inputRef.current?.focus();
     }
   }, [input, isThinking, sessionId, agent]);

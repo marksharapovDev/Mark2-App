@@ -447,6 +447,7 @@ export async function sendMessage(
   } finally {
     activeSessions.delete(sessionId);
     abortControllers.delete(sessionId);
+    console.log('[HybridEngine] Removing active session:', sessionId);
   }
 }
 
