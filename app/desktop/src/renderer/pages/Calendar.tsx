@@ -839,7 +839,23 @@ export function Calendar() {
     }));
   }, [commitEvents, events]);
 
-  // toggleSubtask removed — was used by EventDetailModal
+  const toggleEventSubtask = useCallback((eventId: string, subtaskIdx: number) => {
+    commitEvents((prev) => prev.map((e) => {
+      if (e.id !== eventId) return e;
+      const updated = { ...e, subtasks: e.subtasks.map((s, i) => i === subtaskIdx ? { ...s, done: !s.done } : s) };
+      window.db.events.update(eventId, localEventToDb(updated)).catch(() => {});
+      return updated;
+    }));
+  }, [commitEvents]);
+
+  const toggleReminderSubtask = useCallback((reminderId: string, subtaskIdx: number) => {
+    setReminders((prev) => prev.map((r) => {
+      if (r.id !== reminderId) return r;
+      const updatedSubtasks = r.subtasks.map((s, i) => i === subtaskIdx ? { ...s, done: !s.done } : s);
+      window.db.reminders.update(reminderId, { subtasks: updatedSubtasks }).catch(() => {});
+      return { ...r, subtasks: updatedSubtasks };
+    }));
+  }, []);
 
   const openCreateFromHeader = useCallback(() => {
     setCreateModal({
@@ -1112,6 +1128,8 @@ export function Calendar() {
               onDeleteReminder={handleDeleteReminder}
               onCopyEvent={handleCopyEvent}
               onSelectSlot={handleSelectSlot}
+              onToggleEventSubtask={toggleEventSubtask}
+              onToggleReminderSubtask={toggleReminderSubtask}
             />
           )}
           {view === 'month' && (
@@ -1148,6 +1166,8 @@ export function Calendar() {
               onDeleteReminder={handleDeleteReminder}
               onCopyEvent={handleCopyEvent}
               onSelectSlot={handleSelectSlot}
+              onToggleEventSubtask={toggleEventSubtask}
+              onToggleReminderSubtask={toggleReminderSubtask}
             />
           )}
           {view === 'list' && (
@@ -1312,6 +1332,8 @@ function InlineActions({
   isTask,
   isDone,
   onToggleDone,
+  subtasks,
+  onToggleSubtask,
 }: {
   onCopy: () => void;
   onEdit: () => void;
@@ -1319,20 +1341,27 @@ function InlineActions({
   isTask?: boolean;
   isDone?: boolean;
   onToggleDone?: () => void;
+  subtasks?: (Subtask | ReminderSubtask)[];
+  onToggleSubtask?: (idx: number) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+
+  const hasSubtasks = subtasks && subtasks.length > 0 && onToggleSubtask;
 
   if (confirming) {
     return (
       <div
         data-event-actions
-        className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 shadow-lg z-10"
+        className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 shadow-lg z-10"
+        style={{ top: '100%', marginTop: 2 }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="text-[11px] text-neutral-400 whitespace-nowrap">Удалить?</span>
-        <button onClick={() => { onDelete(); setConfirming(false); }} className="px-1.5 py-0.5 text-[11px] font-medium bg-red-600 hover:bg-red-500 text-white rounded transition-colors">Да</button>
-        <button onClick={() => setConfirming(false)} className="px-1.5 py-0.5 text-[11px] text-neutral-400 hover:text-neutral-200 transition-colors">Нет</button>
+        <div className="flex items-center gap-1">
+          <span className="text-[11px] text-neutral-400 whitespace-nowrap">Удалить?</span>
+          <button onClick={() => { onDelete(); setConfirming(false); }} className="px-1.5 py-0.5 text-[11px] font-medium bg-red-600 hover:bg-red-500 text-white rounded transition-colors">Да</button>
+          <button onClick={() => setConfirming(false)} className="px-1.5 py-0.5 text-[11px] text-neutral-400 hover:text-neutral-200 transition-colors">Нет</button>
+        </div>
       </div>
     );
   }
@@ -1340,24 +1369,47 @@ function InlineActions({
   return (
     <div
       data-event-actions
-      className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-md px-1 py-0.5 shadow-lg z-10"
+      className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center bg-neutral-800 border border-neutral-700 rounded-md px-1 py-0.5 shadow-lg z-10"
+      style={{ top: '100%', marginTop: 2 }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <button onClick={onCopy} className="p-0.5 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700 rounded transition-colors" title="Копировать">
-        <Copy size={14} />
-      </button>
-      <button onClick={onEdit} className="p-0.5 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700 rounded transition-colors" title="Редактировать">
-        <Pencil size={14} />
-      </button>
-      {isTask && onToggleDone && (
-        <button onClick={onToggleDone} className="p-0.5 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700 rounded transition-colors" title={isDone ? 'Вернуть' : 'Выполнить'}>
-          {isDone ? <Undo2 size={14} /> : <Check size={14} />}
+      <div className="flex items-center gap-1">
+        <button onClick={onCopy} className="p-0.5 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700 rounded transition-colors" title="Копировать">
+          <Copy size={14} />
         </button>
+        <button onClick={onEdit} className="p-0.5 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700 rounded transition-colors" title="Редактировать">
+          <Pencil size={14} />
+        </button>
+        {isTask && onToggleDone && (
+          <button onClick={onToggleDone} className="p-0.5 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700 rounded transition-colors" title={isDone ? 'Вернуть' : 'Выполнить'}>
+            {isDone ? <Undo2 size={14} /> : <Check size={14} />}
+          </button>
+        )}
+        <button onClick={() => setConfirming(true)} className="p-0.5 text-neutral-500 hover:text-red-400 hover:bg-neutral-700 rounded transition-colors" title="Удалить">
+          <Trash2 size={14} />
+        </button>
+      </div>
+      {hasSubtasks && (
+        <div className="w-full mt-0.5 border-t border-neutral-700 pt-0.5">
+          {subtasks!.map((st, idx) => (
+            <button
+              key={idx}
+              className="flex items-center gap-1.5 w-full px-1 py-[2px] rounded hover:bg-neutral-700/50 transition-colors group"
+              onClick={() => onToggleSubtask!(idx)}
+            >
+              {st.done ? (
+                <svg className="w-3 h-3 shrink-0 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>
+              ) : (
+                <svg className="w-3 h-3 shrink-0 text-neutral-500 group-hover:text-neutral-300" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5"/></svg>
+              )}
+              <span className={`text-[10px] truncate ${st.done ? 'text-neutral-600 line-through' : 'text-neutral-400 group-hover:text-neutral-200'}`}>
+                {st.title}
+              </span>
+            </button>
+          ))}
+        </div>
       )}
-      <button onClick={() => setConfirming(true)} className="p-0.5 text-neutral-500 hover:text-red-400 hover:bg-neutral-700 rounded transition-colors" title="Удалить">
-        <Trash2 size={14} />
-      </button>
     </div>
   );
 }
@@ -1390,6 +1442,8 @@ function WeekView({
   onDeleteReminder,
   onCopyEvent,
   onSelectSlot,
+  onToggleEventSubtask,
+  onToggleReminderSubtask,
 }: {
   weekDates: string[];
   selectedDate: string;
@@ -1414,6 +1468,8 @@ function WeekView({
   onDeleteReminder: (id: string) => void;
   onCopyEvent: (ev: CalendarEvent) => void;
   onSelectSlot: (slot: SelectedSlot) => void;
+  onToggleEventSubtask: (eventId: string, subtaskIdx: number) => void;
+  onToggleReminderSubtask: (reminderId: string, subtaskIdx: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -1808,6 +1864,8 @@ function WeekView({
                             isTask={true}
                             isDone={ev.done}
                             onToggleDone={() => onToggleDone(ev.id)}
+                            subtasks={ev.subtasks}
+                            onToggleSubtask={(idx) => onToggleEventSubtask(ev.id, idx)}
                           />
                         )}
                       </div>
@@ -1873,6 +1931,8 @@ function WeekView({
                             isTask={true}
                             isDone={ev.done}
                             onToggleDone={() => onToggleDone(ev.id)}
+                            subtasks={ev.subtasks}
+                            onToggleSubtask={(idx) => onToggleEventSubtask(ev.id, idx)}
                           />
                         )}
                         <div className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize" />
@@ -1919,6 +1979,8 @@ function WeekView({
                           onCopy={() => onCopyEvent(ev)}
                           onEdit={() => onRightClickEvent(ev)}
                           onDelete={() => onDeleteEvent(ev.id)}
+                          subtasks={ev.subtasks}
+                          onToggleSubtask={(idx) => onToggleEventSubtask(ev.id, idx)}
                         />
                       )}
                       <div className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize" />
@@ -1962,6 +2024,8 @@ function WeekView({
                           isTask={true}
                           isDone={r.status === 'done'}
                           onToggleDone={() => onCompleteReminder(r.id)}
+                          subtasks={r.subtasks}
+                          onToggleSubtask={(idx) => onToggleReminderSubtask(r.id, idx)}
                         />
                       )}
                     </div>
@@ -2208,6 +2272,8 @@ function DayView({
   onDeleteReminder,
   onCopyEvent,
   onSelectSlot,
+  onToggleEventSubtask,
+  onToggleReminderSubtask,
 }: {
   date: string;
   eventsForDate: (date: string) => CalendarEvent[];
@@ -2230,6 +2296,8 @@ function DayView({
   onDeleteReminder: (id: string) => void;
   onCopyEvent: (ev: CalendarEvent) => void;
   onSelectSlot: (slot: SelectedSlot) => void;
+  onToggleEventSubtask: (eventId: string, subtaskIdx: number) => void;
+  onToggleReminderSubtask: (reminderId: string, subtaskIdx: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -2542,7 +2610,8 @@ function DayView({
                     <span className={`text-[10px] truncate ${evnt.done ? 'text-neutral-600 line-through' : SPHERE_META[evnt.sphere].color}`}>{evnt.title}</span>
                     {isSelected && (
                       <InlineActions onCopy={() => onCopyEvent(evnt)} onEdit={() => onRightClickEvent(evnt)} onDelete={() => onDeleteEvent(evnt.id)}
-                        isTask isDone={evnt.done} onToggleDone={() => onToggleDone(evnt.id)} />
+                        isTask isDone={evnt.done} onToggleDone={() => onToggleDone(evnt.id)}
+                        subtasks={evnt.subtasks} onToggleSubtask={(idx) => onToggleEventSubtask(evnt.id, idx)} />
                     )}
                   </div>
                 );
@@ -2601,7 +2670,8 @@ function DayView({
                     )}
                     {isSelected && (
                       <InlineActions onCopy={() => onCopyEvent(evnt)} onEdit={() => onRightClickEvent(evnt)} onDelete={() => onDeleteEvent(evnt.id)}
-                        isTask isDone={evnt.done} onToggleDone={() => onToggleDone(evnt.id)} />
+                        isTask isDone={evnt.done} onToggleDone={() => onToggleDone(evnt.id)}
+                        subtasks={evnt.subtasks} onToggleSubtask={(idx) => onToggleEventSubtask(evnt.id, idx)} />
                     )}
                     <div className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize" />
                   </div>
@@ -2644,7 +2714,8 @@ function DayView({
                     <div className="text-[10px] text-neutral-600 mt-0.5 truncate">{evnt.description}</div>
                   )}
                   {isSelected && (
-                    <InlineActions onCopy={() => onCopyEvent(evnt)} onEdit={() => onRightClickEvent(evnt)} onDelete={() => onDeleteEvent(evnt.id)} />
+                    <InlineActions onCopy={() => onCopyEvent(evnt)} onEdit={() => onRightClickEvent(evnt)} onDelete={() => onDeleteEvent(evnt.id)}
+                      subtasks={evnt.subtasks} onToggleSubtask={(idx) => onToggleEventSubtask(evnt.id, idx)} />
                   )}
                   <div className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize" />
                 </div>
@@ -2683,7 +2754,8 @@ function DayView({
                   </span>
                   {isRemSel && (
                     <InlineActions onCopy={() => {}} onEdit={() => onRightClickReminder(r, {} as React.MouseEvent)} onDelete={() => onDeleteReminder(r.id)}
-                      isTask isDone={r.status === 'done'} onToggleDone={() => onCompleteReminder(r.id)} />
+                      isTask isDone={r.status === 'done'} onToggleDone={() => onCompleteReminder(r.id)}
+                      subtasks={r.subtasks} onToggleSubtask={(idx) => onToggleReminderSubtask(r.id, idx)} />
                   )}
                 </div>
               );
@@ -3085,6 +3157,20 @@ function CreateEventModal({
   const [recurrenceEnd, setRecurrenceEnd] = useState(
     data.editEvent?.recurrenceRule?.endDate ?? '',
   );
+
+  const TEACHING_DEFAULT_SUBTASKS: Subtask[] = [
+    { title: 'Оплата', done: false },
+    { title: 'Урок подготовлен', done: false },
+    { title: 'ДЗ отправлено', done: false },
+  ];
+
+  // Auto-add teaching subtasks for new events when sphere changes to teaching
+  useEffect(() => {
+    if (!isEdit && sphere === 'teaching' && eventType === 'event' && subtasks.length === 0) {
+      setSubtasks(TEACHING_DEFAULT_SUBTASKS);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sphere, eventType]);
 
   const isEventMode = eventType === 'event';
   const isTaskMode = eventType === 'task';
