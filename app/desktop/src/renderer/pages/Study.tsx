@@ -11,6 +11,7 @@ import {
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { ConfirmDelete } from '../components/confirm-delete';
 import { useUndo } from '../context/undo-context';
+import { PythonEditor } from '../components/PythonEditor';
 
 // --- Types ---
 
@@ -1331,7 +1332,7 @@ function FilesView({ subjectName, onOpenFile }: { subjectName: string; onOpenFil
   }, [slug, loadTree]);
 
   const handleFileClick = useCallback((node: FileTreeNode) => {
-    if (node.name.endsWith('.md')) {
+    if (node.name.endsWith('.md') || node.name.endsWith('.py')) {
       onOpenFile(node.path);
     } else {
       window.electronAPI.openFile(node.path);
@@ -1380,7 +1381,7 @@ function AllFilesTree({ onFileOpen }: { onFileOpen: (filePath: string) => void }
   useEffect(() => { loadTree(); }, [loadTree]);
 
   const handleFileClick = useCallback((node: FileTreeNode) => {
-    if (node.name.endsWith('.md')) {
+    if (node.name.endsWith('.md') || node.name.endsWith('.py')) {
       onFileOpen(node.path);
     } else {
       window.electronAPI.openFile(node.path);
@@ -1692,6 +1693,18 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
           <div className="flex-1 flex items-center justify-center text-neutral-600 text-sm">
             Выберите заметку или создайте новую
           </div>
+        ) : selectedFile.name.endsWith('.py') ? (
+          <PythonEditor
+            filePath={selectedFile.path}
+            fileName={selectedFile.name}
+            initialContent={content}
+            onSave={async (newContent) => {
+              await window.study.files.write(selectedFile.path, newContent);
+              setContent(newContent);
+              setOriginalContent(newContent);
+              setSaveStatus('saved');
+            }}
+          />
         ) : (
           <>
             {/* Toolbar */}

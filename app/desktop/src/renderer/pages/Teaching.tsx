@@ -3,6 +3,7 @@ import { MainLayout } from '../components/layout/MainLayout';
 import { useSidebar } from '../context/sidebar-context';
 import type { TaskStatus, LearningPathTopic, LearningPathStatus, StudentRate, Transaction } from '@mark2/shared';
 import { CheckCircle2, RefreshCw, Clock, XCircle, FileText, FileType, FileCode, PenLine, ClipboardList, BarChart3, Loader2, Banknote, Folder, File, ChevronDown, ChevronRight } from 'lucide-react';
+import { PythonEditor } from '../components/PythonEditor';
 import { useUndo } from '../context/undo-context';
 
 // --- Types ---
@@ -3332,7 +3333,7 @@ function StudentFilesView({ studentName }: { studentName: string }) {
   }, [slug, loadTree]);
 
   const handleFileClick = useCallback(async (node: FileTreeNode) => {
-    if (node.name.endsWith('.md')) {
+    if (node.name.endsWith('.md') || node.name.endsWith('.py')) {
       const content = await window.teaching.files.read(node.path);
       setOpenFile({ path: node.path, name: node.name, content });
       setEditContent(content);
@@ -3361,6 +3362,12 @@ function StudentFilesView({ studentName }: { studentName: string }) {
     setSaved(true);
   }, [openFile, editContent]);
 
+  const handlePythonSave = useCallback(async (content: string) => {
+    if (!openFile) return;
+    await window.teaching.files.write(openFile.path, content);
+    setOpenFile({ ...openFile, content });
+  }, [openFile]);
+
   return (
     <div className="flex gap-4 h-[calc(100vh-220px)]">
       {/* Tree panel */}
@@ -3382,7 +3389,14 @@ function StudentFilesView({ studentName }: { studentName: string }) {
 
       {/* Editor panel */}
       <div className="flex-1 min-w-0 border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden flex flex-col">
-        {openFile ? (
+        {openFile && openFile.name.endsWith('.py') ? (
+          <PythonEditor
+            filePath={openFile.path}
+            fileName={openFile.name}
+            initialContent={openFile.content}
+            onSave={handlePythonSave}
+          />
+        ) : openFile ? (
           <>
             <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
               <div className="flex items-center gap-2">
@@ -3419,7 +3433,7 @@ function StudentFilesView({ studentName }: { studentName: string }) {
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center text-neutral-600 text-sm">
-            Выберите .md файл для просмотра
+            Выберите файл для просмотра
           </div>
         )}
       </div>
@@ -3444,7 +3458,7 @@ function AllTeachingFilesTree() {
   useEffect(() => { loadTree(); }, [loadTree]);
 
   const handleFileClick = useCallback(async (node: FileTreeNode) => {
-    if (node.name.endsWith('.md')) {
+    if (node.name.endsWith('.md') || node.name.endsWith('.py')) {
       const content = await window.teaching.files.read(node.path);
       setOpenFile({ path: node.path, name: node.name, content });
       setEditContent(content);
@@ -3473,6 +3487,12 @@ function AllTeachingFilesTree() {
     setSaved(true);
   }, [openFile, editContent]);
 
+  const handlePythonSave = useCallback(async (content: string) => {
+    if (!openFile) return;
+    await window.teaching.files.write(openFile.path, content);
+    setOpenFile({ ...openFile, content });
+  }, [openFile]);
+
   return (
     <div className="flex gap-4 h-[calc(100vh-220px)]">
       <div className="w-72 shrink-0 overflow-y-auto scrollbar-thin">
@@ -3485,7 +3505,14 @@ function AllTeachingFilesTree() {
         />
       </div>
       <div className="flex-1 min-w-0 border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden flex flex-col">
-        {openFile ? (
+        {openFile && openFile.name.endsWith('.py') ? (
+          <PythonEditor
+            filePath={openFile.path}
+            fileName={openFile.name}
+            initialContent={openFile.content}
+            onSave={handlePythonSave}
+          />
+        ) : openFile ? (
           <>
             <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
               <div className="flex items-center gap-2">
@@ -3522,7 +3549,7 @@ function AllTeachingFilesTree() {
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center text-neutral-600 text-sm">
-            Выберите .md файл для просмотра
+            Выберите файл для просмотра
           </div>
         )}
       </div>

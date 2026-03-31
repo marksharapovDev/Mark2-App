@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow, shell, dialog } from 'electron';
-import { ChildProcess, exec } from 'child_process';
+import { ChildProcess, exec, spawn } from 'child_process';
 import crypto from 'crypto';
 import path from 'path';
 import os from 'os';
@@ -1039,6 +1039,64 @@ export function registerIpcHandlers(): void {
       watcher.close();
       teachingFsWatchers.delete(studentSlug);
     }
+  });
+
+  // === Python runner ===
+
+  ipcMain.handle('python:run', async (_event, code: string, stdinData?: string) => {
+    return new Promise<{ stdout: string; stderr: string; exitCode: number | null }>((resolve) => {
+      const proc = spawn('python3', ['-c', code], {
+        timeout: 30000,
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.on('data', (data: Buffer) => { stdout += data.toString(); });
+      proc.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+      proc.on('close', (exitCode) => {
+        resolve({ stdout, stderr, exitCode });
+      });
+
+      proc.on('error', (err) => {
+        resolve({ stdout: '', stderr: err.message, exitCode: 1 });
+      });
+
+      if (stdinData) {
+        proc.stdin.write(stdinData);
+      }
+      proc.stdin.end();
+    });
+  });
+
+  ipcMain.handle('python:run-file', async (_event, filePath: string, stdinData?: string) => {
+    return new Promise<{ stdout: string; stderr: string; exitCode: number | null }>((resolve) => {
+      const proc = spawn('python3', [filePath], {
+        timeout: 30000,
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.on('data', (data: Buffer) => { stdout += data.toString(); });
+      proc.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+      proc.on('close', (exitCode) => {
+        resolve({ stdout, stderr, exitCode });
+      });
+
+      proc.on('error', (err) => {
+        resolve({ stdout: '', stderr: err.message, exitCode: 1 });
+      });
+
+      if (stdinData) {
+        proc.stdin.write(stdinData);
+      }
+      proc.stdin.end();
+    });
   });
 
   ipcMain.handle('claude:stop-session', (_event, sessionId: string) => {

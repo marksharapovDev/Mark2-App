@@ -6,6 +6,7 @@ import type { DevProjectV2, DevTask, DevTaskStatus, DevTaskPriority, DevTimeEntr
 import { Plus, ArrowLeft, Play, Square, Clock, ChevronDown, ChevronRight, GripVertical, Send, Trash2, ExternalLink, FileText, Calendar, ClipboardList, ListFilter, FolderOpen, Folder, File, Code, Eye, MoreVertical, RefreshCw } from 'lucide-react';
 import { ConfirmDelete } from '../components/confirm-delete';
 import { useUndo } from '../context/undo-context';
+import { PythonEditor } from '../components/PythonEditor';
 
 // --- Constants ---
 
@@ -1008,7 +1009,7 @@ function ProjectFiles({ project, onUpdate }: {
       return;
     }
     const ext = node.name.split('.').pop()?.toLowerCase();
-    if (ext === 'md') {
+    if (ext === 'md' || ext === 'py') {
       const content = await window.db.dev.files.read(node.path);
       setOpenFile({ path: node.path, name: node.name });
       setFileContent(content);
@@ -1063,7 +1064,25 @@ function ProjectFiles({ project, onUpdate }: {
     ? openFile.path.replace(project.localPath, '').replace(/^\//, '')
     : openFile?.name ?? '';
 
-  const fileViewerPanel = openFile ? (
+  const handlePythonSave = useCallback(async (content: string) => {
+    if (!openFile) return;
+    await window.db.dev.files.write(openFile.path, content);
+    setFileContent(content);
+    setFileSaved(true);
+  }, [openFile]);
+
+  const isPyFile = openFile?.name.endsWith('.py');
+
+  const fileViewerPanel = openFile && isPyFile ? (
+    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <PythonEditor
+        filePath={openFile.path}
+        fileName={openFile.name}
+        initialContent={fileContent}
+        onSave={handlePythonSave}
+      />
+    </div>
+  ) : openFile ? (
     <div className="flex-1 flex flex-col overflow-hidden min-w-0">
       {/* Header */}
       <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-neutral-800 text-xs shrink-0">

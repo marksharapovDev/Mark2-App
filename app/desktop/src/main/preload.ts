@@ -615,6 +615,13 @@ const teachingApi = {
   },
 };
 
+const pythonApi = {
+  run: (code: string, stdinData?: string) =>
+    ipcRenderer.invoke('python:run', code, stdinData) as Promise<{ stdout: string; stderr: string; exitCode: number | null }>,
+  runFile: (filePath: string, stdinData?: string) =>
+    ipcRenderer.invoke('python:run-file', filePath, stdinData) as Promise<{ stdout: string; stderr: string; exitCode: number | null }>,
+};
+
 const dataEvents = {
   onDataChanged: (callback: (entities: string[]) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, entities: string[]) => {
@@ -637,4 +644,5 @@ contextBridge.exposeInMainWorld('db', dbApi);
 contextBridge.exposeInMainWorld('study', studyApi);
 contextBridge.exposeInMainWorld('teaching', teachingApi);
 contextBridge.exposeInMainWorld('tasks', tasksApi);
+contextBridge.exposeInMainWorld('python', pythonApi);
 contextBridge.exposeInMainWorld('dataEvents', dataEvents);

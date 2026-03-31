@@ -328,6 +328,17 @@ interface StudyAPI {
   };
 }
 
+interface PythonRunResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+}
+
+interface PythonAPI {
+  run: (code: string, stdinData?: string) => Promise<PythonRunResult>;
+  runFile: (filePath: string, stdinData?: string) => Promise<PythonRunResult>;
+}
+
 interface Window {
   chat: ChatAPI;
   claude: ClaudeAPI;
@@ -337,6 +348,7 @@ interface Window {
   tasks: TasksAPI;
   study: StudyAPI;
   teaching: TeachingAPI;
+  python: PythonAPI;
   dataEvents: DataEventsAPI;
   electronAPI: ElectronAPI;
 }
