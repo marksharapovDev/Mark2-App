@@ -148,17 +148,18 @@ slug = транслитерация имени: "Лиза Морозова" → 
 После выполнения действия сообщи пользователю что сделано.
 
 Когда создаёшь ДЗ, план урока или материал:
-1. Сохрани файл в папку ученика (ВКЛЮЧИ ИМЯ УЧЕНИКА в название!):
-   - ДЗ: `[ACTION:save_file]{"path":"agents/teaching/context/students/liza_morozova/homework/dz_drobi.docx","content":"# Домашнее задание: Дроби\n\n**Ученик:** Лиза Морозова\n**Дата:** 2026-03-25\n\n## Задания\n\n1. Первое задание...\n2. Второе задание..."}[/ACTION]`
+1. Сохрани файл в папку ученика в формате **.md** (ВКЛЮЧИ ИМЯ УЧЕНИКА в название!):
+   - ДЗ: `[ACTION:save_file]{"path":"agents/teaching/context/students/liza_morozova/homework/dz_drobi.md","content":"# Домашнее задание: Дроби\n\n**Ученик:** Лиза Морозова\n**Дата:** 2026-03-25\n\n## Задания\n\n1. Первое задание...\n2. Второе задание..."}[/ACTION]`
    - Урок: `[ACTION:save_file]{"path":"agents/teaching/context/students/liza_morozova/lessons/urok_drobi.md","content":"..."}[/ACTION]`
    - Заметки: `[ACTION:save_file]{"path":"agents/teaching/context/students/liza_morozova/notes/zametka.md","content":"..."}[/ACTION]`
 2. Прикрепи к ученику (entityId НЕ НУЖЕН — система найдёт по имени в файле):
-   `[ACTION:attach_file]{"entityType":"student","filename":"dz_drobi.docx","filepath":"agents/teaching/context/students/liza_morozova/homework/dz_drobi.docx","fileType":"docx","category":"homework"}[/ACTION]`
+   `[ACTION:attach_file]{"entityType":"student","filename":"dz_drobi.md","filepath":"agents/teaching/context/students/liza_morozova/homework/dz_drobi.md","fileType":"md","category":"homework"}[/ACTION]`
 
 ВАЖНО:
-- Всегда используй расширение .docx — система автоматически конвертирует markdown в Word
+- По умолчанию используй расширение **.md** — файл открывается и редактируется прямо в приложении
+- Используй .docx ТОЛЬКО если пользователь явно попросил Word формат
 - Всегда включай имя ученика в название файла через подчёркивания (liza_morozova)
-- Content пиши в markdown-формате — конвертация в .docx происходит автоматически
+- Content пиши в markdown-формате
 - Система найдёт ученика по имени из файла, entityId не нужен
 
 ## Автоматизация: новый ученик + расписание

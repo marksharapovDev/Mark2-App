@@ -460,7 +460,8 @@ type MainView =
   | { kind: 'learning-path-topic'; topicId: string }
   | { kind: 'lessons-history' }
   | { kind: 'homework-files'; filter: 'pending' | 'completed' | 'all' }
-  | { kind: 'all-files' };
+  | { kind: 'all-files' }
+  | { kind: 'student-files'; openFilePath?: string };
 
 // --- Component ---
 
@@ -832,7 +833,15 @@ export function Teaching() {
                     )}
 
                     {/* Files — student file tree */}
-                    <SidebarFileTree studentName={student.name} />
+                    <SidebarFileTree studentName={student.name} onFileNavigate={(filePath) => setMainView({ kind: 'student-files', openFilePath: filePath })} />
+                    <div className="px-3 pb-1">
+                      <button
+                        onClick={() => setMainView({ kind: 'student-files' })}
+                        className="text-[10px] text-neutral-600 hover:text-neutral-400 transition-colors"
+                      >
+                        Все файлы &rarr;
+                      </button>
+                    </div>
 
                     <div className="mx-3 border-t border-neutral-800" />
 
@@ -1104,6 +1113,7 @@ export function Teaching() {
               onLearningPathTopicClick={(id) => setMainView({ kind: 'learning-path-topic', topicId: id })}
               onLessonsHistoryClick={() => setMainView({ kind: 'lessons-history' })}
               onHomeworkFilesClick={(f) => setMainView({ kind: 'homework-files', filter: f })}
+              onStudentFilesClick={() => setMainView({ kind: 'student-files' })}
               getEffectiveStatus={getEffectiveStatus}
             />
           )}
@@ -1176,6 +1186,16 @@ export function Teaching() {
               onReload={() => { if (student) loadLearningPath(student.id); }}
             />
           )}
+          {!loading && student && mainView.kind === 'student-files' && (
+            <div>
+              <button onClick={() => setMainView({ kind: 'overview' })} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
+                &larr; Назад к ученику
+              </button>
+              <h1 className="text-2xl font-bold mb-1">{student.name}</h1>
+              <h2 className="text-neutral-500 text-sm mb-6">Файлы</h2>
+              <StudentFilesView studentName={student.name} initialOpenFilePath={mainView.openFilePath} />
+            </div>
+          )}
           {!loading && mainView.kind === 'all-files' && (
             <div>
               <button onClick={() => setMainView({ kind: 'overview' })} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-4">
@@ -1242,6 +1262,7 @@ function StudentOverview({
   onLearningPathTopicClick,
   onLessonsHistoryClick,
   onHomeworkFilesClick,
+  onStudentFilesClick,
   getEffectiveStatus,
 }: {
   student: MockStudent;
@@ -1260,6 +1281,7 @@ function StudentOverview({
   onLearningPathTopicClick: (id: string) => void;
   onLessonsHistoryClick: () => void;
   onHomeworkFilesClick: (filter: 'pending' | 'completed') => void;
+  onStudentFilesClick: () => void;
   getEffectiveStatus: (task: TeachingTask) => TaskStatus;
 }) {
   const stats = hwStats(homeworks);
@@ -1418,7 +1440,17 @@ function StudentOverview({
       </div>
 
       {overviewTab === 'files' && (
-        <StudentFilesView studentName={student.name} />
+        <div>
+          <StudentFilesView studentName={student.name} />
+          <div className="mt-3">
+            <button
+              onClick={onStudentFilesClick}
+              className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+            >
+              Открыть в полноэкранном режиме &rarr;
+            </button>
+          </div>
+        </div>
       )}
 
       {overviewTab === 'overview' && (
@@ -2911,7 +2943,7 @@ function HomeworkFilesView({
 
 // === File Tree Components ===
 
-function SidebarFileTree({ studentName }: { studentName: string }) {
+function SidebarFileTree({ studentName, onFileNavigate }: { studentName: string; onFileNavigate?: (filePath: string) => void }) {
   const slug = toStudentSlug(studentName);
   const [tree, setTree] = useState<FileTreeNode[]>([]);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
@@ -2954,12 +2986,12 @@ function SidebarFileTree({ studentName }: { studentName: string }) {
   }, []);
 
   const handleFileClick = useCallback((node: FileTreeNode) => {
-    if (node.name.endsWith('.md')) {
-      // Will be handled by main view
+    if ((node.name.endsWith('.md') || node.name.endsWith('.py')) && onFileNavigate) {
+      onFileNavigate(node.path);
     } else {
       window.electronAPI.openFile(node.path);
     }
-  }, []);
+  }, [onFileNavigate]);
 
   return (
     <div className="px-3 pt-3 pb-2">
@@ -3373,7 +3405,7 @@ function TeachingFileTreeView({
 
 // --- Student Files View (split: tree left + editor right) ---
 
-function StudentFilesView({ studentName }: { studentName: string }) {
+function StudentFilesView({ studentName, initialOpenFilePath }: { studentName: string; initialOpenFilePath?: string }) {
   const slug = toStudentSlug(studentName);
   const [tree, setTree] = useState<FileTreeNode[]>([]);
   const [openFile, setOpenFile] = useState<{ path: string; name: string; content: string } | null>(null);
@@ -3384,6 +3416,7 @@ function StudentFilesView({ studentName }: { studentName: string }) {
   const [containerWidth, setContainerWidth] = useState(800);
   const [showTreeOverlay, setShowTreeOverlay] = useState(false);
   const isNarrow = containerWidth < 500;
+  const initialFileHandled = useRef(false);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -3411,6 +3444,22 @@ function StudentFilesView({ studentName }: { studentName: string }) {
       window.teaching.files.watchStop(slug);
     };
   }, [slug, loadTree]);
+
+  // Auto-open file from navigation
+  useEffect(() => {
+    if (initialOpenFilePath && !initialFileHandled.current) {
+      initialFileHandled.current = true;
+      const fileName = initialOpenFilePath.split('/').pop() ?? '';
+      if (fileName.endsWith('.md') || fileName.endsWith('.py')) {
+        window.teaching.files.read(initialOpenFilePath).then((content) => {
+          setOpenFile({ path: initialOpenFilePath, name: fileName, content });
+          setEditContent(content);
+          setEditMode(false);
+          setSaved(true);
+        });
+      }
+    }
+  }, [initialOpenFilePath]);
 
   const handleFileClick = useCallback(async (node: FileTreeNode) => {
     if (node.name.endsWith('.md') || node.name.endsWith('.py')) {
