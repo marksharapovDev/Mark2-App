@@ -1149,6 +1149,7 @@ function FileTreeView({
   });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: FileTreeNode } | null>(null);
   const [renaming, setRenaming] = useState<{ node: FileTreeNode; newName: string } | null>(null);
+  const [creating, setCreating] = useState<{ dir: string; ext: string; name: string } | null>(null);
 
   // Update expanded when tree changes (keep existing, add new top-level)
   useEffect(() => {
@@ -1170,7 +1171,7 @@ function FileTreeView({
     });
   }, []);
 
-  const handleContextAction = useCallback(async (action: 'open' | 'rename' | 'delete', node: FileTreeNode) => {
+  const handleContextAction = useCallback(async (action: 'open' | 'rename' | 'delete' | 'create-md' | 'create-py', node: FileTreeNode) => {
     setContextMenu(null);
     if (action === 'open') {
       if (node.isDir) {
@@ -1183,8 +1184,22 @@ function FileTreeView({
     } else if (action === 'delete') {
       await window.study.files.delete(node.path);
       onRefresh();
+    } else if (action === 'create-md' || action === 'create-py') {
+      const ext = action === 'create-md' ? '.md' : '.py';
+      setCreating({ dir: node.path, ext, name: '' });
     }
   }, [onFileClick, onRefresh]);
+
+  const handleCreateSubmit = useCallback(async () => {
+    if (!creating || !creating.name.trim()) { setCreating(null); return; }
+    let filename = creating.name.trim();
+    if (!filename.endsWith(creating.ext)) filename += creating.ext;
+    const filePath = `${creating.dir}/${filename}`;
+    await window.study.files.write(filePath, '');
+    onRefresh();
+    onFileClick({ name: filename, path: filePath, isDir: false });
+    setCreating(null);
+  }, [creating, onRefresh, onFileClick]);
 
   const handleRenameSubmit = useCallback(async () => {
     if (!renaming || !renaming.newName.trim()) { setRenaming(null); return; }
@@ -1258,9 +1273,26 @@ function FileTreeView({
       {/* Context menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[140px]"
+          className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          {contextMenu.node.isDir && (
+            <>
+              <button
+                onClick={() => handleContextAction('create-md', contextMenu.node)}
+                className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
+              >
+                Создать .md файл
+              </button>
+              <button
+                onClick={() => handleContextAction('create-py', contextMenu.node)}
+                className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
+              >
+                Создать .py файл
+              </button>
+              <div className="my-1 border-t border-neutral-800" />
+            </>
+          )}
           <button
             onClick={() => handleContextAction('open', contextMenu.node)}
             className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
@@ -1281,6 +1313,30 @@ function FileTreeView({
               Удалить
             </button>
           )}
+        </div>
+      )}
+
+      {/* Create file dialog */}
+      {creating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setCreating(null)}>
+          <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4 shadow-xl w-80" onClick={(e) => e.stopPropagation()}>
+            <div className="text-sm text-neutral-300 mb-3">Новый файл ({creating.ext})</div>
+            <input
+              autoFocus
+              value={creating.name}
+              onChange={(e) => setCreating({ ...creating, name: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreateSubmit();
+                if (e.key === 'Escape') setCreating(null);
+              }}
+              placeholder={`filename${creating.ext}`}
+              className="w-full bg-neutral-800 border border-neutral-700 rounded px-3 py-1.5 text-sm text-neutral-200 focus:outline-none focus:border-blue-500/50"
+            />
+            <div className="flex justify-end gap-2 mt-3">
+              <button onClick={() => setCreating(null)} className="px-3 py-1 text-xs text-neutral-400 hover:text-neutral-200 rounded transition-colors">Отмена</button>
+              <button onClick={handleCreateSubmit} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors">Создать</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1428,10 +1484,24 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
   const [editorMode, setEditorMode] = useState<'edit' | 'preview'>('preview');
   const previewRef = useRef<HTMLDivElement>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
-  const [creating, setCreating] = useState(false);
+  const [creatingNote, setCreatingNote] = useState(false);
   const [noteType, setNoteType] = useState<'лекция' | 'семинар' | 'лаба' | null>(null);
   const [newFileName, setNewFileName] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const notesContainerRef = useRef<HTMLDivElement>(null);
+  const [notesContainerWidth, setNotesContainerWidth] = useState(800);
+  const [showNotesOverlay, setShowNotesOverlay] = useState(false);
+  const isNotesNarrow = notesContainerWidth < 500;
+
+  useEffect(() => {
+    const el = notesContainerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      if (entries[0]) setNotesContainerWidth(entries[0].contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const loadFiles = useCallback(async () => {
     const [noteFiles, summaryFiles] = await Promise.all([
@@ -1530,7 +1600,7 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
     }
 
     const file = await window.study.files.create(slug, 'notes', filename);
-    setCreating(false);
+    setCreatingNote(false);
     setNoteType(null);
     setNewFileName('');
     await loadFiles();
@@ -1570,21 +1640,59 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
   }, [selectedFile, subjectName]);
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-280px)] min-h-[400px]">
+    <div ref={notesContainerRef} className="relative flex gap-4 h-[calc(100vh-280px)] min-h-[400px]">
+      {/* Burger button for narrow */}
+      {isNotesNarrow && (
+        <button
+          onClick={() => setShowNotesOverlay(!showNotesOverlay)}
+          className="absolute top-0 left-0 z-30 p-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors"
+          title="Заметки"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      )}
+      {/* Notes overlay for narrow */}
+      {isNotesNarrow && showNotesOverlay && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setShowNotesOverlay(false)} />
+          <div className="absolute top-0 left-0 z-40 w-56 h-full bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl flex flex-col overflow-hidden">
+            <div className="px-3 py-2 border-b border-neutral-800 flex items-center justify-between">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Заметки</span>
+              <button onClick={() => setShowNotesOverlay(false)} className="text-neutral-500 hover:text-neutral-300 text-sm">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto scrollbar-thin">
+              {notes.map((file) => (
+                <button
+                  key={file.path}
+                  onClick={() => { openFile(file); setShowNotesOverlay(false); }}
+                  className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                    selectedFile?.path === file.path ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
+                  }`}
+                >
+                  {file.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
       {/* Left panel — file list */}
-      <div className="w-56 shrink-0 flex flex-col border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden">
+      {!isNotesNarrow && (
+      <div className="w-52 shrink-0 flex flex-col border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden">
         <div className="px-3 py-2 border-b border-neutral-800 flex items-center justify-between">
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Заметки</span>
           <button
-            onClick={() => { setCreating(!creating); setNoteType(null); setNewFileName(''); }}
+            onClick={() => { setCreatingNote(!creatingNote); setNoteType(null); setNewFileName(''); }}
             className="w-5 h-5 flex items-center justify-center rounded bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors text-sm"
             title="Новая заметка"
           >
-            {creating ? '×' : '+'}
+            {creatingNote ? '×' : '+'}
           </button>
         </div>
 
-        {creating && (
+      {creatingNote && (
           <div className="px-2 py-2 border-b border-neutral-800 space-y-2">
             {/* Type selector */}
             <div className="flex gap-1">
@@ -1611,7 +1719,7 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
                   onChange={(e) => setNewFileName(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleCreateNote();
-                    if (e.key === 'Escape') { setCreating(false); setNoteType(null); setNewFileName(''); }
+                    if (e.key === 'Escape') { setCreatingNote(false); setNoteType(null); setNewFileName(''); }
                   }}
                   placeholder="Название (необязательно)"
                   autoFocus
@@ -1629,7 +1737,7 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
         )}
 
         <div className="flex-1 overflow-y-auto scrollbar-thin">
-          {notes.length === 0 && !creating && (
+          {notes.length === 0 && !creatingNote && (
             <div className="px-3 py-4 text-xs text-neutral-600 text-center">Нет заметок</div>
           )}
           {notes.map((file) => (
@@ -1686,6 +1794,7 @@ function NotesEditorView({ subjectName }: { subjectName: string }) {
           )}
         </div>
       </div>
+      )}
 
       {/* Right panel — editor */}
       <div className="flex-1 flex flex-col border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden">

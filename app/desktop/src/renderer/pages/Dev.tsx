@@ -956,9 +956,24 @@ function ProjectFiles({ project, onUpdate }: {
   const [fileMode, setFileMode] = useState<'preview' | 'edit'>('preview');
   const [fileSaved, setFileSaved] = useState(true);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; isDir: boolean } | null>(null);
+  const [creating, setCreating] = useState<{ dir: string; ext: string; name: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const fileTextareaRef = useRef<HTMLTextAreaElement>(null);
   const filePreviewRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(800);
+  const [showTreeOverlay, setShowTreeOverlay] = useState(false);
+  const isNarrow = containerWidth < 500;
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      if (entries[0]) setContainerWidth(entries[0].contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const loadTree = useCallback(async () => {
     if (!project.localPath) return;
@@ -1025,6 +1040,22 @@ function ProjectFiles({ project, onUpdate }: {
     await window.db.dev.files.write(openFile.path, fileContent);
     setFileSaved(true);
   }, [openFile, fileContent]);
+
+  const handleCreateFileSubmit = useCallback(async () => {
+    if (!creating || !creating.name.trim()) { setCreating(null); return; }
+    let filename = creating.name.trim();
+    if (!filename.endsWith(creating.ext)) filename += creating.ext;
+    const filePath = `${creating.dir}/${filename}`;
+    await window.db.dev.files.write(filePath, '');
+    handleRefresh();
+    // Open the newly created file
+    const content = '';
+    setOpenFile({ path: filePath, name: filename });
+    setFileContent(content);
+    setFileMode('edit');
+    setFileSaved(true);
+    setCreating(null);
+  }, [creating, handleRefresh]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, nodePath: string, isDir: boolean) => {
     e.preventDefault();
@@ -1181,11 +1212,34 @@ function ProjectFiles({ project, onUpdate }: {
   );
 
   return (
-    <div className="flex-1 flex overflow-hidden">
+    <div ref={containerRef} className="relative flex-1 flex overflow-hidden">
+      {/* Burger button for narrow */}
+      {isNarrow && (
+        <button
+          onClick={() => setShowTreeOverlay(!showTreeOverlay)}
+          className="absolute top-2 left-2 z-30 p-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors"
+          title="Файлы"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      )}
+      {/* Tree overlay for narrow */}
+      {isNarrow && showTreeOverlay && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setShowTreeOverlay(false)} />
+          <div className="absolute top-0 left-0 z-40 w-56 h-full bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl flex flex-col overflow-hidden">
+            {treePanel}
+          </div>
+        </>
+      )}
       {/* Left: file tree */}
-      <div className="w-72 shrink-0 border-r border-neutral-800 flex flex-col overflow-hidden">
-        {treePanel}
-      </div>
+      {!isNarrow && (
+        <div className="w-52 shrink-0 border-r border-neutral-800 flex flex-col overflow-hidden">
+          {treePanel}
+        </div>
+      )}
       {/* Right: file viewer */}
       {fileViewerPanel}
 
@@ -1195,6 +1249,23 @@ function ProjectFiles({ project, onUpdate }: {
           className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          {contextMenu.isDir && (
+            <>
+              <button
+                onClick={() => { setCreating({ dir: contextMenu.path, ext: '.md', name: '' }); setContextMenu(null); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
+              >
+                Создать .md файл
+              </button>
+              <button
+                onClick={() => { setCreating({ dir: contextMenu.path, ext: '.py', name: '' }); setContextMenu(null); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
+              >
+                Создать .py файл
+              </button>
+              <div className="my-1 border-t border-neutral-800" />
+            </>
+          )}
           <button
             onClick={() => { window.electronAPI.openFile(contextMenu.path); setContextMenu(null); }}
             className="w-full text-left px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 transition-colors"
@@ -1213,6 +1284,29 @@ function ProjectFiles({ project, onUpdate }: {
           >
             Показать в Finder
           </button>
+        </div>
+      )}
+
+      {creating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setCreating(null)}>
+          <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4 shadow-xl w-80" onClick={(e) => e.stopPropagation()}>
+            <div className="text-sm text-neutral-300 mb-3">Новый файл ({creating.ext})</div>
+            <input
+              autoFocus
+              value={creating.name}
+              onChange={(e) => setCreating({ ...creating, name: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreateFileSubmit();
+                if (e.key === 'Escape') setCreating(null);
+              }}
+              placeholder={`filename${creating.ext}`}
+              className="w-full bg-neutral-800 border border-neutral-700 rounded px-3 py-1.5 text-sm text-neutral-200 focus:outline-none focus:border-blue-500/50"
+            />
+            <div className="flex justify-end gap-2 mt-3">
+              <button onClick={() => setCreating(null)} className="px-3 py-1 text-xs text-neutral-400 hover:text-neutral-200 rounded transition-colors">Отмена</button>
+              <button onClick={handleCreateFileSubmit} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors">Создать</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
