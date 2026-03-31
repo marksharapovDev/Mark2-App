@@ -3277,10 +3277,10 @@ function TeachingFileTreeView({
   }, [contextMenu]);
 
   return (
-    <div className="flex flex-col overflow-hidden border border-neutral-800 rounded-lg bg-neutral-950/50">
+    <div className="flex flex-col overflow-hidden">
       {title && (
         <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800 shrink-0">
-          <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">{title}</span>
+          <span className="text-[11px] text-neutral-500 font-mono truncate">{title}</span>
           <button
             onClick={onRefresh}
             className="p-1 rounded hover:bg-neutral-800 text-neutral-600 hover:text-neutral-300 transition-colors"
@@ -3420,6 +3420,8 @@ function StudentFilesView({ studentName, initialOpenFilePath }: { studentName: s
   const [showTreeOverlay, setShowTreeOverlay] = useState(false);
   const isNarrow = containerWidth < 500;
   const initialFileHandled = useRef(false);
+  const [treeWidth, setTreeWidth] = useState(208);
+  const isDragging = useRef(false);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -3430,6 +3432,22 @@ function StudentFilesView({ studentName, initialOpenFilePath }: { studentName: s
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      const containerLeft = containerRef.current?.getBoundingClientRect().left ?? 0;
+      const newWidth = Math.max(150, Math.min(e.clientX - containerLeft, containerWidth - 300));
+      setTreeWidth(newWidth);
+    };
+    const handleMouseUp = () => { isDragging.current = false; };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [containerWidth]);
 
   const loadTree = useCallback(async () => {
     const result = await window.teaching.files.tree(slug);
@@ -3505,31 +3523,23 @@ function StudentFilesView({ studentName, initialOpenFilePath }: { studentName: s
     setShowTreeOverlay(false);
   }, [handleFileClick]);
 
-  const treeContent = (
-    <div className="overflow-y-auto scrollbar-thin">
-      <p className="text-[10px] text-neutral-600 mb-2">
-        <code className="bg-neutral-800 px-1 rounded">students/{slug}/</code>
-      </p>
-      <TeachingFileTreeView
-        tree={tree}
-        onFileClick={isNarrow ? handleFileClickWithClose : handleFileClick}
-        onRefresh={loadTree}
-        onDrop={handleDrop}
-        title="Файлы"
-      />
-      <p className="text-[10px] text-neutral-600 mt-2">
-        Правый клик — контекстное меню.
-      </p>
-    </div>
+  const treePanel = (
+    <TeachingFileTreeView
+      tree={tree}
+      onFileClick={isNarrow ? handleFileClickWithClose : handleFileClick}
+      onRefresh={loadTree}
+      onDrop={handleDrop}
+      title={`students/${slug}/`}
+    />
   );
 
   return (
-    <div ref={containerRef} className="relative flex gap-4 h-[calc(100vh-220px)]">
+    <div ref={containerRef} className="relative flex h-[calc(100vh-220px)] overflow-hidden">
       {/* Burger button for narrow */}
       {isNarrow && (
         <button
           onClick={() => setShowTreeOverlay(!showTreeOverlay)}
-          className="absolute top-0 left-0 z-30 p-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors"
+          className="absolute top-2 left-2 z-30 p-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors"
           title="Файлы"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -3542,21 +3552,29 @@ function StudentFilesView({ studentName, initialOpenFilePath }: { studentName: s
       {isNarrow && showTreeOverlay && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setShowTreeOverlay(false)} />
-          <div className="absolute top-0 left-0 z-40 w-56 h-full bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl p-3">
-            {treeContent}
+          <div className="absolute top-0 left-0 z-40 w-56 h-full bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl flex flex-col overflow-hidden">
+            {treePanel}
           </div>
         </>
       )}
 
       {/* Static tree for wide */}
       {!isNarrow && (
-        <div className="w-52 shrink-0">
-          {treeContent}
+        <div className="shrink-0 border-r border-neutral-800 flex flex-col overflow-hidden" style={{ width: treeWidth }}>
+          {treePanel}
         </div>
       )}
 
+      {/* Resizable divider */}
+      {!isNarrow && (
+        <div
+          className="w-1 shrink-0 bg-neutral-700/50 hover:bg-neutral-600 cursor-col-resize transition-colors"
+          onMouseDown={() => { isDragging.current = true; }}
+        />
+      )}
+
       {/* Editor panel */}
-      <div className={`flex-1 min-w-0 border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden flex flex-col ${isNarrow ? 'ml-0' : ''}`}>
+      <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
         {openFile && openFile.name.endsWith('.py') ? (
           <PythonEditor
             filePath={openFile.path}
@@ -3566,7 +3584,7 @@ function StudentFilesView({ studentName, initialOpenFilePath }: { studentName: s
           />
         ) : openFile ? (
           <>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 shrink-0">
               <div className="flex items-center gap-2">
                 <FileText size={14} className="text-blue-400" />
                 <span className="text-sm text-neutral-300">{openFile.name}</span>
@@ -3621,6 +3639,8 @@ function AllTeachingFilesTree() {
   const [containerWidth, setContainerWidth] = useState(800);
   const [showTreeOverlay, setShowTreeOverlay] = useState(false);
   const isNarrow = containerWidth < 500;
+  const [treeWidth, setTreeWidth] = useState(208);
+  const isDragging = useRef(false);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -3631,6 +3651,22 @@ function AllTeachingFilesTree() {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      const containerLeft = containerRef.current?.getBoundingClientRect().left ?? 0;
+      const newWidth = Math.max(150, Math.min(e.clientX - containerLeft, containerWidth - 300));
+      setTreeWidth(newWidth);
+    };
+    const handleMouseUp = () => { isDragging.current = false; };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [containerWidth]);
 
   const loadTree = useCallback(async () => {
     const result = await window.teaching.files.allTree();
@@ -3680,24 +3716,22 @@ function AllTeachingFilesTree() {
     setShowTreeOverlay(false);
   }, [handleFileClick]);
 
-  const treeContent = (
-    <div className="overflow-y-auto scrollbar-thin">
-      <TeachingFileTreeView
-        tree={tree}
-        onFileClick={isNarrow ? handleFileClickWithClose : handleFileClick}
-        onRefresh={loadTree}
-        onDrop={handleDrop}
-        title="Все файлы"
-      />
-    </div>
+  const treePanel = (
+    <TeachingFileTreeView
+      tree={tree}
+      onFileClick={isNarrow ? handleFileClickWithClose : handleFileClick}
+      onRefresh={loadTree}
+      onDrop={handleDrop}
+      title="students/"
+    />
   );
 
   return (
-    <div ref={containerRef} className="relative flex gap-4 h-[calc(100vh-220px)]">
+    <div ref={containerRef} className="relative flex h-[calc(100vh-220px)] overflow-hidden">
       {isNarrow && (
         <button
           onClick={() => setShowTreeOverlay(!showTreeOverlay)}
-          className="absolute top-0 left-0 z-30 p-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors"
+          className="absolute top-2 left-2 z-30 p-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors"
           title="Файлы"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -3708,17 +3742,23 @@ function AllTeachingFilesTree() {
       {isNarrow && showTreeOverlay && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setShowTreeOverlay(false)} />
-          <div className="absolute top-0 left-0 z-40 w-56 h-full bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl p-3">
-            {treeContent}
+          <div className="absolute top-0 left-0 z-40 w-56 h-full bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl flex flex-col overflow-hidden">
+            {treePanel}
           </div>
         </>
       )}
       {!isNarrow && (
-        <div className="w-52 shrink-0">
-          {treeContent}
+        <div className="shrink-0 border-r border-neutral-800 flex flex-col overflow-hidden" style={{ width: treeWidth }}>
+          {treePanel}
         </div>
       )}
-      <div className="flex-1 min-w-0 border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden flex flex-col">
+      {!isNarrow && (
+        <div
+          className="w-1 shrink-0 bg-neutral-700/50 hover:bg-neutral-600 cursor-col-resize transition-colors"
+          onMouseDown={() => { isDragging.current = true; }}
+        />
+      )}
+      <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
         {openFile && openFile.name.endsWith('.py') ? (
           <PythonEditor
             filePath={openFile.path}
@@ -3728,7 +3768,7 @@ function AllTeachingFilesTree() {
           />
         ) : openFile ? (
           <>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 shrink-0">
               <div className="flex items-center gap-2">
                 <FileText size={14} className="text-blue-400" />
                 <span className="text-sm text-neutral-300">{openFile.name}</span>

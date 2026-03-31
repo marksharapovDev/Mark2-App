@@ -1244,10 +1244,10 @@ function FileTreeView({
   }, [contextMenu]);
 
   return (
-    <div className="flex flex-col overflow-hidden border border-neutral-800 rounded-lg bg-neutral-950/50">
+    <div className="flex flex-col overflow-hidden">
       {title && (
         <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800 shrink-0">
-          <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">{title}</span>
+          <span className="text-[11px] text-neutral-500 font-mono truncate">{title}</span>
           <button
             onClick={onRefresh}
             className="p-1 rounded hover:bg-neutral-800 text-neutral-600 hover:text-neutral-300 transition-colors"
@@ -1417,19 +1417,13 @@ function FilesView({ subjectName, onOpenFile }: { subjectName: string; onOpenFil
 
   return (
     <div>
-      <p className="text-sm text-neutral-400 mb-3">
-        Файлы предмета в <code className="text-neutral-300 bg-neutral-800 px-1 rounded text-xs">agents/study/context/subjects/{slug}/</code>
-      </p>
       <FileTreeView
         tree={tree}
         onFileClick={handleFileClick}
         onRefresh={loadTree}
         onDrop={handleDrop}
-        title="Файлы"
+        title={`subjects/${slug}/`}
       />
-      <p className="text-[10px] text-neutral-600 mt-2">
-        Перетащите файлы из Finder в папку для копирования. Правый клик — контекстное меню.
-      </p>
     </div>
   );
 }
@@ -1470,7 +1464,7 @@ function AllFilesTree({ onFileOpen }: { onFileOpen: (filePath: string) => void }
       onFileClick={handleFileClick}
       onRefresh={loadTree}
       onDrop={handleDrop}
-      title="Все файлы"
+      title="subjects/"
     />
   );
 }

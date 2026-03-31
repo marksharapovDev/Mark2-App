@@ -964,6 +964,8 @@ function ProjectFiles({ project, onUpdate }: {
   const [containerWidth, setContainerWidth] = useState(800);
   const [showTreeOverlay, setShowTreeOverlay] = useState(false);
   const isNarrow = containerWidth < 500;
+  const [treeWidth, setTreeWidth] = useState(208);
+  const isDraggingResize = useRef(false);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -974,6 +976,22 @@ function ProjectFiles({ project, onUpdate }: {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingResize.current) return;
+      const containerLeft = containerRef.current?.getBoundingClientRect().left ?? 0;
+      const newWidth = Math.max(150, Math.min(e.clientX - containerLeft, containerWidth - 300));
+      setTreeWidth(newWidth);
+    };
+    const handleMouseUp = () => { isDraggingResize.current = false; };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [containerWidth]);
 
   const loadTree = useCallback(async () => {
     if (!project.localPath) return;
@@ -1236,9 +1254,16 @@ function ProjectFiles({ project, onUpdate }: {
       )}
       {/* Left: file tree */}
       {!isNarrow && (
-        <div className="w-52 shrink-0 border-r border-neutral-800 flex flex-col overflow-hidden">
+        <div className="shrink-0 border-r border-neutral-800 flex flex-col overflow-hidden" style={{ width: treeWidth }}>
           {treePanel}
         </div>
+      )}
+      {/* Resizable divider */}
+      {!isNarrow && (
+        <div
+          className="w-1 shrink-0 bg-neutral-700/50 hover:bg-neutral-600 cursor-col-resize transition-colors"
+          onMouseDown={() => { isDraggingResize.current = true; }}
+        />
       )}
       {/* Right: file viewer */}
       {fileViewerPanel}
