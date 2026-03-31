@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent } from 'react';
-import { Mic, Paperclip, ArrowUp, Square } from 'lucide-react';
+import { Mic, Paperclip, ArrowUp, Square, X } from 'lucide-react';
 import { MarkdownRenderer } from '../MarkdownRenderer';
+import { PythonEditor } from '../PythonEditor';
 import { FileAttachmentCard, parseBotFileLinks } from '../FileAttachmentCard';
 import { UserMessageActions, BotMessageActions, InterruptedBanner, stripInterrupted } from '../MessageActions';
 import { ThinkingIndicator } from '../ThinkingIndicator';
@@ -55,6 +56,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
   const [streamingDone, setStreamingDone] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [viewerFile, setViewerFile] = useState<{ path: string; name: string; content: string } | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -519,6 +521,24 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
     }
   }, [activeSessionId]);
 
+  const handleOpenFileInternal = useCallback(async (filePath: string) => {
+    const fileName = filePath.split('/').pop() ?? filePath;
+    try {
+      // Read via study files API (works for any path)
+      const content = await window.study.files.read(filePath);
+      setViewerFile({ path: filePath, name: fileName, content });
+    } catch {
+      // Fallback to external
+      window.electronAPI.openFile(filePath);
+    }
+  }, []);
+
+  const handleViewerSave = useCallback(async (content: string) => {
+    if (!viewerFile) return;
+    await window.study.files.write(viewerFile.path, content);
+    setViewerFile({ ...viewerFile, content });
+  }, [viewerFile]);
+
   // Auto-resize textarea on programmatic input changes (dictation, paste)
   useEffect(() => {
     if (inputRef.current) {
@@ -652,6 +672,7 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
                 message={msg}
                 onEdit={() => handleEditMessage(idx)}
                 onRetry={() => handleRetryMessage(idx)}
+                onOpenFileInternal={handleOpenFileInternal}
               />
             ))}
 
@@ -767,6 +788,41 @@ export function ChatPanel({ agent, defaultWidthPct = 30, embedded = false, onCol
           </div>
         </div>
       )}
+
+      {/* File viewer modal */}
+      {viewerFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setViewerFile(null)}>
+          <div
+            className="bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl w-[700px] max-w-[90vw] h-[80vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {viewerFile.name.endsWith('.py') ? (
+              <PythonEditor
+                filePath={viewerFile.path}
+                fileName={viewerFile.name}
+                initialContent={viewerFile.content}
+                onSave={handleViewerSave}
+              />
+            ) : (
+              <>
+                <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800 shrink-0">
+                  <span className="text-sm text-neutral-300 font-medium">{viewerFile.name}</span>
+                  <button onClick={() => setViewerFile(null)} className="p-1 rounded hover:bg-neutral-800 text-neutral-500 hover:text-neutral-300 transition-colors">
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-5">
+                  {viewerFile.content ? (
+                    <MarkdownRenderer content={viewerFile.content} className="text-sm text-neutral-300 leading-relaxed" />
+                  ) : (
+                    <span className="text-neutral-600 italic">Файл пуст</span>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 
@@ -833,10 +889,11 @@ function SessionList({
 
 // --- Chat Bubble ---
 
-function ChatBubble({ message, onEdit, onRetry }: {
+function ChatBubble({ message, onEdit, onRetry, onOpenFileInternal }: {
   message: Message;
   onEdit: () => void;
   onRetry: () => void;
+  onOpenFileInternal?: (path: string) => void;
 }) {
   const isUser = message.role === 'user';
 
@@ -856,7 +913,7 @@ function ChatBubble({ message, onEdit, onRetry }: {
         <div className="max-w-[90%]">
           {message.filePaths && message.filePaths.length > 0 && (
             <div className="flex flex-col gap-1.5 mb-1.5 items-end">
-              {message.filePaths.map((f) => <FileAttachmentCard key={f} filePath={f} />)}
+              {message.filePaths.map((f) => <FileAttachmentCard key={f} filePath={f} onOpenInternal={onOpenFileInternal} />)}
             </div>
           )}
           <div className="rounded-lg px-3 py-2 text-xs break-words bg-blue-600/20 text-blue-100 whitespace-pre-wrap">
@@ -890,7 +947,7 @@ function ChatBubble({ message, onEdit, onRetry }: {
         </div>
         {botFiles.length > 0 && (
           <div className="flex flex-col gap-1.5 mt-1.5">
-            {botFiles.map((f) => <FileAttachmentCard key={f} filePath={f} />)}
+            {botFiles.map((f) => <FileAttachmentCard key={f} filePath={f} onOpenInternal={onOpenFileInternal} />)}
           </div>
         )}
         <div className="opacity-0 group-hover/msg:opacity-100 transition-opacity">

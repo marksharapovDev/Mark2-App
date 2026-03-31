@@ -4,6 +4,7 @@ import { useSidebar } from '../context/sidebar-context';
 import type { TaskStatus, LearningPathTopic, LearningPathStatus, StudentRate, Transaction } from '@mark2/shared';
 import { CheckCircle2, RefreshCw, Clock, XCircle, FileText, FileType, FileCode, PenLine, ClipboardList, BarChart3, Loader2, Banknote, Folder, FolderOpen, File, Code, ChevronDown, ChevronRight, MoreVertical } from 'lucide-react';
 import { PythonEditor } from '../components/PythonEditor';
+import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { useUndo } from '../context/undo-context';
 
 // --- Types ---
@@ -2986,7 +2987,9 @@ function SidebarFileTree({ studentName, onFileNavigate }: { studentName: string;
   }, []);
 
   const handleFileClick = useCallback((node: FileTreeNode) => {
-    if ((node.name.endsWith('.md') || node.name.endsWith('.py')) && onFileNavigate) {
+    const ext = node.name.split('.').pop()?.toLowerCase();
+    console.log('[Teaching Sidebar] File clicked:', node.path, 'extension:', ext);
+    if ((ext === 'md' || ext === 'py') && onFileNavigate) {
       onFileNavigate(node.path);
     } else {
       window.electronAPI.openFile(node.path);
@@ -3589,10 +3592,10 @@ function StudentFilesView({ studentName, initialOpenFilePath }: { studentName: s
                   className="w-full h-full bg-transparent text-sm text-neutral-300 font-mono resize-none focus:outline-none"
                   spellCheck={false}
                 />
+              ) : openFile.content ? (
+                <MarkdownRenderer content={openFile.content} className="text-sm text-neutral-300 leading-relaxed" />
               ) : (
-                <div className="prose prose-invert prose-sm max-w-none text-neutral-300 whitespace-pre-wrap text-sm">
-                  {openFile.content || <span className="text-neutral-600 italic">Файл пуст</span>}
-                </div>
+                <span className="text-neutral-600 italic">Файл пуст</span>
               )}
             </div>
           </>
@@ -3751,10 +3754,10 @@ function AllTeachingFilesTree() {
                   className="w-full h-full bg-transparent text-sm text-neutral-300 font-mono resize-none focus:outline-none"
                   spellCheck={false}
                 />
+              ) : openFile.content ? (
+                <MarkdownRenderer content={openFile.content} className="text-sm text-neutral-300 leading-relaxed" />
               ) : (
-                <div className="prose prose-invert prose-sm max-w-none text-neutral-300 whitespace-pre-wrap text-sm">
-                  {openFile.content || <span className="text-neutral-600 italic">Файл пуст</span>}
-                </div>
+                <span className="text-neutral-600 italic">Файл пуст</span>
               )}
             </div>
           </>

@@ -65,9 +65,12 @@ function formatSize(bytes: number): string {
 interface FileAttachmentCardProps {
   filePath: string;
   onRemove?: (path: string) => void;
+  onOpenInternal?: (path: string) => void;
 }
 
-export function FileAttachmentCard({ filePath, onRemove }: FileAttachmentCardProps) {
+const INTERNAL_EXTS = new Set(['.md', '.py']);
+
+export function FileAttachmentCard({ filePath, onRemove, onOpenInternal }: FileAttachmentCardProps) {
   const fileName = filePath.split('/').pop() ?? filePath;
   const ext = ('.' + (fileName.split('.').pop() ?? '')).toLowerCase();
   const { icon, label, bgColor } = getFileTypeInfo(ext);
@@ -93,7 +96,13 @@ export function FileAttachmentCard({ filePath, onRemove }: FileAttachmentCardPro
   return (
     <div
       className="flex items-center gap-2.5 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 w-[280px] cursor-pointer hover:bg-neutral-750 hover:border-neutral-600 transition-colors group"
-      onClick={() => window.electronAPI.openFile(filePath)}
+      onClick={() => {
+        if (onOpenInternal && INTERNAL_EXTS.has(ext)) {
+          onOpenInternal(filePath);
+        } else {
+          window.electronAPI.openFile(filePath);
+        }
+      }}
     >
       {/* Icon or thumbnail */}
       {thumbnail ? (
