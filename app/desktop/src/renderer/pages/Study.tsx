@@ -6,7 +6,7 @@ import {
   BookOpen, PenLine, ClipboardList, BarChart3, FileText, MapPin, NotebookText,
   CheckCircle2, Clock, RefreshCw, Loader2, Plus, Trash2,
   GraduationCap, Calendar, FolderOpen, FileQuestion, Save, Sparkles,
-  ChevronRight, ChevronDown, File, Folder, Eye, Pencil,
+  ChevronRight, ChevronDown, File, Folder, Code, MoreVertical, Eye, Pencil,
 } from 'lucide-react';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { ConfirmDelete } from '../components/confirm-delete';
@@ -1056,6 +1056,9 @@ function FileTreeNode({
 }) {
   const isExpanded = expandedPaths.has(node.path);
   const [dragOver, setDragOver] = useState(false);
+  const ext = node.name.split('.').pop()?.toLowerCase();
+  const isMd = ext === 'md';
+  const isCode = ['ts', 'tsx', 'js', 'jsx', 'py', 'html', 'css', 'json', 'yml', 'yaml', 'sh', 'sql'].includes(ext ?? '');
 
   const handleDragOver = (e: React.DragEvent) => {
     if (!node.isDir) return;
@@ -1086,23 +1089,32 @@ function FileTreeNode({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`w-full text-left flex items-center gap-1.5 py-1 px-2 text-xs transition-colors rounded
-          ${dragOver ? 'bg-blue-900/40 ring-1 ring-blue-500/50' : 'hover:bg-neutral-800/50'}
-          ${node.isDir ? 'text-neutral-300' : 'text-neutral-400 hover:text-neutral-200'}`}
-        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        className={`w-full text-left flex items-center gap-1.5 py-1 px-1 transition-colors rounded group
+          ${dragOver ? 'bg-blue-900/40 ring-1 ring-blue-500/50' : 'hover:bg-neutral-800/50'}`}
+        style={{ paddingLeft: `${depth * 16 + 4}px` }}
       >
         {node.isDir ? (
-          <>
-            {isExpanded ? <ChevronDown size={12} className="shrink-0 text-neutral-500" /> : <ChevronRight size={12} className="shrink-0 text-neutral-500" />}
-            <Folder size={14} className="shrink-0 text-yellow-500/70" />
-          </>
+          isExpanded ? <ChevronDown size={12} className="text-neutral-600 shrink-0" /> : <ChevronRight size={12} className="text-neutral-600 shrink-0" />
         ) : (
-          <>
-            <span className="w-3 shrink-0" />
-            <File size={14} className="shrink-0 text-neutral-500" />
-          </>
+          <span className="w-3 shrink-0" />
         )}
-        <span className="truncate">{node.name}</span>
+        {node.isDir ? (
+          isExpanded ? <FolderOpen size={14} className="text-yellow-600 shrink-0" /> : <Folder size={14} className="text-yellow-700 shrink-0" />
+        ) : isMd ? (
+          <FileText size={14} className="text-blue-500 shrink-0" />
+        ) : isCode ? (
+          <Code size={14} className="text-emerald-600 shrink-0" />
+        ) : (
+          <File size={14} className="text-neutral-600 shrink-0" />
+        )}
+        <span className={`text-xs truncate ${node.isDir ? 'text-neutral-300 font-medium' : 'text-neutral-400'}`}>
+          {node.name}
+        </span>
+        <MoreVertical
+          size={12}
+          className="text-neutral-700 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-auto"
+          onClick={(e) => { e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, node }); }}
+        />
       </button>
       {node.isDir && isExpanded && node.children && (
         <div>
@@ -1120,7 +1132,7 @@ function FileTreeNode({
             />
           ))}
           {node.children.length === 0 && (
-            <div className="text-[10px] text-neutral-600 py-1" style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}>
+            <div className="text-xs text-neutral-600 py-1 italic" style={{ paddingLeft: `${(depth + 1) * 16 + 4}px` }}>
               Пусто
             </div>
           )}
@@ -1232,13 +1244,13 @@ function FileTreeView({
   }, [contextMenu]);
 
   return (
-    <div>
+    <div className="flex flex-col overflow-hidden border border-neutral-800 rounded-lg bg-neutral-950/50">
       {title && (
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">{title}</span>
+        <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800 shrink-0">
+          <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">{title}</span>
           <button
             onClick={onRefresh}
-            className="p-1 rounded text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 transition-colors"
+            className="p-1 rounded hover:bg-neutral-800 text-neutral-600 hover:text-neutral-300 transition-colors"
             title="Обновить"
           >
             <RefreshCw size={12} />
@@ -1246,14 +1258,13 @@ function FileTreeView({
         </div>
       )}
       <div
-        className="border border-neutral-800 rounded-lg bg-neutral-950/50 overflow-hidden"
+        className="flex-1 overflow-y-auto scrollbar-thin p-2"
         onDragOver={handleRootDragOver}
         onDrop={handleRootDrop}
       >
-        <div className="max-h-[60vh] overflow-y-auto scrollbar-thin py-1">
-          {tree.length === 0 && (
-            <div className="text-xs text-neutral-600 text-center py-4">Нет файлов</div>
-          )}
+        {tree.length === 0 && (
+          <div className="text-neutral-600 text-sm text-center py-8">Папка пуста</div>
+        )}
           {tree.map((node) => (
             <FileTreeNode
               key={node.path}
@@ -1267,7 +1278,6 @@ function FileTreeView({
               setContextMenu={setContextMenu}
             />
           ))}
-        </div>
       </div>
 
       {/* Context menu */}
