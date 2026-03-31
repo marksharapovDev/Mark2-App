@@ -193,6 +193,77 @@ function getMonthGrid(year: number, month: number): string[][] {
   return weeks;
 }
 
+// Parse student name from teaching event title like "Урок Саша Морозов (Информатика)"
+function parseStudentNameFromTitle(title: string): string | null {
+  // "Урок <Name> (<Subject>)" or "Урок <Name>"
+  const m = title.match(/^Урок\s+(.+?)(?:\s*\(|$)/);
+  if (m?.[1]) return m[1].trim();
+  // Fallback: any "Lesson <Name>" pattern
+  const m2 = title.match(/^Lesson\s+(.+?)(?:\s*\(|$)/i);
+  if (m2?.[1]) return m2[1].trim();
+  return null;
+}
+
+// Auto-fill "Оплата" subtask for teaching events based on payment balance
+async function autoFillTeachingPayment(events: CalendarEvent[]): Promise<CalendarEvent[]> {
+  const teachingWithPayment = events.filter(
+    (e) => e.sphere === 'teaching' && e.subtasks.some((s) => s.title === 'Оплата' && !s.done),
+  );
+  if (teachingWithPayment.length === 0) return events;
+
+  // Collect unique student names
+  const studentNames = new Set<string>();
+  for (const ev of teachingWithPayment) {
+    const name = parseStudentNameFromTitle(ev.title);
+    if (name) studentNames.add(name);
+  }
+  if (studentNames.size === 0) return events;
+
+  try {
+    const [students, transactions, lessons] = await Promise.all([
+      window.db.students.list(),
+      window.db.transactions.list({ type: 'income', category: 'tutoring' }),
+      window.db.lessons.list(),
+    ]);
+
+    // Build per-student balance: paid lessons count - completed lessons count
+    const studentBalanceMap = new Map<string, number>();
+    for (const name of studentNames) {
+      const student = students.find((s) =>
+        s.name.toLowerCase().includes(name.toLowerCase()) ||
+        name.toLowerCase().includes(s.name.toLowerCase()),
+      );
+      if (!student) continue;
+
+      const paidCount = transactions.filter((t) => t.studentId === student.id).length;
+      const completedCount = lessons.filter((l) => l.studentId === student.id && l.status === 'completed').length;
+      studentBalanceMap.set(name.toLowerCase(), paidCount - completedCount);
+    }
+
+    let changed = false;
+    const updated = events.map((e) => {
+      if (e.sphere !== 'teaching') return e;
+      const name = parseStudentNameFromTitle(e.title);
+      if (!name) return e;
+      const balance = studentBalanceMap.get(name.toLowerCase());
+      if (balance == null || balance <= 0) return e;
+
+      const hasUndonePayment = e.subtasks.some((s) => s.title === 'Оплата' && !s.done);
+      if (!hasUndonePayment) return e;
+
+      changed = true;
+      const newSubtasks = e.subtasks.map((s) => s.title === 'Оплата' ? { ...s, done: true } : s);
+      window.db.events.update(e.id, localEventToDb({ ...e, subtasks: newSubtasks })).catch(() => {});
+      return { ...e, subtasks: newSubtasks };
+    });
+
+    return changed ? updated : events;
+  } catch (err) {
+    console.warn('[Calendar] autoFillTeachingPayment error:', err);
+    return events;
+  }
+}
+
 function isRecurringEvent(e: CalendarEvent): boolean {
   return !!(e.isRecurring || e.isVirtual || e.isException);
 }
@@ -522,7 +593,9 @@ export function Calendar() {
         window.db.reminders.list({ dateFrom: rangeFrom, dateTo: rangeTo }),
       ]);
       if (dbEvents.length > 0) {
-        setEvents(dbEvents.map((e) => mapDbEventToLocal(e as unknown as Record<string, unknown>)));
+        let mapped = dbEvents.map((e) => mapDbEventToLocal(e as unknown as Record<string, unknown>));
+        mapped = await autoFillTeachingPayment(mapped);
+        setEvents(mapped);
       }
       const mappedReminders = (dbReminders ?? []).map((r: Record<string, unknown>) => ({
         id: String(r.id),
@@ -840,6 +913,7 @@ export function Calendar() {
   }, [commitEvents, events]);
 
   const toggleEventSubtask = useCallback((eventId: string, subtaskIdx: number) => {
+    console.log('[Calendar] toggleEventSubtask:', eventId, 'idx:', subtaskIdx);
     commitEvents((prev) => prev.map((e) => {
       if (e.id !== eventId) return e;
       const updated = { ...e, subtasks: e.subtasks.map((s, i) => i === subtaskIdx ? { ...s, done: !s.done } : s) };
@@ -849,6 +923,7 @@ export function Calendar() {
   }, [commitEvents]);
 
   const toggleReminderSubtask = useCallback((reminderId: string, subtaskIdx: number) => {
+    console.log('[Calendar] toggleReminderSubtask:', reminderId, 'idx:', subtaskIdx);
     setReminders((prev) => prev.map((r) => {
       if (r.id !== reminderId) return r;
       const updatedSubtasks = r.subtasks.map((s, i) => i === subtaskIdx ? { ...s, done: !s.done } : s);
@@ -1352,8 +1427,8 @@ function InlineActions({
     return (
       <div
         data-event-actions
-        className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 shadow-lg z-10"
-        style={{ top: '100%', marginTop: 2 }}
+        className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 shadow-lg"
+        style={{ top: '100%', marginTop: 2, zIndex: 50 }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1369,8 +1444,8 @@ function InlineActions({
   return (
     <div
       data-event-actions
-      className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center bg-neutral-800 border border-neutral-700 rounded-md px-1 py-0.5 shadow-lg z-10"
-      style={{ top: '100%', marginTop: 2 }}
+      className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center bg-neutral-800 border border-neutral-700 rounded-md px-1 py-0.5 shadow-lg"
+      style={{ top: '100%', marginTop: 2, zIndex: 50 }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -1396,7 +1471,13 @@ function InlineActions({
             <button
               key={idx}
               className="flex items-center gap-1.5 w-full px-1 py-[2px] rounded hover:bg-neutral-700/50 transition-colors group"
-              onClick={() => onToggleSubtask!(idx)}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                console.log('[Calendar] Subtask clicked:', st.title, st.done);
+                onToggleSubtask!(idx);
+              }}
             >
               {st.done ? (
                 <svg className="w-3 h-3 shrink-0 text-green-400" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.03 5.53-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06L7 8.44l2.97-2.97a.75.75 0 0 1 1.06 1.06Z"/></svg>

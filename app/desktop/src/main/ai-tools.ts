@@ -252,6 +252,42 @@ async function resolveStudentId(params: Record<string, unknown>): Promise<{ id: 
   return { id: found.id, name: found.name };
 }
 
+// --- Auto-update teaching event subtasks ---
+
+async function updateTeachingEventSubtask(studentName: string, subtaskTitle: string, done: boolean): Promise<void> {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const yearEnd = `${new Date().getFullYear()}-12-31`;
+    const events = await db.getCalendarEvents(today, yearEnd);
+
+    const nameLower = studentName.toLowerCase();
+    const matching = events.filter((e) => {
+      const meta = (e as unknown as Record<string, unknown>).metadata as Record<string, unknown> | undefined;
+      const sphere = String((e as unknown as Record<string, unknown>).sphere ?? '');
+      const title = String((e as unknown as Record<string, unknown>).title ?? '');
+      return sphere === 'teaching' && title.toLowerCase().includes(nameLower) && Array.isArray(meta?.subtasks);
+    });
+
+    for (const ev of matching) {
+      const raw = ev as unknown as Record<string, unknown>;
+      const meta = raw.metadata as Record<string, unknown>;
+      const subtasks = meta.subtasks as Array<{ title: string; done: boolean }>;
+      const idx = subtasks.findIndex((s) => s.title === subtaskTitle);
+      if (idx === -1 || subtasks[idx]!.done === done) continue;
+
+      const updated = [...subtasks];
+      updated[idx] = { ...updated[idx]!, done };
+      const newMeta = { ...meta, subtasks: updated };
+
+      await db.updateCalendarEvent(String(raw.id), { metadata: newMeta });
+      console.log(`[AI Tools] Updated subtask "${subtaskTitle}" → ${done} for event: ${raw.title}`);
+      break; // only update the nearest (first) matching event
+    }
+  } catch (err) {
+    console.warn('[AI Tools] updateTeachingEventSubtask error:', err);
+  }
+}
+
 // --- Markdown to DOCX converter ---
 
 function markdownToDocxParagraphs(md: string): Paragraph[] {
@@ -1110,6 +1146,23 @@ const AI_TOOLS: Record<string, ActionHandler> = {
     }
 
     console.log('[AI Tools] save_file: input path:', filePath, '→ fullPath:', fullPath, 'isAbsolute:', fullPath.startsWith('/'), 'exists:', existsSync(fullPath));
+
+    // Auto-update teaching event subtasks based on file type
+    const fileBase = basename(fullPath).toLowerCase();
+    const isHomework = /^(dz|homework)[\s_\-]/i.test(fileBase);
+    const isLessonPrep = /^(plan|material|lesson|notes)[\s_\-]/i.test(fileBase);
+    if (isHomework || isLessonPrep) {
+      const resolved = await tryResolveStudentFromFilename(basename(fullPath));
+      if (resolved) {
+        if (isLessonPrep) {
+          await updateTeachingEventSubtask(resolved.name, 'Урок подготовлен', true);
+        }
+        if (isHomework) {
+          await updateTeachingEventSubtask(resolved.name, 'ДЗ отправлено', true);
+        }
+      }
+    }
+
     const resultMsg = `Файл сохранён: ${fullPath}`;
     console.log('[AI Tools] save_file: result.message =', resultMsg);
     return { success: true, message: resultMsg, entity: 'files', data: { path: fullPath } };
@@ -1387,6 +1440,18 @@ const AI_TOOLS: Record<string, ActionHandler> = {
 
     console.log(`[AI Tools] attach_file topic_id: ${params.topicId || 'none'}, entity: ${params.entityType}/${params.entityId}, category: ${params.category}`);
     const result = await db.createAttachedFile(params);
+
+    // Auto-update teaching event subtasks
+    if (studentName && params.entityType === 'student') {
+      const category = String(params.category ?? '');
+      if (category === 'homework') {
+        await updateTeachingEventSubtask(studentName, 'ДЗ отправлено', true);
+      }
+      if (category === 'lesson_plan' || category === 'material') {
+        await updateTeachingEventSubtask(studentName, 'Урок подготовлен', true);
+      }
+    }
+
     return { success: true, message: `Файл прикреплён: ${params.filename}`, entity: 'files', data: result as unknown as Record<string, unknown> };
   },
 
